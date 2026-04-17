@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "QARY sandbox backend — OTP, payments, avatar, webhook.",
   "private": true,
-  "main": "src/index.js",
+  "main": "index.js",
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
