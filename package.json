@@ -1,0 +1,58 @@
+/* Profile routes — avatar upload
+ */
+
+'use strict';
+
+const express = require('express');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
+
+const router = express.Router();
+
+const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadsDir),
+  filename: (req, file, cb) => {
+    const ext = (path.extname(file.originalname) || '.jpg').toLowerCase();
+    const safeExt = ['.jpg', '.jpeg', '.png', '.webp'].includes(ext) ? ext : '.jpg';
+    const id = crypto.randomBytes(12).toString('hex');
+    cb(null, 'avatar_' + id + safeExt);
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+  fileFilter: (req, file, cb) => {
+    const ok = /^image\/(jpeg|png|webp|jpg)$/.test(file.mimetype);
+    if (!ok) return cb(new Error('invalid_mime_type: ' + file.mimetype));
+    cb(null, true);
+  }
+});
+
+/* ─── POST /api/profile/avatar ───────────────────────────── */
+router.post('/avatar', (req, res) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      return res.status(400).json({ error: err.message || 'upload_failed' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'no_file_uploaded' });
+    }
+
+    const url = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+    res.json({
+      avatar_url: url,
+      filename: req.file.filename,
+      size_bytes: req.file.size,
+      mime_type: req.file.mimetype,
+      uploaded_at: new Date().toISOString()
+    });
+  });
+});
+
+module.exports = router;
