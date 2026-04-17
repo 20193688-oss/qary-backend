@@ -5,7 +5,7 @@
   "private": true,
   "main": "index.js",
   "scripts": {
-    "start": "node src/index.js",
+    "start": "node index.js",
     "dev": "node --watch src/index.js",
     "test:qr": "node src/lib/qr-signer.js"
   },
