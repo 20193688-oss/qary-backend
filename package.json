@@ -1,0 +1,27 @@
+{
+  "name": "qary-superapp",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.0.0",
+  "scripts": {
+    "dev": "pnpm -r --parallel --filter \"./frontend\" --filter \"./backend\" run dev",
+    "build": "pnpm -r run build",
+    "start": "pnpm -r run start",
+    "lint": "pnpm -r run lint",
+    "test": "pnpm -r run test",
+    "migrate": "pnpm --filter backend run migrate",
+    "seed": "pnpm --filter backend run seed",
+    "infra:up": "docker compose -f infra/docker-compose.yml up -d",
+    "infra:down": "docker compose -f infra/docker-compose.yml down",
+    "sim:drivers": "node scripts/simulate_drivers.js",
+    "sim:calls": "node scripts/simulate_calls.js",
+    "sim:incident": "node scripts/simulate_incident.js"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "prettier": "^3.3.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

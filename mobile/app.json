@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "QARY Super-App",
+    "slug": "qary-superapp",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "qary",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0D0B2E"
+    },
+    "android": {
+      "package": "com.qary.superapp",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "CAMERA",
+        "RECORD_AUDIO",
+        "FLASHLIGHT",
+        "POST_NOTIFICATIONS"
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#0D0B2E"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.qary.superapp",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "QARY usa tu ubicación para conectarte con conductores cercanos.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Necesario para tracking durante el viaje.",
+        "NSCameraUsageDescription": "Para evidencias, QR y la linterna.",
+        "NSMicrophoneUsageDescription": "Para comandos de voz y llamadas."
+      }
+    },
+    "plugins": [
+      "expo-camera",
+      "expo-location",
+      "expo-notifications"
+    ]
+  }
+}

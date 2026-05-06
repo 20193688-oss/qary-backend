@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root { height: 100%; }
+body { margin: 0; -webkit-tap-highlight-color: transparent; }
+
+.btn-pry {
+  @apply w-full rounded-xl px-4 py-3 font-bold text-white shadow-lg
+    bg-gradient-to-br from-blue to-pink active:scale-95 transition-transform;
+}
+.btn-sec {
+  @apply w-full rounded-xl px-4 py-3 font-bold border bg-white text-navy active:scale-95 transition-transform;
+}
+.shell {
+  max-width: 430px;
+  margin: 0 auto;
+  background: var(--bg, #F7F8FF);
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}

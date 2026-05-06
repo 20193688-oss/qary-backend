@@ -1,0 +1,160 @@
+// QARY Super-App — DB schema (PR 2 baseline; extended in later PRs)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  DRIVER
+  WORKER
+  ADMIN
+}
+
+enum OrderStatus {
+  PENDING
+  ACCEPTED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  REQUIRES_ACTION
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+enum IncidentType {
+  SAFETY
+  PAYMENT
+  SERVICE
+  OTHER
+}
+
+enum MediaKind {
+  IMAGE
+  VIDEO
+  AUDIO
+  TRANSCRIPT
+}
+
+model User {
+  id          String    @id @default(cuid())
+  email       String    @unique
+  phone       String?   @unique
+  name        String?
+  role        UserRole  @default(USER)
+  pinHash     String?   // hash bcrypt para confirmación PIN/voz
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  driver      Driver?
+  ordersAsUser Order[]  @relation("OrdersUser")
+  incidents   Incident[]
+  events      Event[]
+}
+
+model Driver {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehiclePlate String
+  vehicleModel String
+  online       Boolean  @default(false)
+  lastLat      Float?
+  lastLng      Float?
+  lastSeenAt   DateTime?
+  ordersAsDriver Order[] @relation("OrdersDriver")
+}
+
+model Order {
+  id         String      @id @default(cuid())
+  userId     String
+  user       User        @relation("OrdersUser", fields: [userId], references: [id])
+  driverId   String?
+  driver     Driver?     @relation("OrdersDriver", fields: [driverId], references: [id])
+  status     OrderStatus @default(PENDING)
+  pickup     Json
+  dropoff    Json
+  amountCents Int
+  currency   String      @default("USD")
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  payment    Payment?
+  incidents  Incident[]
+  media      MediaAsset[]
+  receipt    Receipt?
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  orderId         String        @unique
+  order           Order         @relation(fields: [orderId], references: [id])
+  stripeIntentId  String        @unique
+  status          PaymentStatus @default(REQUIRES_ACTION)
+  amountCents     Int
+  currency        String        @default("USD")
+  voicePinVerified Boolean      @default(false)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+model Incident {
+  id          String       @id @default(cuid())
+  orderId     String?
+  order       Order?       @relation(fields: [orderId], references: [id])
+  userId      String
+  user        User         @relation(fields: [userId], references: [id])
+  type        IncidentType
+  description String
+  transcript  String?
+  resolvedAt  DateTime?
+  createdAt   DateTime     @default(now())
+  media       MediaAsset[]
+}
+
+model MediaAsset {
+  id          String     @id @default(cuid())
+  kind        MediaKind
+  storageKey  String     // s3 key
+  signedUrl   String?    // último signed URL emitido (cache cortita)
+  signedExpiresAt DateTime?
+  durationMs  Int?
+  orderId     String?
+  order       Order?     @relation(fields: [orderId], references: [id])
+  incidentId  String?
+  incident    Incident?  @relation(fields: [incidentId], references: [id])
+  createdAt   DateTime   @default(now())
+}
+
+model Receipt {
+  id        String   @id @default(cuid())
+  orderId   String   @unique
+  order     Order    @relation(fields: [orderId], references: [id])
+  payload   Json
+  htmlUrl   String?
+  createdAt DateTime @default(now())
+}
+
+// Audit log: una fila por acción sensible
+model Event {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  actor      String   // user|system|agent|webhook|admin
+  eventType  String   // order.created, payment.succeeded, agent.intent, ...
+  payload    Json
+  requestId  String?
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([eventType, createdAt])
+  @@index([requestId])
+}
