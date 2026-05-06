@@ -1,0 +1,49 @@
+# deps
+node_modules/
+.pnp
+.pnp.js
+
+# build
+dist/
+build/
+.next/
+.expo/
+.turbo/
+.vite/
+coverage/
+
+# env
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# os
+.DS_Store
+Thumbs.db
+
+# ide
+.idea/
+.vscode/
+*.swp
+
+# prisma
+backend/prisma/migrations/dev.db
+*.sqlite
+
+# media + uploads
+media/
+uploads/
+*.apk
+*.aab
+*.ipa
+
+# test
+playwright-report/
+test-results/
