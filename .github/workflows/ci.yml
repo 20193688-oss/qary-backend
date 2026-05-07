@@ -5,14 +5,31 @@ on:
     branches: [main, "claude/**"]
   pull_request:
 
+# Bloquea el merge si tests, typecheck o build fallan.
 jobs:
-  lint-typecheck-test:
+  test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: qary
+          POSTGRES_PASSWORD: qary
+          POSTGRES_DB: qary
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U qary"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+    env:
+      DATABASE_URL: postgresql://qary:qary@localhost:5432/qary
+      REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
+        with: { version: 9 }
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -20,11 +37,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Generate Prisma Client
         run: pnpm --filter backend exec prisma generate
-        env:
-          DATABASE_URL: postgresql://placeholder
-      - name: Typecheck backend
+      - name: Backend typecheck
         run: pnpm --filter backend exec tsc --noEmit
-      - name: Typecheck frontend
+      - name: Frontend typecheck
         run: pnpm --filter frontend exec tsc --noEmit
-      - name: Build frontend
+      - name: Backend tests (Vitest)
+        run: pnpm --filter backend exec vitest run
+      - name: Frontend build
         run: pnpm --filter frontend build

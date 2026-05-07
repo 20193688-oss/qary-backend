@@ -1,0 +1,108 @@
+name: Release artifacts (PWA + APK)
+
+# Genera artefactos descargables:
+#   * PWA dist en artifact + (opcional) deploy a Vercel si VERCEL_TOKEN está
+#   * APK debug unsigned (siempre) + APK signed (si ANDROID_KEYSTORE_BASE64 está)
+#
+# Trigger: tag push v*.*.* o ejecución manual.
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+jobs:
+  pwa:
+    runs-on: ubuntu-latest
+    outputs:
+      vercel_url: ${{ steps.vercel.outputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter frontend build
+      - name: Upload PWA dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: pwa-dist
+          path: frontend/dist
+      - name: Deploy PWA to Vercel
+        id: vercel
+        if: ${{ env.VERCEL_TOKEN != '' }}
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+        run: |
+          npx --yes vercel --token "$VERCEL_TOKEN" pull --yes --environment=preview --cwd frontend
+          npx --yes vercel --token "$VERCEL_TOKEN" build --cwd frontend
+          DEPLOY=$(npx --yes vercel --token "$VERCEL_TOKEN" deploy --prebuilt --cwd frontend)
+          echo "url=$DEPLOY" >> "$GITHUB_OUTPUT"
+
+  apk:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      apk_artifact: ${{ steps.upload.outputs.artifact-url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Expo prebuild (Android)
+        working-directory: mobile
+        run: pnpm exec expo prebuild --platform android --clean --non-interactive
+
+      - name: Optional signing keystore
+        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        working-directory: mobile/android
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > app/release.keystore
+          cat >> gradle.properties <<EOF
+          MYAPP_RELEASE_STORE_FILE=release.keystore
+          MYAPP_RELEASE_KEY_ALIAS=$ANDROID_KEY_ALIAS
+          MYAPP_RELEASE_STORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD
+          MYAPP_RELEASE_KEY_PASSWORD=$ANDROID_KEY_PASSWORD
+          EOF
+
+      - name: Build APK debug (always) + release (if signed)
+        working-directory: mobile/android
+        run: |
+          ./gradlew assembleDebug
+          if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
+            ./gradlew assembleRelease || true
+          fi
+
+      - name: Upload APK artifact
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: qary-apk
+          path: |
+            mobile/android/app/build/outputs/apk/debug/*.apk
+            mobile/android/app/build/outputs/apk/release/*.apk
+
+      - name: Attach to GitHub Release (on tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            mobile/android/app/build/outputs/apk/debug/*.apk
+            mobile/android/app/build/outputs/apk/release/*.apk
+          generate_release_notes: true

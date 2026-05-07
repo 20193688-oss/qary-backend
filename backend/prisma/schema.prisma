@@ -46,18 +46,36 @@ enum MediaKind {
 }
 
 model User {
-  id          String    @id @default(cuid())
-  email       String    @unique
-  phone       String?   @unique
-  name        String?
-  role        UserRole  @default(USER)
-  pinHash     String?   // hash bcrypt para confirmación PIN/voz
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  driver      Driver?
-  ordersAsUser Order[]  @relation("OrdersUser")
-  incidents   Incident[]
-  events      Event[]
+  id            String    @id @default(cuid())
+  email         String    @unique
+  phone         String?   @unique
+  name          String?
+  role          UserRole  @default(USER)
+  passwordHash  String?
+  pinHash       String?   // bcrypt para confirmación PIN/voz
+  emailVerified Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  driver        Driver?
+  ordersAsUser  Order[]   @relation("OrdersUser")
+  incidents     Incident[]
+  events        Event[]
+  refreshTokens RefreshToken[]
+}
+
+model RefreshToken {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String   @unique // sha256(rawToken) — el raw nunca se persiste
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  replacedBy String?  // para rotación
+  userAgent  String?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, revokedAt])
 }
 
 model Driver {
@@ -93,16 +111,22 @@ model Order {
 }
 
 model Payment {
-  id              String        @id @default(cuid())
-  orderId         String        @unique
-  order           Order         @relation(fields: [orderId], references: [id])
-  stripeIntentId  String        @unique
-  status          PaymentStatus @default(REQUIRES_ACTION)
-  amountCents     Int
-  currency        String        @default("USD")
-  voicePinVerified Boolean      @default(false)
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id               String        @id @default(cuid())
+  orderId          String        @unique
+  order            Order         @relation(fields: [orderId], references: [id])
+  stripeIntentId   String        @unique
+  status           PaymentStatus @default(REQUIRES_ACTION)
+  amountCents      Int
+  currency         String        @default("USD")
+  voicePinVerified Boolean       @default(false)
+  voiceVerifiedAt  DateTime?
+  capturedAt       DateTime?
+  failureCode      String?
+  failureMessage   String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([status])
 }
 
 model Incident {

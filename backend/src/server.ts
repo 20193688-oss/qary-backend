@@ -1,37 +1,29 @@
 import 'dotenv/config';
-import Fastify from 'fastify';
-import cors from '@fastify/cors';
-import helmet from '@fastify/helmet';
-import rateLimit from '@fastify/rate-limit';
 import { Server as SocketServer } from 'socket.io';
-import { registerHealthRoutes } from './routes/health.js';
-import { registerAuthRoutes } from './routes/auth.js';
-import { registerOrdersRoutes } from './routes/orders.js';
-import { registerLocationsRoutes } from './routes/locations.js';
-import { registerIncidentsRoutes } from './routes/incidents.js';
-import { logger } from './lib/logger.js';
+import { buildApp } from './app.js';
+import { prisma } from './lib/prisma.js';
+import { getRedis } from './lib/redis.js';
+import { getStripe } from './lib/stripe.js';
+import type { StripeLike } from './lib/stripe.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 
 async function main() {
-  const app = Fastify({ logger: logger as any, trustProxy: true });
+  let stripe: StripeLike;
+  try { stripe = getStripe(); }
+  catch (e) {
+    console.warn('[boot] Stripe disabled:', (e as Error).message);
+    stripe = {} as StripeLike;
+  }
 
-  await app.register(helmet, { contentSecurityPolicy: false });
-  await app.register(cors, { origin: process.env.APP_BASE_URL ?? true, credentials: true });
-  await app.register(rateLimit, {
-    max: Number(process.env.RATE_LIMIT_GLOBAL_PER_MIN ?? 120),
-    timeWindow: '1 minute',
+  const app = await buildApp({
+    prisma,
+    redis: getRedis(),
+    stripe,
   });
-
-  await registerHealthRoutes(app);
-  await registerAuthRoutes(app);
-  await registerOrdersRoutes(app);
-  await registerLocationsRoutes(app);
-  await registerIncidentsRoutes(app);
 
   await app.listen({ port: PORT, host: '0.0.0.0' });
 
-  // Socket.IO compartiendo el mismo HTTP server
   const io = new SocketServer(app.server, {
     cors: { origin: process.env.APP_BASE_URL ?? '*' },
     transports: ['websocket'],

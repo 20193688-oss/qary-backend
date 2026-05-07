@@ -22,13 +22,14 @@ qary-backend/
 ```bash
 # 1. dependencias
 pnpm install
+pnpm --filter backend exec prisma generate
 
 # 2. servicios (postgres, redis, minio, mailhog, coturn)
 docker compose -f infra/docker-compose.yml up -d
 
 # 3. db
-pnpm --filter backend migrate
-pnpm --filter backend seed
+pnpm --filter backend exec prisma migrate dev --name init
+pnpm --filter backend exec prisma db seed
 
 # 4. dev (paralelo)
 pnpm dev          # frontend + backend
@@ -38,7 +39,21 @@ pnpm --filter backend dev    # http://localhost:3000
 
 # 5. mobile (Expo)
 cd mobile && pnpm start      # escanea el QR
+
+# 6. tests
+pnpm --filter backend exec vitest run
 ```
+
+## Probar pagos sandbox (PR 3)
+
+```bash
+# Stripe CLI: forward webhooks a tu backend local
+stripe listen --forward-to localhost:3000/api/webhooks/stripe
+# Tarjeta de prueba: 4242 4242 4242 4242, exp 12/34, CVC 123
+node scripts/simulate_payments.js --orderId <id>
+```
+
+Detalles completos en [`PR3.md`](./PR3.md), incluyendo cómo configurar secrets en GitHub para builds APK firmadas.
 
 ## Demo end-to-end (próximas fases)
 
@@ -69,8 +84,8 @@ Copia `.env.example` a `.env` y rellena keys (Stripe sandbox, Mapbox, Twilio san
 ## Estado de fases
 
 - [x] PR 1 — Auditoría + import legacy + scaffold base de docs
-- [ ] PR 2 — Scaffold monorepo
-- [ ] PR 3 — Auth + pagos
+- [x] PR 2 — Scaffold monorepo
+- [x] PR 3 — Auth + pagos (ver `PR3.md`)
 - [ ] PR 4 — Mapa real-time
 - [ ] PR 5 — WebRTC
 - [ ] PR 6 — Voz + agentes
