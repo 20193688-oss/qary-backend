@@ -86,6 +86,7 @@ Copia `.env.example` a `.env` y rellena keys (Stripe sandbox, Mapbox, Twilio san
 - [x] PR 1 — Auditoría + import legacy + scaffold base de docs
 - [x] PR 2 — Scaffold monorepo
 - [x] PR 3 — Auth + pagos (ver `PR3.md`)
+- [x] PR 4 — Mapa real-time + arreglos wrapper (ver `PR4.md`)
 - [ ] PR 4 — Mapa real-time
 - [ ] PR 5 — WebRTC
 - [ ] PR 6 — Voz + agentes

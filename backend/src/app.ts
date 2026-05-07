@@ -5,6 +5,8 @@ import rateLimit from '@fastify/rate-limit';
 import type { PrismaClient } from '@prisma/client';
 import type Redis from 'ioredis';
 import type { StripeLike } from './lib/stripe.js';
+import type { Realtime } from './lib/realtime.js';
+import { noopRealtime } from './lib/realtime.js';
 import { authPlugin } from './lib/auth-plugin.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerAuthRoutes } from './routes/auth.js';
@@ -20,6 +22,7 @@ export interface AppDeps {
   prisma: PrismaClient;
   redis: Redis;
   stripe: StripeLike;
+  realtime?: Realtime;
 }
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
@@ -58,7 +61,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await registerHealthRoutes(app);
   await registerAuthRoutes(app, deps);
   await registerOrdersRoutes(app);
-  await registerLocationsRoutes(app);
+  await registerLocationsRoutes(app, { realtime: deps.realtime ?? noopRealtime });
   await registerIncidentsRoutes(app);
   await registerPaymentsRoutes(app, deps);
   await registerWebhookRoutes(app, deps);
