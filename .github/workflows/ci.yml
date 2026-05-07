@@ -84,18 +84,13 @@ jobs:
       - uses: android-actions/setup-android@v3
         with: { log-accepted-android-sdk-licenses: false }
 
-      # Mobile install con npm para layout flat (autolinking RN funciona mejor).
       - name: Install mobile deps (flat layout)
         working-directory: mobile
         run: npm install --no-package-lock --legacy-peer-deps
 
-      - name: Verify android/ pregenerated
-        run: |
-          if [ ! -d mobile/android ]; then
-            echo "::error::mobile/android missing — running expo prebuild as fallback"
-            cd mobile && npx expo prebuild --platform android --clean --no-install --non-interactive
-          fi
-          ls mobile/android/app/src/main || true
+      - name: Bundle legacy HTML into Android assets
+        working-directory: mobile
+        run: node scripts/copy-legacy.mjs
 
       - name: Gradle assembleDebug
         working-directory: mobile/android
@@ -116,3 +111,60 @@ jobs:
           path: mobile/android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30
+
+  build-apk-release:
+    name: build Android APK release (standalone)
+    needs: install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: android-actions/setup-android@v3
+        with: { log-accepted-android-sdk-licenses: false }
+
+      - name: Install mobile deps (flat layout)
+        working-directory: mobile
+        run: npm install --no-package-lock --legacy-peer-deps
+
+      - name: Bundle legacy HTML into Android assets
+        working-directory: mobile
+        run: node scripts/copy-legacy.mjs
+
+      # Release usa signingConfigs.debug (configurado por Expo en build.gradle):
+      # APK firmado con la debug.keystore commiteada → instalable en Android sin
+      # secrets adicionales. Para Play Store hay que rotar a una keystore real.
+      - name: Gradle assembleRelease
+        working-directory: mobile/android
+        env:
+          # Asegura que el JS se agrupe (no debuggable). RN gradle plugin lo hace
+          # automáticamente fuera de debug variants.
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false"
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon assembleRelease
+
+      - name: Locate release APK
+        run: |
+          APK=$(find mobile/android/app/build/outputs/apk/release -name '*.apk' | head -1)
+          echo "Found release APK: $APK"
+          ls -la "$APK"
+          file "$APK" || true
+
+      - name: Rename for clarity
+        run: |
+          cd mobile/android/app/build/outputs/apk/release
+          for f in *.apk; do
+            cp "$f" "qary-superapp-release.apk"
+          done
+          ls -la
+
+      - name: Upload APK release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qary-android-release
+          path: mobile/android/app/build/outputs/apk/release/qary-superapp-release.apk
+          if-no-files-found: error
+          retention-days: 90

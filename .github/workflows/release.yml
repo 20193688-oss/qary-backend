@@ -51,6 +51,10 @@ jobs:
         working-directory: mobile
         run: npm install --no-package-lock --legacy-peer-deps
 
+      - name: Bundle legacy HTML into Android assets
+        working-directory: mobile
+        run: node scripts/copy-legacy.mjs
+
       - name: Optional release signing keystore
         if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
         env:

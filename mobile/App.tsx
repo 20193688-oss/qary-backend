@@ -1,14 +1,25 @@
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 
-const PWA_URL = process.env.EXPO_PUBLIC_PWA_URL ?? 'http://10.0.2.2:5173';
+// PWA URL resolution priority:
+// 1. EXPO_PUBLIC_PWA_URL (configurable at build time, e.g. https://qary.vercel.app)
+// 2. Bundled legacy HTML at file:///android_asset/pwa/index.html (Android)
+//    o ./pwa/index.html para iOS (cargado desde el bundle).
+//
+// En el APK release standalone (sin Metro) usamos la opción 2: la SPA legacy
+// embebida que NO depende de un backend para mostrar la demo visual.
+const REMOTE_URL = process.env.EXPO_PUBLIC_PWA_URL?.trim();
+const ANDROID_LOCAL = 'file:///android_asset/pwa/index.html';
+const IOS_LOCAL = './pwa/index.html';
 
-// Wrapper v1: WebView a la PWA. Permisos nativos solicitados al entrar.
-// PR 9 reemplazará pantallas críticas por componentes RN nativos (linterna, location bg).
+const SOURCE_URI = REMOTE_URL && REMOTE_URL.length > 0
+  ? REMOTE_URL
+  : Platform.OS === 'android' ? ANDROID_LOCAL : IOS_LOCAL;
+
 export default function App() {
   const webRef = useRef<WebView>(null);
 
@@ -26,12 +37,19 @@ export default function App() {
       <StatusBar style="light" />
       <WebView
         ref={webRef}
-        source={{ uri: PWA_URL }}
+        source={{ uri: SOURCE_URI }}
+        originWhitelist={['*']}
         javaScriptEnabled
         domStorageEnabled
         allowsInlineMediaPlayback
         mediaPlaybackRequiresUserAction={false}
         geolocationEnabled
+        // Permitir que el HTML embebido cargue assets relativos y haga fetch a HTTPS.
+        allowFileAccess
+        allowFileAccessFromFileURLs
+        allowUniversalAccessFromFileURLs
+        mixedContentMode="always"
+        setSupportMultipleWindows={false}
         onMessage={(e) => {
           // bridge para comandos del agente IA (PR 6)
           // ej: { type: 'toggle_flash', on: true }
