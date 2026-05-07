@@ -1,0 +1,99 @@
+name: Release artifacts (tag)
+
+# Trigger explícito: push tag v*.*.* o ejecución manual.
+# Adjunta APK + PWA al GitHub Release.
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  pwa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { run_install: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter frontend build
+      - name: Pack PWA
+        run: |
+          cd frontend/dist
+          zip -r ../../pwa-dist.zip .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pwa-dist
+          path: pwa-dist.zip
+      - name: Attach to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: pwa-dist.zip
+          generate_release_notes: true
+
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: android-actions/setup-android@v3
+
+      - name: Install mobile deps (flat layout)
+        working-directory: mobile
+        run: npm install --no-package-lock --legacy-peer-deps
+
+      - name: Bundle legacy HTML into Android assets
+        working-directory: mobile
+        run: node scripts/copy-legacy.mjs
+
+      - name: Optional release signing keystore
+        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        working-directory: mobile/android
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > app/release.keystore
+          cat >> gradle.properties <<EOF
+          MYAPP_RELEASE_STORE_FILE=release.keystore
+          MYAPP_RELEASE_KEY_ALIAS=$ANDROID_KEY_ALIAS
+          MYAPP_RELEASE_STORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD
+          MYAPP_RELEASE_KEY_PASSWORD=$ANDROID_KEY_PASSWORD
+          EOF
+
+      - name: Build APKs
+        working-directory: mobile/android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon assembleDebug
+          if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
+            ./gradlew --no-daemon assembleRelease || true
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qary-apk
+          path: |
+            mobile/android/app/build/outputs/apk/debug/*.apk
+            mobile/android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
+      - name: Attach APKs to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            mobile/android/app/build/outputs/apk/debug/*.apk
+            mobile/android/app/build/outputs/apk/release/*.apk
+          generate_release_notes: true
