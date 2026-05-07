@@ -4,44 +4,115 @@ on:
   push:
     branches: [main, "claude/**"]
   pull_request:
+  workflow_dispatch:
 
-# Bloquea el merge si tests, typecheck o build fallan.
+permissions:
+  contents: read
+  actions: read
+
+# Jobs separados para que el step que falle sea legible en la UI de Actions.
+# install + test + build + apk(debug) corren en paralelo donde sea posible.
 jobs:
-  test:
+  install:
+    name: install + cache
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: qary
-          POSTGRES_PASSWORD: qary
-          POSTGRES_DB: qary
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U qary"
-          --health-interval 5s --health-timeout 3s --health-retries 10
-      redis:
-        image: redis:7-alpine
-        ports: ["6379:6379"]
-    env:
-      DATABASE_URL: postgresql://qary:qary@localhost:5432/qary
-      REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with: { version: 9 }
+        with: { run_install: false }
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - name: Show toolchain
+        run: |
+          node --version
+          pnpm --version
+          echo "OS: $(uname -a)"
+      - name: Install (workspace)
+        run: pnpm install --frozen-lockfile
       - name: Generate Prisma Client
         run: pnpm --filter backend exec prisma generate
+
+  test:
+    name: typecheck + tests
+    needs: install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { run_install: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter backend exec prisma generate
       - name: Backend typecheck
         run: pnpm --filter backend exec tsc --noEmit
       - name: Frontend typecheck
         run: pnpm --filter frontend exec tsc --noEmit
       - name: Backend tests (Vitest)
         run: pnpm --filter backend exec vitest run
-      - name: Frontend build
-        run: pnpm --filter frontend build
+
+  build-pwa:
+    name: build PWA
+    needs: install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { run_install: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter frontend build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pwa-dist
+          path: frontend/dist
+          retention-days: 30
+
+  build-apk-debug:
+    name: build Android APK debug
+    needs: install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: android-actions/setup-android@v3
+        with: { log-accepted-android-sdk-licenses: false }
+
+      # Mobile install con npm para layout flat (autolinking RN funciona mejor).
+      - name: Install mobile deps (flat layout)
+        working-directory: mobile
+        run: npm install --no-package-lock --legacy-peer-deps
+
+      - name: Verify android/ pregenerated
+        run: |
+          if [ ! -d mobile/android ]; then
+            echo "::error::mobile/android missing — running expo prebuild as fallback"
+            cd mobile && npx expo prebuild --platform android --clean --no-install --non-interactive
+          fi
+          ls mobile/android/app/src/main || true
+
+      - name: Gradle assembleDebug
+        working-directory: mobile/android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon assembleDebug
+
+      - name: Locate APK
+        run: |
+          APK=$(find mobile/android/app/build/outputs/apk -name '*.apk' | head -1)
+          echo "Found: $APK"
+          ls -la "$APK"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qary-android-debug
+          path: mobile/android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 30

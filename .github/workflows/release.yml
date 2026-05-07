@@ -1,70 +1,57 @@
-name: Release artifacts (PWA + APK)
+name: Release artifacts (tag)
 
-# Genera artefactos descargables:
-#   * PWA dist en artifact + (opcional) deploy a Vercel si VERCEL_TOKEN está
-#   * APK debug unsigned (siempre) + APK signed (si ANDROID_KEYSTORE_BASE64 está)
-#
-# Trigger: tag push v*.*.* o ejecución manual.
+# Trigger explícito: push tag v*.*.* o ejecución manual.
+# Adjunta APK + PWA al GitHub Release.
+
 on:
   push:
     tags: ['v*.*.*']
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   pwa:
     runs-on: ubuntu-latest
-    outputs:
-      vercel_url: ${{ steps.vercel.outputs.url }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with: { version: 9 }
+        with: { run_install: false }
       - uses: actions/setup-node@v4
         with: { node-version: 20, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter frontend build
-      - name: Upload PWA dist
-        uses: actions/upload-artifact@v4
+      - name: Pack PWA
+        run: |
+          cd frontend/dist
+          zip -r ../../pwa-dist.zip .
+      - uses: actions/upload-artifact@v4
         with:
           name: pwa-dist
-          path: frontend/dist
-      - name: Deploy PWA to Vercel
-        id: vercel
-        if: ${{ env.VERCEL_TOKEN != '' }}
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-        run: |
-          npx --yes vercel --token "$VERCEL_TOKEN" pull --yes --environment=preview --cwd frontend
-          npx --yes vercel --token "$VERCEL_TOKEN" build --cwd frontend
-          DEPLOY=$(npx --yes vercel --token "$VERCEL_TOKEN" deploy --prebuilt --cwd frontend)
-          echo "url=$DEPLOY" >> "$GITHUB_OUTPUT"
+          path: pwa-dist.zip
+      - name: Attach to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: pwa-dist.zip
+          generate_release_notes: true
 
   apk:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    outputs:
-      apk_artifact: ${{ steps.upload.outputs.artifact-url }}
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with: { version: 9 }
       - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: pnpm }
+        with: { node-version: 20 }
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '17' }
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v3
 
-      - run: pnpm install --frozen-lockfile
-
-      - name: Expo prebuild (Android)
+      - name: Install mobile deps (flat layout)
         working-directory: mobile
-        run: pnpm exec expo prebuild --platform android --clean --non-interactive
+        run: npm install --no-package-lock --legacy-peer-deps
 
-      - name: Optional signing keystore
+      - name: Optional release signing keystore
         if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -81,24 +68,24 @@ jobs:
           MYAPP_RELEASE_KEY_PASSWORD=$ANDROID_KEY_PASSWORD
           EOF
 
-      - name: Build APK debug (always) + release (if signed)
+      - name: Build APKs
         working-directory: mobile/android
         run: |
-          ./gradlew assembleDebug
+          chmod +x ./gradlew
+          ./gradlew --no-daemon assembleDebug
           if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
-            ./gradlew assembleRelease || true
+            ./gradlew --no-daemon assembleRelease || true
           fi
 
-      - name: Upload APK artifact
-        id: upload
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: qary-apk
           path: |
             mobile/android/app/build/outputs/apk/debug/*.apk
             mobile/android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
 
-      - name: Attach to GitHub Release (on tag)
+      - name: Attach APKs to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
