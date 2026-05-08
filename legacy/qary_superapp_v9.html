@@ -805,6 +805,96 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:var
   width:100%;max-height:80%;overflow-y:auto;}
 .modal-handle{width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 16px;}
 .modal-title{font-size:18px;font-weight:800;color:var(--navy);margin-bottom:14px;}
+
+/* ════════════════════════════════════════════════════════
+   QARY-PR4 — UI integrado al brief (transportes, share, etc)
+   ════════════════════════════════════════════════════════ */
+.qary-tr-active{position:relative;}
+.qary-tr-active::after{content:"";position:absolute;inset:-2px;border-radius:14px;
+  box-shadow:inset 0 0 0 2px #2B2FD9;pointer-events:none;}
+.svc-btn.qary-tr-active{background:linear-gradient(135deg,rgba(43,47,217,.07),rgba(255,45,120,.04));}
+.svc-big.qary-tr-active{background:rgba(43,47,217,.06);}
+.rt.qary-tr-active{background:rgba(43,47,217,.06);}
+
+.qary-tr-row{display:flex;gap:10px;padding:6px 18px 12px;overflow-x:auto;scrollbar-width:none;}
+.qary-tr-row::-webkit-scrollbar{display:none}
+.qary-tr-card{flex:0 0 auto;min-width:96px;background:#fff;border:1.5px solid var(--border);
+  border-radius:14px;padding:12px 8px;text-align:center;cursor:pointer;transition:transform .12s,border-color .12s;}
+.qary-tr-card:active{transform:scale(.96)}
+.qary-tr-card.qary-tr-active{border-color:#2B2FD9;background:rgba(43,47,217,.04);}
+.qary-tr-card .ico{font-size:24px;margin-bottom:4px;}
+.qary-tr-card .nm{font-size:11.5px;font-weight:700;color:var(--navy);}
+.qary-tr-card .pr{font-size:10px;color:var(--muted);margin-top:2px;}
+
+#qary-tr-chip{position:absolute;top:14px;left:50%;transform:translateX(-50%);
+  background:rgba(13,11,46,.86);color:#fff;border-radius:99px;padding:6px 14px;
+  font:600 12px/1 'Outfit',sans-serif;display:none;z-index:520;backdrop-filter:blur(8px);
+  box-shadow:0 4px 14px rgba(0,0,0,.25);}
+#qary-tr-chip.on{display:flex;align-items:center;gap:6px;}
+
+.qary-mic-emb{flex-shrink:0;width:30px;height:30px;border-radius:50%;border:none;
+  background:rgba(43,47,217,.12);color:#2B2FD9;font-size:14px;cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center;transition:transform .12s;}
+.qary-mic-emb:active{transform:scale(.85)}
+.qary-mic-emb.on,.qary-mic-active.on{background:#FF2D78;color:#fff;animation:qaryMicPulse 1s ease-in-out infinite;}
+@keyframes qaryMicPulse{50%{box-shadow:0 0 0 6px rgba(255,45,120,.22)}}
+
+#s-home .search-wrap span.qary-mic-active{color:#fff!important;cursor:pointer;
+  font-size:18px!important;background:rgba(255,255,255,.16);
+  border-radius:50%;width:30px;height:30px;display:inline-flex;align-items:center;
+  justify-content:center;transition:background .12s;}
+
+.qary-drv-mk{width:36px;height:36px;display:flex;align-items:center;justify-content:center;
+  border-radius:50%;background:#fff;border:2px solid #2B2FD9;font-size:18px;
+  box-shadow:0 4px 12px rgba(0,0,0,.18);transition:transform .8s linear;}
+
+.qary-cfg-block{background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:14px;margin:14px 0;}
+.qary-cfg-block h4{font:800 13px/1 'Outfit',sans-serif;color:var(--navy);text-transform:uppercase;letter-spacing:.6px;margin:0 0 10px;}
+.qary-cfg-block label{display:block;font-size:11px;color:var(--muted);margin:8px 0 4px;font-weight:600;}
+.qary-cfg-block input,.qary-cfg-block select{width:100%;padding:10px 12px;border:1.5px solid var(--border);
+  border-radius:10px;font:600 13px/1.2 'Outfit',sans-serif;background:#F7F8FF;color:var(--navy);outline:none;box-sizing:border-box;}
+.qary-cfg-block input:focus,.qary-cfg-block select:focus{border-color:#2B2FD9;background:#fff;}
+.qary-tts-row{display:flex;gap:6px;}
+.qary-tts-row button{flex:1;padding:9px 6px;border:1.5px solid var(--border);border-radius:10px;
+  background:#fff;color:var(--navy);cursor:pointer;font:700 12px/1.1 'Outfit',sans-serif;}
+.qary-tts-row button.on{background:linear-gradient(135deg,#2B2FD9,#FF2D78);color:#fff;border-color:transparent;}
+.qary-cfg-block .actions{display:flex;gap:8px;margin-top:10px;}
+.qary-cfg-block .actions button{flex:1;padding:10px;border-radius:10px;font:700 12.5px/1.1 'Outfit',sans-serif;cursor:pointer;border:1.5px solid var(--border);}
+.qary-cfg-block .actions .pri{background:linear-gradient(135deg,#2B2FD9,#FF2D78);color:#fff;border-color:transparent;}
+.qary-cfg-block .actions .sec{background:#fff;color:var(--navy);}
+
+.qary-share-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;}
+.qary-share-btn{background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:14px 10px;
+  cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;
+  font:700 12px/1.2 'Outfit',sans-serif;color:var(--navy);transition:transform .12s;}
+.qary-share-btn:active{transform:scale(.96)}
+.qary-share-btn .ico{font-size:24px}
+
+.qary-list{display:flex;flex-direction:column;gap:8px;padding:8px 18px 80px;}
+.qary-list-item{background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:12px;display:flex;align-items:center;gap:12px;}
+.qary-list-item .ico{width:38px;height:38px;border-radius:10px;background:rgba(43,47,217,.08);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
+.qary-list-item .body{flex:1;min-width:0;}
+.qary-list-item h5{font:800 13px/1.2 'Outfit',sans-serif;color:var(--navy);margin:0 0 2px;}
+.qary-list-item p{font:600 11.5px/1.3 'Outfit',sans-serif;color:var(--muted);margin:0;}
+.qary-list-item .meta{font:700 12px/1 'Outfit',sans-serif;color:var(--navy);text-align:right;flex-shrink:0;}
+.qary-badge{font:700 10px/1 'Outfit',sans-serif;padding:3px 7px;border-radius:99px;display:inline-block;}
+.qary-badge.ok{background:rgba(0,196,140,.12);color:#00723C}
+.qary-badge.pend{background:rgba(255,176,32,.12);color:#A66B00}
+.qary-badge.fail{background:rgba(255,59,48,.12);color:#A11919}
+
+.qary-filter-bar{display:flex;gap:6px;padding:8px 18px;overflow-x:auto;scrollbar-width:none;}
+.qary-filter-bar::-webkit-scrollbar{display:none}
+.qary-filter-chip{flex:0 0 auto;background:#fff;border:1.5px solid var(--border);border-radius:99px;padding:6px 12px;font:700 11.5px/1 'Outfit',sans-serif;color:var(--navy);cursor:pointer;}
+.qary-filter-chip.on{background:linear-gradient(135deg,#2B2FD9,#FF2D78);color:#fff;border-color:transparent;}
+
+.qary-voice-bubble{background:#fff;border:1.5px solid var(--border);border-radius:14px;
+  padding:8px 10px;margin:6px 0;display:inline-flex;align-items:center;gap:8px;max-width:80%;}
+.qary-voice-bubble audio{max-width:220px;}
+
+.pstat[data-qary-tap]{cursor:pointer;transition:transform .12s;}
+.pstat[data-qary-tap]:active{transform:scale(.96);}
+
+.qary-empty{text-align:center;padding:32px 16px;color:var(--muted);font-size:13px;}
 </style>
 </head>
 <body>
@@ -909,7 +999,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:var
     <div class="search-wrap" onclick="nav('explore')">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="rgba(255,255,255,.45)" stroke-width="2"/><path d="M21 21l-4.3-4.3" stroke="rgba(255,255,255,.45)" stroke-width="2" stroke-linecap="round"/></svg>
       <input placeholder="¿Qué necesitas hoy?" readonly>
-      <span style="color:rgba(255,255,255,.3);font-size:15px;">🎙️</span>
+      <span class="qary-mic-active" title="Buscar por voz" onclick="qaryHomeMicClick(event)">🎙️</span>
     </div>
   </div>
   <div class="scroll" id="home-scroll">
@@ -925,6 +1015,17 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:var
       <div class="svc-btn" data-svc-home="Market" onclick="qaryHomeMarketTap()"><div class="svc-ico" style="background:rgba(108,92,231,.1)">🛒</div><span class="svc-lbl">Market</span></div>
       <div class="svc-btn" data-svc-home="Paquete" onclick="qaryHomePaqueteTap()"><div class="svc-ico" style="background:rgba(0,196,140,.1)">📦</div><span class="svc-lbl">Paquete</span></div>
       <div class="svc-btn" onclick="nav('services')"><div class="svc-ico" style="background:rgba(13,11,46,.06);font-size:16px;font-weight:900;color:var(--muted)">•••</div><span class="svc-lbl">Más</span></div>
+    </div>
+
+    <!-- QARY-PR4: sección Transporte con 4 iconos visibles + Ver todo -->
+    <div class="sec" id="qary-home-transport" style="margin-top:18px;margin-bottom:6px;">
+      <div class="sec-title">Transporte <a onclick="qaryGoTransportAll()">Ver todo</a></div>
+    </div>
+    <div class="qary-tr-row" id="qary-home-tr-row">
+      <div class="qary-tr-card" data-tr-canon="Standard" onclick="qaryPickTransport('Standard',true)"><div class="ico">🚗</div><div class="nm">Qary Standard</div><div class="pr">Desde S/. 8.50</div></div>
+      <div class="qary-tr-card" data-tr-canon="Motos"    onclick="qaryPickTransport('Motos',true)"><div class="ico">🏍️</div><div class="nm">Qary Motos</div><div class="pr">Desde S/. 5.00</div></div>
+      <div class="qary-tr-card" data-tr-canon="XL"       onclick="qaryPickTransport('XL',true)"><div class="ico">🚐</div><div class="nm">Qary XL</div><div class="pr">Desde S/. 15.00</div></div>
+      <div class="qary-tr-card" data-tr-canon="Executive" onclick="qaryPickTransport('Executive',true)"><div class="ico">🚕</div><div class="nm">Qary Executive</div><div class="pr">Desde S/. 18.00</div></div>
     </div>
 
     <div class="sec" style="margin-top:18px;margin-bottom:11px;">
@@ -1017,7 +1118,8 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:var
     </div>
     <div class="search-wrap">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="rgba(255,255,255,.45)" stroke-width="2"/><path d="M21 21l-4.3-4.3" stroke="rgba(255,255,255,.45)" stroke-width="2" stroke-linecap="round"/></svg>
-      <input id="explore-search" placeholder="Buscar servicios y productos…">
+      <input id="explore-search" placeholder="Buscar servicios y productos…" oninput="qaryExploreFilter(this.value)" onkeydown="if(event.key==='Enter')qarySearchRoute(this.value,'explore')">
+      <button type="button" class="qary-mic-emb" title="Buscar por voz" onclick="qaryExploreMicClick(this)">🎙️</button>
     </div>
   </div>
   <div class="filter-bar">
@@ -1111,11 +1213,14 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:var
       <div class="route-inp"><div class="rdot o"></div><input id="inp-orig" placeholder="Tu ubicación actual"></div>
       <div class="route-inp"><div class="rdot d"></div><input id="inp-dest" placeholder="¿A dónde vas?"></div>
       <div class="ride-scroll" id="ride-types">
-        <div class="rt sel" data-svc-key="Ride" onclick="pickRide(this,'Ride',18.5,'4 min')"><div class="rt-ico">🚗</div><div class="rt-nm">Qary Standard</div><div class="rt-tm">4 min</div></div>
-        <div class="rt" data-svc-key="Moto" onclick="pickRide(this,'Moto',9,'2 min')"><div class="rt-ico">🏍️</div><div class="rt-nm">Qary Moto</div><div class="rt-tm">2 min</div></div>
-        <div class="rt" data-svc-key="XL" onclick="pickRide(this,'XL',28,'7 min')"><div class="rt-ico">🚐</div><div class="rt-nm">Qary XL</div><div class="rt-tm">7 min</div></div>
-        <div class="rt" data-svc-key="Exec" onclick="pickRide(this,'Exec',24,'5 min')"><div class="rt-ico">🚕</div><div class="rt-nm">Qary Executive</div><div class="rt-tm">5 min</div></div>
-        <div class="rt" data-svc-key="Med" onclick="pickRide(this,'Med',35,'8 min')"><div class="rt-ico">🚑</div><div class="rt-nm">Médico</div><div class="rt-tm">8 min</div></div>
+        <div class="rt sel" data-svc-key="Standard" onclick="pickRide(this,'Standard',8.5,'4 min')"><div class="rt-ico">🚗</div><div class="rt-nm">Qary Standard</div><div class="rt-tm">4 min</div></div>
+        <div class="rt" data-svc-key="Confort" onclick="pickRide(this,'Confort',14,'5 min')"><div class="rt-ico">🚙</div><div class="rt-nm">Qary Confort</div><div class="rt-tm">5 min</div></div>
+        <div class="rt" data-svc-key="Executive" onclick="pickRide(this,'Executive',18,'5 min')"><div class="rt-ico">🚕</div><div class="rt-nm">Qary Executive</div><div class="rt-tm">5 min</div></div>
+        <div class="rt" data-svc-key="Luxury" onclick="pickRide(this,'Luxury',35,'7 min')"><div class="rt-ico">🛻</div><div class="rt-nm">Qary Luxury</div><div class="rt-tm">7 min</div></div>
+        <div class="rt" data-svc-key="XL" onclick="pickRide(this,'XL',15,'7 min')"><div class="rt-ico">🚐</div><div class="rt-nm">Qary XL</div><div class="rt-tm">7 min</div></div>
+        <div class="rt" data-svc-key="Mudanzas" onclick="pickRide(this,'Mudanzas',60,'12 min')"><div class="rt-ico">🚛</div><div class="rt-nm">Qary Mudanzas</div><div class="rt-tm">12 min</div></div>
+        <div class="rt" data-svc-key="Motos" onclick="pickRide(this,'Motos',5,'2 min')"><div class="rt-ico">🏍️</div><div class="rt-nm">Qary Motos</div><div class="rt-tm">2 min</div></div>
+        <div class="rt" data-svc-key="Bike" onclick="pickRide(this,'Bike',4,'6 min')"><div class="rt-ico">🚲</div><div class="rt-nm">Qary Bike</div><div class="rt-tm">6 min</div></div>
       </div>
       <button class="btn-pry" onclick="bookRide()">
         Solicitar &nbsp;·&nbsp; S/. <span id="ride-price">18.50</span>
@@ -1435,9 +1540,9 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:var
       </div>
     </div>
     <div class="prof-stats">
-      <div class="pstat"><div class="pstat-v">127</div><div class="pstat-l">Viajes</div></div>
-      <div class="pstat"><div class="pstat-v">2.4k</div><div class="pstat-l">Soles</div></div>
-      <div class="pstat"><div class="pstat-v">18</div><div class="pstat-l">Referidos</div></div>
+      <div class="pstat" data-qary-tap="viajes" onclick="qaryGoViajes()"><div class="pstat-v">127</div><div class="pstat-l">Viajes</div></div>
+      <div class="pstat" data-qary-tap="soles" onclick="qaryGoSoles()"><div class="pstat-v">2.4k</div><div class="pstat-l">Soles</div></div>
+      <div class="pstat" data-qary-tap="referrals" onclick="qaryGoReferrals()"><div class="pstat-v">18</div><div class="pstat-l">Referidos</div></div>
     </div>
     <!-- Worker CTA -->
     <div class="worker-cta" onclick="nav('worker')">
@@ -2125,6 +2230,22 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:var
   </div>
 </div>
 
+<!-- ══ QARY-PR4: SHARE MODAL (4 canales) ══ -->
+<div class="modal-overlay" id="qary-share-modal" style="position:fixed;">
+  <div class="modal-box">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="qary-share-title">Compartir</div>
+    <div class="qary-share-grid">
+      <div class="qary-share-btn" data-c="whatsapp" onclick="qaryShareDispatch('whatsapp')"><span class="ico">💬</span>WhatsApp</div>
+      <div class="qary-share-btn" data-c="sms"      onclick="qaryShareDispatch('sms')"><span class="ico">✉️</span>SMS</div>
+      <div class="qary-share-btn" data-c="email"    onclick="qaryShareDispatch('email')"><span class="ico">📧</span>Correo</div>
+      <div class="qary-share-btn" data-c="call"     onclick="qaryShareDispatch('call')"><span class="ico">📞</span>Llamar</div>
+    </div>
+    <button class="btn-sec" onclick="qaryShareCopy()">📋 Copiar al portapapeles</button>
+    <button onclick="closeModal('qary-share-modal')" style="width:100%;background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;padding:10px;margin-top:4px;">Cancelar</button>
+  </div>
+</div>
+
 <!-- ══ OFERTAS ══ -->
 <div id="s-ofertas" class="scr">
   <div class="top-hd">
@@ -2237,6 +2358,86 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:var
       <div style="font-size:13px;font-weight:800;color:var(--navy);margin-top:6px;">Total con interés: S/. <span id="bcp-total-interest">0.00</span></div>
     </div>
     <button class="btn-pry" id="bcp-transfer-btn" onclick="doBcpTransfer()">🏦 Transferir</button>
+  </div>
+</div>
+
+<!-- ══ QARY-PR4: VIAJES (historial dedicado) ══ -->
+<div id="s-viajes" class="scr">
+  <div class="top-hd">
+    <div class="hd-row">
+      <button class="hd-back" onclick="back()" title="Volver"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M5 12l7 7M5 12l7-7" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg></button>
+      <span class="hd-title">Mis viajes</span>
+      <div style="width:36px"></div>
+    </div>
+  </div>
+  <div class="scroll" style="padding:0 0 80px;">
+    <div id="qary-viajes-stats" style="padding:14px 18px 4px;color:var(--muted);font:600 12px Outfit,sans-serif;"></div>
+    <div class="qary-filter-bar" id="qary-viajes-filters">
+      <div class="qary-filter-chip on" data-f="all">Todos</div>
+      <div class="qary-filter-chip" data-f="completed">Completados</div>
+      <div class="qary-filter-chip" data-f="cancelled">Cancelados</div>
+      <div class="qary-filter-chip" data-f="month">Este mes</div>
+      <div class="qary-filter-chip" data-f="year">Este año</div>
+    </div>
+    <div class="qary-list" id="qary-viajes-list"></div>
+  </div>
+</div>
+
+<!-- ══ QARY-PR4: REFERIDOS (lista en tiempo real) ══ -->
+<div id="s-referrals" class="scr">
+  <div class="top-hd">
+    <div class="hd-row">
+      <button class="hd-back" onclick="back()" title="Volver"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M5 12l7 7M5 12l7-7" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg></button>
+      <span class="hd-title">Referidos</span>
+      <div style="width:36px"></div>
+    </div>
+  </div>
+  <div class="scroll" style="padding:0 0 80px;">
+    <div style="padding:18px;text-align:center;">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Tu código único</div>
+      <div id="qary-ref-code" style="font-size:28px;font-weight:900;color:var(--blue);letter-spacing:4px;font-family:monospace;">QARY-XXXX</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:6px;">Cada referido activo te da S/. 10 de crédito</div>
+    </div>
+    <button class="btn-pry" id="qary-ref-share" style="margin:0 18px 8px;width:calc(100% - 36px);">📤 Compartir mi código</button>
+    <div style="padding:8px 18px 0;font:800 11px/1 Outfit,sans-serif;color:var(--navy);text-transform:uppercase;letter-spacing:.6px;">Personas a quienes compartiste</div>
+    <div class="qary-list" id="qary-refs-list"></div>
+  </div>
+</div>
+
+<!-- ══ QARY-PR4: FEED (Inicio→Reciente→Ver todo, sin pagos) ══ -->
+<div id="s-feed" class="scr">
+  <div class="top-hd">
+    <div class="hd-row">
+      <button class="hd-back" onclick="back()" title="Volver"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M5 12l7 7M5 12l7-7" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg></button>
+      <span class="hd-title">Recientes</span>
+      <div style="width:36px"></div>
+    </div>
+  </div>
+  <div class="scroll" style="padding:0 0 80px;">
+    <div style="padding:14px 18px;color:var(--muted);font:600 12px Outfit,sans-serif;background:rgba(43,47,217,.04);border-bottom:1px solid var(--border);">📜 Eventos recientes (los pagos se muestran en Pagos → Historial).</div>
+    <div class="qary-filter-bar" id="qary-feed-filters">
+      <div class="qary-filter-chip on" data-f="all">Todo</div>
+      <div class="qary-filter-chip" data-f="service">Servicios</div>
+      <div class="qary-filter-chip" data-f="profile">Cuenta</div>
+      <div class="qary-filter-chip" data-f="bank">Bancarias</div>
+      <div class="qary-filter-chip" data-f="appt">Citas</div>
+    </div>
+    <div class="qary-list" id="qary-feed-list"></div>
+  </div>
+</div>
+
+<!-- ══ QARY-PR4: TRANSPORT-ALL (Inicio→Ver todo→Transporte: 8 tipos) ══ -->
+<div id="s-transport-all" class="scr">
+  <div class="top-hd">
+    <div class="hd-row">
+      <button class="hd-back" onclick="back()" title="Volver"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M5 12l7 7M5 12l7-7" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg></button>
+      <span class="hd-title">Transporte (8 tipos)</span>
+      <div style="width:36px"></div>
+    </div>
+  </div>
+  <div class="scroll" style="padding:0 0 80px;">
+    <div style="padding:14px 18px 0;color:var(--muted);font:600 12px Outfit,sans-serif;">Toca un tipo para seleccionarlo y abrir Pedir con el filtro aplicado.</div>
+    <div id="qary-transport-grid" style="padding:14px 18px;display:grid;grid-template-columns:1fr 1fr;gap:12px;"></div>
   </div>
 </div>
 
@@ -3197,19 +3398,21 @@ function updatePhotoCountBadge(){
   if(b){ b.textContent=APP.chatPhotos+'/3'; b.style.display=APP.chatPhotos>0?'block':'none'; }
 }
 
+/* QARY-PR4: nota de voz REAL con MediaRecorder + bubble reproducible */
 function toggleAudioRec(){
-  debounced('audio-rec',function(){
-    APP.audioRecording=!APP.audioRecording;
-    var btn=document.getElementById('btn-audio-rec');
-    if(APP.audioRecording){
-      btn.classList.add('active');
-      toast('🎙️ Grabando audio… (toca de nuevo para enviar)');
-      if(navigator.vibrate) navigator.vibrate([10,30,10]);
-    } else {
-      btn.classList.remove('active');
-      toast('🎙️ Audio enviado ✓');
-      appendChatMessage('out','🎙️ Mensaje de voz (0:05)');
-    }
+  var btn=document.getElementById('btn-audio-rec');
+  if(APP._qaryRec && APP._qaryRec.active){
+    if(btn) btn.classList.remove('active');
+    qaryStopVoiceAndAttach();
+    return;
+  }
+  if(!navigator.mediaDevices){ toast('🎙️ Sin acceso al micrófono'); return; }
+  qaryStartVoice().then(function(){
+    if(btn) btn.classList.add('active');
+    toast('🎙️ Grabando… (toca de nuevo para enviar)');
+    if(navigator.vibrate) navigator.vibrate([10,30,10]);
+  }).catch(function(err){
+    toast('🎙️ ' + (err.message||'error de permisos'));
   });
 }
 
@@ -7363,7 +7566,8 @@ window.qaryOpenExplore = function(filter){
 window.qaryHomeFoodTap    = function(){ window.qaryOpenExplore('food'); };
 window.qaryHomeMarketTap  = function(){ window.qaryOpenExplore('market'); };
 window.qaryHomePaqueteTap = function(){ window.qaryOpenExplore('express'); };
-window.qaryOpenRecientes  = function(){ window.qaryOpenExplore('all'); };
+/* QARY-PR4: Recientes Ver todo → s-feed (NO s-explore) */
+window.qaryOpenRecientes  = function(){ qaryGoFeed(); };
 
 /* ═══════════════════════════════════════════════════════════
    4. AVATAR SYNC — Perfil ↔ Home header
@@ -7997,6 +8201,632 @@ log('QARY v9 enhancement layer loaded.', QARY_V9.flags);
     <button onclick="closeModal('photo-options-modal')" style="width:100%;background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;padding:10px;">Cancelar</button>
   </div>
 </div>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     QARY-PR4 SCRIPT — Implementación del brief integrado al HTML
+     ════════════════════════════════════════════════════════════════════════ -->
+<script>
+(function () {
+  'use strict';
+  if (window.__qaryPR4Inline) return; window.__qaryPR4Inline = true;
+  function $(s, r) { return (r || document).querySelector(s); }
+  function $$(s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
+  function ce(tag, attrs, html) {
+    var e = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function (k) {
+      if (k === 'class') e.className = attrs[k];
+      else if (k === 'style') e.style.cssText = attrs[k];
+      else e.setAttribute(k, attrs[k]);
+    });
+    if (html != null) e.innerHTML = html;
+    return e;
+  }
+  function ls(k, def) { try { var v = localStorage.getItem(k); return v == null ? def : v; } catch (e) { return def; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function lsJson(k, def) { try { var v = localStorage.getItem(k); return v ? JSON.parse(v) : def; } catch (e) { return def; } }
+  function lsJsonSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+
+  /* ─── A. TRANSPORTES (8 tipos canon) ─── */
+  var TR_TYPES = [
+    { canon: 'Standard',  emoji: '🚗', from: 8.5, eta: '4 min',  aliases: ['Ride','std'] },
+    { canon: 'Confort',   emoji: '🚙', from: 14,  eta: '5 min',  aliases: ['cf'] },
+    { canon: 'Executive', emoji: '🚕', from: 18,  eta: '5 min',  aliases: ['Exec','ex'] },
+    { canon: 'Luxury',    emoji: '🛻', from: 35,  eta: '7 min',  aliases: ['lx'] },
+    { canon: 'XL',        emoji: '🚐', from: 15,  eta: '7 min',  aliases: ['xl'] },
+    { canon: 'Mudanzas',  emoji: '🚛', from: 60,  eta: '12 min', aliases: ['mudanzas'] },
+    { canon: 'Motos',     emoji: '🏍️', from: 5,  eta: '2 min',  aliases: ['Moto','moto','Motos'] },
+    { canon: 'Bike',      emoji: '🚲', from: 4,   eta: '6 min',  aliases: ['bike'] },
+  ];
+  var TYPE_BY = {};
+  TR_TYPES.forEach(function (t) {
+    TYPE_BY[t.canon.toLowerCase()] = t;
+    t.aliases.forEach(function (a) { TYPE_BY[a.toLowerCase()] = t; });
+  });
+  function metaOf(k) { return TYPE_BY[(k || '').toLowerCase()] || TR_TYPES[0]; }
+  function canonOf(k) { return metaOf(k).canon; }
+  function isCanonMatch(rawKey, c) { return metaOf(rawKey).canon === c; }
+  var TR_KEY = 'qary_transport_v1';
+  var QaryTransport = {
+    get current() { return ls(TR_KEY, null); },
+    set: function (k) { lsSet(TR_KEY, canonOf(k)); applyTransportVisual(); applyDriverFilter(); try { document.dispatchEvent(new CustomEvent('qary:transport', { detail: { key: canonOf(k) } })); } catch (e) {} },
+  };
+  window.QaryTransport = QaryTransport;
+  window.qaryPickTransport = function (k, alsoNav) {
+    QaryTransport.set(k);
+    if (alsoNav && typeof window.nav === 'function') window.nav('map');
+  };
+  function applyTransportVisual() {
+    var cur = QaryTransport.current;
+    $$('.svc-btn[data-svc-home]').forEach(function (el) {
+      el.classList.toggle('qary-tr-active', !!(cur && isCanonMatch(el.getAttribute('data-svc-home'), cur)));
+    });
+    $$('.rt[data-svc-key]').forEach(function (el) {
+      el.classList.toggle('qary-tr-active', !!(cur && isCanonMatch(el.getAttribute('data-svc-key'), cur)));
+    });
+    $$('.qary-tr-card[data-tr-canon]').forEach(function (el) {
+      el.classList.toggle('qary-tr-active', !!(cur && el.getAttribute('data-tr-canon') === cur));
+    });
+    $$('.svc-big[onclick*="qaryHomeServiceTap"]').forEach(function (el) {
+      var m = /qaryHomeServiceTap\(['"]([^'"]+)['"]\)/.exec(el.getAttribute('onclick') || '');
+      if (m) el.classList.toggle('qary-tr-active', !!(cur && isCanonMatch(m[1], cur)));
+    });
+    var area = $('#map-area'); var chip = $('#qary-tr-chip');
+    if (area && !chip) { chip = ce('div', { id: 'qary-tr-chip' }); area.appendChild(chip); }
+    if (chip) {
+      if (cur) {
+        var m = metaOf(cur);
+        chip.innerHTML = '<span>' + m.emoji + '</span><span>Qary ' + m.canon + '</span>';
+        chip.classList.add('on');
+      } else { chip.classList.remove('on'); }
+    }
+  }
+  // Click capture: si el user toca cualquier botón de transporte (svc-btn/rt/svc-big),
+  // lo persistimos. Capture-phase corre antes que onclick legacy.
+  document.addEventListener('click', function (e) {
+    var el = e.target.closest('[data-svc-home],[data-svc-key],.svc-big[onclick*="qaryHomeServiceTap"],.qary-tr-card[data-tr-canon]');
+    if (!el) return;
+    var key = el.getAttribute('data-svc-home') || el.getAttribute('data-svc-key') || el.getAttribute('data-tr-canon');
+    if (!key) {
+      var m = /qaryHomeServiceTap\(['"]([^'"]+)['"]\)/.exec(el.getAttribute('onclick') || '');
+      key = m ? m[1] : null;
+    }
+    if (key) QaryTransport.set(key);
+  }, true);
+
+  /* ─── B. SHARE (4 canales + portapapeles) ─── */
+  var __shareData = {};
+  window.QaryShare = {
+    open: function (opts) {
+      __shareData = opts || {};
+      var t = $('#qary-share-title'); if (t) t.textContent = opts && opts.title ? opts.title : 'Compartir';
+      var m = $('#qary-share-modal'); if (m) m.classList.add('on');
+    },
+    close: function () { var m = $('#qary-share-modal'); if (m) m.classList.remove('on'); },
+  };
+  window.qaryShareDispatch = function (canal) {
+    var d = __shareData || {}; var ph = (d.phone || '').replace(/\s/g, '');
+    if (canal === 'whatsapp') {
+      var phWa = ph.replace(/\D/g, '');
+      var u = phWa
+        ? 'https://api.whatsapp.com/send?phone=' + phWa + '&text=' + encodeURIComponent(d.text || '')
+        : 'https://api.whatsapp.com/send?text=' + encodeURIComponent(d.text || '');
+      window.open(u, '_blank');
+    } else if (canal === 'sms') {
+      window.open('sms:' + ph + '?body=' + encodeURIComponent(d.text || ''), '_blank');
+    } else if (canal === 'email') {
+      var subj = encodeURIComponent(d.title || 'QARY');
+      var body = encodeURIComponent(d.text || '');
+      window.open('mailto:' + (d.email || '') + '?subject=' + subj + '&body=' + body, '_blank');
+    } else if (canal === 'call') {
+      if (!ph) { if (window.toast) window.toast('⚠️ Sin número telefónico'); return; }
+      window.open('tel:' + ph, '_blank');
+    }
+    if (canal === 'whatsapp' && d.refTrack) {
+      qaryAddReferral({ name: d.refTrack.name || 'Contacto', channel: 'whatsapp' });
+    }
+  };
+  window.qaryShareCopy = function () {
+    var d = __shareData || {}; var s = (d.title ? d.title + '\n' : '') + (d.text || '');
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(s).then(function () { if (window.toast) window.toast('📋 Copiado'); }, fb);
+    } else fb();
+    function fb() {
+      var ta = ce('textarea', { style: 'position:fixed;top:-9999px' });
+      ta.value = s; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); if (window.toast) window.toast('📋 Copiado'); } catch (e) {}
+      document.body.removeChild(ta);
+    }
+  };
+
+  /* ─── C. BUSCADORES (Inicio mic + Explorar input/mic) ─── */
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  function listenOnce(lang) {
+    return new Promise(function (resolve, reject) {
+      if (!SR) return reject(new Error('reconocimiento de voz no soportado'));
+      var r = new SR();
+      r.lang = lang || 'es-PE'; r.interimResults = false; r.continuous = false;
+      r.onresult = function (e) { resolve(((e.results[0] || {})[0] || {}).transcript || ''); };
+      r.onerror = function (e) { reject(new Error(e.error || 'error de voz')); };
+      r.start();
+    });
+  }
+  var SEARCH_ROUTES = [
+    { rx: /comid|deliver|food|burguer|hambur|pizza|sushi|taco/i, screen: 'explore', filter: 'food' },
+    { rx: /transport|taxi|carro|moto|viaj|llev[ao]|conduct/i,    screen: 'map' },
+    { rx: /merc|tiend|super|abarrot|market/i,                    screen: 'explore', filter: 'market' },
+    { rx: /paquet|env[ií]o|express|courier/i,                    screen: 'explore', filter: 'express' },
+    { rx: /hist[oó]ric|recibo|comprobant|movim|saldo|recarga/i,  screen: 'historial' },
+    { rx: /soport|ayud|emergenc|sos/i,                           screen: 'soporte' },
+    { rx: /perfil|cuenta|configur/i,                             screen: 'profile' },
+    { rx: /premium|suscrip|plan/i,                               screen: 'premium' },
+    { rx: /chat|conduct|mensaj/i,                                screen: 'chat' },
+    { rx: /pago|tarjet|wallet/i,                                 screen: 'payment' },
+    { rx: /viaje|hist.*viaj/i,                                   screen: 'viajes' },
+    { rx: /referido/i,                                           screen: 'referrals' },
+    { rx: /reciente|feed|actividad/i,                            screen: 'feed' },
+  ];
+  window.qaryExploreFilter = function (term) {
+    var t = (term || '').toLowerCase().trim();
+    var any = false;
+    $$('#s-explore .prod-card').forEach(function (card) {
+      if (!t) { card.style.display = ''; any = true; return; }
+      var name = (card.querySelector('.prod-name') || {}).textContent || '';
+      var shop = (card.querySelector('.prod-shop') || {}).textContent || '';
+      var match = (name + ' ' + shop).toLowerCase().indexOf(t) !== -1;
+      card.style.display = match ? '' : 'none';
+      if (match) any = true;
+    });
+    var existing = $('#qary-explore-empty');
+    if (!any && t) {
+      if (!existing) {
+        existing = ce('div', { id: 'qary-explore-empty', class: 'qary-empty' }, '🔎 No se encontró elemento descrito');
+        var sc = $('#explore-scroll'); if (sc) sc.appendChild(existing);
+      }
+    } else if (existing) existing.remove();
+  };
+  window.qarySearchRoute = function (text, scope) {
+    var clean = (text || '').trim();
+    if (!clean) return false;
+    var hit = null;
+    for (var i = 0; i < SEARCH_ROUTES.length; i++) {
+      if (SEARCH_ROUTES[i].rx.test(clean.toLowerCase())) { hit = SEARCH_ROUTES[i]; break; }
+    }
+    if (scope === 'explore') {
+      window.qaryExploreFilter(clean);
+      if (hit && hit.screen === 'explore' && hit.filter) {
+        var chip = $('.filter-chip[onclick*="\'' + hit.filter + '\'"]');
+        if (chip) chip.click();
+      }
+      return true;
+    }
+    if (!hit) { if (window.toast) window.toast('🔎 No se encontró elemento descrito'); return false; }
+    if (typeof window.nav === 'function') window.nav(hit.screen);
+    if (hit.screen === 'explore') {
+      setTimeout(function () {
+        var inp = $('#explore-search'); if (inp) inp.value = clean;
+        if (hit.filter) {
+          var c = $('.filter-chip[onclick*="\'' + hit.filter + '\'"]'); if (c) c.click();
+        }
+        window.qaryExploreFilter(clean);
+      }, 200);
+    }
+    return true;
+  };
+  window.qaryHomeMicClick = function (ev) {
+    if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+    var span = ev && ev.target;
+    if (!SR) { if (window.toast) window.toast('🎙️ Voz no soportada'); return; }
+    if (span) span.classList.add('on');
+    listenOnce().then(function (text) {
+      if (span) span.classList.remove('on');
+      var inp = $('#s-home .search-wrap input'); if (inp) inp.value = text;
+      if (!window.qarySearchRoute(text, 'home')) {
+        if (typeof window.nav === 'function') window.nav('explore');
+        setTimeout(function () { var ei = $('#explore-search'); if (ei) ei.value = text; window.qaryExploreFilter(text); }, 200);
+      }
+    }).catch(function (err) {
+      if (span) span.classList.remove('on');
+      if (window.toast) window.toast('🎙️ ' + (err.message || 'error'));
+    });
+  };
+  window.qaryExploreMicClick = function (btn) {
+    if (!SR) { if (window.toast) window.toast('🎙️ Voz no soportada'); return; }
+    btn.classList.add('on');
+    listenOnce().then(function (text) {
+      btn.classList.remove('on');
+      var inp = $('#explore-search'); if (inp) inp.value = text;
+      window.qarySearchRoute(text, 'explore');
+    }).catch(function (err) { btn.classList.remove('on'); if (window.toast) window.toast('🎙️ ' + (err.message || 'error')); });
+  };
+
+  /* ─── D. PROFILE STATS NAV ─── */
+  window.qaryGoViajes = function () { if (typeof window.nav === 'function') window.nav('viajes'); renderViajes(); };
+  window.qaryGoSoles = function () { if (typeof window.nav === 'function') window.nav('historial'); };
+  window.qaryGoReferrals = function () { if (typeof window.nav === 'function') window.nav('referrals'); renderReferrals(); };
+  window.qaryGoFeed = function () { if (typeof window.nav === 'function') window.nav('feed'); renderFeed(); };
+  window.qaryGoTransportAll = function () { if (typeof window.nav === 'function') window.nav('transport-all'); renderTransportAll(); };
+
+  /* ─── E. RENDERERS de las pantallas nuevas ─── */
+  var DEMO_VIAJES = [
+    { id:'v1', icon:'🚗', name:'Qary Standard · San Isidro', date: Date.now() - 2*3600e3,  amount:'S/. 18.00', status:'completed' },
+    { id:'v2', icon:'🏍️', name:'Qary Motos · Miraflores',    date: Date.now() - 26*3600e3, amount:'S/. 9.00',  status:'completed' },
+    { id:'v3', icon:'🚐', name:'Qary XL · Aeropuerto',        date: Date.now() - 3*86400e3, amount:'S/. 45.00', status:'completed' },
+    { id:'v4', icon:'🛻', name:'Qary Luxury · Surco',          date: Date.now() - 5*86400e3, amount:'S/. 85.00', status:'completed' },
+    { id:'v5', icon:'🚕', name:'Qary Executive · La Molina',   date: Date.now() - 7*86400e3, amount:'S/. 28.00', status:'cancelled' },
+  ];
+  function getViajes() { return lsJson('qary_viajes', null) || DEMO_VIAJES; }
+  function fmtDate(ts) { return new Date(ts).toLocaleString('es-PE', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); }
+  function renderViajes(filter) {
+    var stats = $('#qary-viajes-stats'); var list = $('#qary-viajes-list'); if (!list) return;
+    var f = filter || ($$('#qary-viajes-filters .qary-filter-chip.on')[0] || {}).getAttribute && ($$('#qary-viajes-filters .qary-filter-chip.on')[0]).getAttribute('data-f') || 'all';
+    var src = getViajes();
+    var now = Date.now();
+    var arr = src.filter(function (v) {
+      if (f === 'all') return true;
+      if (f === 'completed') return v.status === 'completed';
+      if (f === 'cancelled') return v.status === 'cancelled';
+      if (f === 'month') return (now - v.date) < 30 * 86400e3;
+      if (f === 'year') return (now - v.date) < 365 * 86400e3;
+      return true;
+    });
+    var total = arr.filter(function (x) { return x.status === 'completed'; })
+      .reduce(function (s, x) { return s + (parseFloat((x.amount || '').replace(/[^\d.]/g, '')) || 0); }, 0);
+    if (stats) stats.textContent = arr.length + ' viaje(s) · Total S/. ' + total.toFixed(2);
+    list.innerHTML = '';
+    if (!arr.length) { list.appendChild(ce('div', { class: 'qary-empty' }, '📭 Sin viajes en este filtro.')); return; }
+    arr.forEach(function (v) {
+      var st = v.status === 'completed' ? '<span class="qary-badge ok">Completado</span>'
+            : v.status === 'cancelled' ? '<span class="qary-badge fail">Cancelado</span>'
+            : '<span class="qary-badge pend">Pendiente</span>';
+      var item = ce('div', { class: 'qary-list-item' });
+      item.innerHTML = '<div class="ico">' + v.icon + '</div>' +
+        '<div class="body"><h5>' + v.name + '</h5><p>' + fmtDate(v.date) + ' · ' + st + '</p></div>' +
+        '<div class="meta">' + v.amount + '</div>';
+      item.onclick = function () { if (typeof window.nav === 'function') window.nav('booking'); };
+      list.appendChild(item);
+    });
+  }
+  function attachViajesFilters() {
+    var bar = $('#qary-viajes-filters'); if (!bar || bar.dataset.qaryHook) return; bar.dataset.qaryHook = '1';
+    bar.addEventListener('click', function (e) {
+      var c = e.target.closest('.qary-filter-chip'); if (!c) return;
+      $$('.qary-filter-chip', bar).forEach(function (x) { x.classList.remove('on'); });
+      c.classList.add('on'); renderViajes(c.getAttribute('data-f'));
+    });
+  }
+  window.renderViajes = renderViajes;
+
+  function getReferralCode() {
+    var saved = ls('qary_ref_code', '');
+    if (saved) return saved;
+    var s = 'QARY-';
+    var ch = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    for (var i = 0; i < 6; i++) s += ch.charAt(Math.floor(Math.random() * ch.length));
+    lsSet('qary_ref_code', s); return s;
+  }
+  window.qaryAddReferral = function (info) {
+    var arr = lsJson('qary_referrals', []);
+    arr.push({ name: info.name || 'Contacto', channel: info.channel || 'whatsapp', ts: Date.now(), accepted: false });
+    lsJsonSet('qary_referrals', arr);
+    try { document.dispatchEvent(new CustomEvent('qary:referral')); } catch (e) {}
+    renderReferrals();
+  };
+  function renderReferrals() {
+    var codeEl = $('#qary-ref-code'); if (codeEl) codeEl.textContent = getReferralCode();
+    var btn = $('#qary-ref-share');
+    if (btn && !btn.dataset.qaryHook) {
+      btn.dataset.qaryHook = '1';
+      btn.onclick = function () {
+        var code = getReferralCode();
+        window.QaryShare.open({
+          title: '🎁 Únete a QARY',
+          text: '🎉 ¡Únete a QARY! Usa mi código ' + code + ' y obtén S/. 10 de bono. Descarga: https://qary.pe/app',
+          refTrack: { name: 'Contacto' },
+        });
+      };
+    }
+    var list = $('#qary-refs-list'); if (!list) return;
+    var refs = lsJson('qary_referrals', []);
+    list.innerHTML = '';
+    if (!refs.length) { list.appendChild(ce('div', { class: 'qary-empty' }, '📭 Aún no has compartido tu código. Toca "Compartir mi código" arriba.')); return; }
+    refs.slice().reverse().forEach(function (r) {
+      var ce_ = r.channel === 'whatsapp' ? '💬' : r.channel === 'sms' ? '✉️' : r.channel === 'email' ? '📧' : '🔗';
+      var st = r.accepted ? '<span class="qary-badge ok">Aceptó</span>' : '<span class="qary-badge pend">Pendiente</span>';
+      var item = ce('div', { class: 'qary-list-item' });
+      item.innerHTML = '<div class="ico">' + ce_ + '</div>' +
+        '<div class="body"><h5>' + (r.name || 'Contacto') + '</h5><p>' + r.channel + ' · ' + fmtDate(r.ts) + ' · ' + st + '</p></div>';
+      list.appendChild(item);
+    });
+  }
+  window.renderReferrals = renderReferrals;
+
+  function getFeedEvents() {
+    var saved = lsJson('qary_feed', null);
+    if (saved && saved.length) return saved;
+    var now = Date.now();
+    return [
+      { kind:'service', icon:'🚗', title:'Viaje Qary Standard',     subtitle:'San Isidro → Miraflores',       ts: now - 2 * 3600e3 },
+      { kind:'profile', icon:'👤', title:'Cambiaste tu nombre',      subtitle:'Miguel R. → Miguel Rodríguez',  ts: now - 6 * 3600e3 },
+      { kind:'bank',    icon:'🏦', title:'Transferencia BCP',        subtitle:'A *** 4521 · S/. 80',           ts: now - 24 * 3600e3 },
+      { kind:'appt',    icon:'📅', title:'Cita agendada',            subtitle:'Hospital · Mañana 10:00',       ts: now - 30 * 3600e3 },
+      { kind:'profile', icon:'🔒', title:'Cambiaste tu contraseña',  subtitle:'desde dispositivo Android',     ts: now - 48 * 3600e3 },
+      { kind:'bank',    icon:'➕', title:'Cuenta bancaria agregada', subtitle:'Interbank *** 0098',            ts: now - 72 * 3600e3 },
+    ];
+  }
+  window.qaryAddFeedEvent = function (e) {
+    var arr = lsJson('qary_feed', null) || [];
+    arr.unshift({ kind: e.kind || 'service', icon: e.icon || '•', title: e.title || '', subtitle: e.subtitle || '', ts: e.ts || Date.now() });
+    lsJsonSet('qary_feed', arr.slice(0, 100));
+    try { document.dispatchEvent(new CustomEvent('qary:feed-event', { detail: e })); } catch (err) {}
+    renderFeed();
+  };
+  function renderFeed(filter) {
+    var bar = $('#qary-feed-filters'); var list = $('#qary-feed-list'); if (!list) return;
+    if (bar && !bar.dataset.qaryHook) {
+      bar.dataset.qaryHook = '1';
+      bar.addEventListener('click', function (e) {
+        var c = e.target.closest('.qary-filter-chip'); if (!c) return;
+        $$('.qary-filter-chip', bar).forEach(function (x) { x.classList.remove('on'); });
+        c.classList.add('on'); renderFeed(c.getAttribute('data-f'));
+      });
+    }
+    var f = filter || ($$('#qary-feed-filters .qary-filter-chip.on')[0] && $$('#qary-feed-filters .qary-filter-chip.on')[0].getAttribute('data-f')) || 'all';
+    var src = getFeedEvents().filter(function (e) { return e.kind !== 'payment'; });
+    var arr = f === 'all' ? src : src.filter(function (x) { return x.kind === f; });
+    list.innerHTML = '';
+    if (!arr.length) { list.appendChild(ce('div', { class: 'qary-empty' }, '📭 Sin eventos por mostrar.')); return; }
+    arr.forEach(function (e) {
+      var item = ce('div', { class: 'qary-list-item' });
+      item.innerHTML = '<div class="ico">' + (e.icon || '•') + '</div>' +
+        '<div class="body"><h5>' + e.title + '</h5><p>' + e.subtitle + '</p></div>' +
+        '<div class="meta">' + new Date(e.ts).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }) + '</div>';
+      item.onclick = function () {
+        if (e.kind === 'payment') window.nav('historial');     // pagos → Historial (excepción del brief)
+        else if (e.kind === 'profile') window.nav('edit-profile');
+        else if (e.kind === 'bank') window.nav('bcp-transfer');
+        else if (e.kind === 'appt') window.nav('soporte');
+        else if (e.kind === 'service') window.nav('booking');
+      };
+      list.appendChild(item);
+    });
+  }
+  window.renderFeed = renderFeed;
+
+  function renderTransportAll() {
+    var grid = $('#qary-transport-grid'); if (!grid) return;
+    grid.innerHTML = '';
+    TR_TYPES.forEach(function (t) {
+      var card = ce('div', { class: 'qary-tr-card', 'data-tr-canon': t.canon, style: 'min-width:0;padding:18px 12px;' });
+      card.innerHTML = '<div class="ico">' + t.emoji + '</div>' +
+        '<div class="nm">Qary ' + t.canon + '</div>' +
+        '<div class="pr">Desde S/. ' + t.from.toFixed(2) + ' · ' + t.eta + '</div>';
+      card.onclick = function () { QaryTransport.set(t.canon); if (typeof window.nav === 'function') window.nav('map'); };
+      grid.appendChild(card);
+    });
+    applyTransportVisual();
+  }
+  window.renderTransportAll = renderTransportAll;
+
+  /* ─── F. SINCRONIZACIÓN FOTO PERFIL ─── */
+  function syncProfilePhoto(dataUrl) {
+    if (!dataUrl) dataUrl = ls('qary_profile_photo', '');
+    if (!dataUrl) return;
+    lsSet('qary_profile_photo', dataUrl);
+    var sels = ['#home-hd-avatar', '#prof-av-edit', '#s-profile .prof-av', '#s-payment .hd-avatar', '.hd-avatar[onclick*="profile"]', '[data-qary-photo]'];
+    sels.forEach(function (sel) {
+      $$(sel).forEach(function (el) {
+        el.textContent = '';
+        el.style.backgroundImage = 'url(' + dataUrl + ')';
+        el.style.backgroundSize = 'cover';
+        el.style.backgroundPosition = 'center';
+      });
+    });
+    try { document.dispatchEvent(new CustomEvent('qary:profile-photo', { detail: { dataUrl: dataUrl } })); } catch (e) {}
+  }
+  window.qarySyncProfilePhoto = syncProfilePhoto;
+  // Hook handleProfilePhoto del legacy (tras leer File → sync).
+  function hookPhoto() {
+    if (window.__qaryPhotoHook) return; window.__qaryPhotoHook = 1;
+    var orig = window.handleProfilePhoto;
+    window.handleProfilePhoto = function (inp) {
+      var f = inp && inp.files && inp.files[0];
+      if (f) {
+        var rd = new FileReader();
+        rd.onload = function (e) {
+          syncProfilePhoto(e.target.result);
+          window.qaryAddFeedEvent && window.qaryAddFeedEvent({ kind: 'profile', icon: '📷', title: 'Cambiaste tu foto de perfil', subtitle: 'Sincronizada en Inicio, Pagos y Perfil' });
+        };
+        rd.readAsDataURL(f);
+      }
+      if (typeof orig === 'function') { try { orig.apply(this, arguments); } catch (e) {} }
+    };
+  }
+
+  /* ─── G. NOTAS DE VOZ REALES ─── */
+  if (!window.APP) window.APP = {};
+  window.APP._qaryRec = { active: false };
+  window.qaryStartVoice = function () {
+    return navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1, sampleRate: 16000 },
+    }).then(function (stream) {
+      var rec = window.APP._qaryRec; rec.stream = stream;
+      var mt = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'].find(function (t) {
+        return window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t);
+      });
+      rec.mr = mt ? new MediaRecorder(stream, { mimeType: mt }) : new MediaRecorder(stream);
+      rec.chunks = [];
+      rec.mr.ondataavailable = function (e) { if (e.data && e.data.size > 0) rec.chunks.push(e.data); };
+      rec.mr.start(100); rec.active = true; rec.t0 = Date.now();
+    });
+  };
+  window.qaryStopVoiceAndAttach = function () {
+    var rec = window.APP._qaryRec; if (!rec || !rec.active || !rec.mr) return;
+    rec.mr.onstop = function () {
+      var blob = new Blob(rec.chunks, { type: rec.mr.mimeType || 'audio/webm' });
+      try { rec.stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
+      rec.active = false;
+      var ms = Date.now() - rec.t0;
+      attachVoiceNote(blob, ms);
+    };
+    rec.mr.stop();
+  };
+  function attachVoiceNote(blob, durationMs) {
+    var msgs = $('#chat-msgs') || $('#s-chat .scroll'); if (!msgs) return;
+    var url = URL.createObjectURL(blob);
+    var bub = ce('div', { class: 'qary-voice-bubble' });
+    var dur = (durationMs ? Math.round(durationMs / 1000) : 0);
+    bub.innerHTML = '<span style="font-size:18px">🎤</span><audio controls preload="auto"></audio><span style="font-size:11px;color:var(--muted);">' + dur + 's</span>';
+    bub.querySelector('audio').src = url;
+    msgs.appendChild(bub);
+    if (msgs.scrollTo) msgs.scrollTo({ top: msgs.scrollHeight, behavior: 'smooth' });
+    if (window.toast) window.toast('🎤 Nota enviada (' + dur + 's)');
+  }
+  window.qaryAttachVoiceNote = attachVoiceNote;
+
+  /* ─── H. PANEL IA: TTS Fem/Masc/Neutro + API key + Backend URL ─── */
+  function setupAIPanel() {
+    var panel = $('#s-ai-panel .scroll'); if (!panel) return;
+    if (panel.querySelector('#qary-pr4-cfg')) return;
+    var box = ce('div', { id: 'qary-pr4-cfg' });
+    box.innerHTML =
+      '<div class="qary-cfg-block">' +
+        '<h4>🗣️ Voz del asistente</h4>' +
+        '<div class="qary-tts-row" id="qary-tts-row">' +
+          '<button data-g="female">Femenino</button>' +
+          '<button data-g="male">Masculino</button>' +
+          '<button data-g="neutral">Neutro</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="qary-cfg-block">' +
+        '<h4>🔑 API key del modelo</h4>' +
+        '<label>Proveedor</label>' +
+        '<select id="qary-provider">' +
+          '<option value="anthropic">Anthropic (Claude)</option>' +
+          '<option value="openai">OpenAI</option>' +
+          '<option value="gemini">Google Gemini</option>' +
+          '<option value="grok">Grok / xAI</option>' +
+        '</select>' +
+        '<label>API key</label>' +
+        '<input type="password" id="qary-apikey" autocomplete="off" placeholder="sk-... / AIza..." />' +
+        '<div class="actions"><button class="pri" id="qary-apikey-save">Guardar</button><button class="sec" id="qary-apikey-clear">Borrar</button></div>' +
+        '<p style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.4;">Solo en este dispositivo. Nunca se envía al backend de QARY.</p>' +
+      '</div>' +
+      '<div class="qary-cfg-block">' +
+        '<h4>🌐 Backend (drivers en mapa, sockets)</h4>' +
+        '<input type="url" id="qary-backend-url" placeholder="https://api.tu-backend.com" />' +
+        '<div class="actions"><button class="pri" id="qary-backend-save">Conectar</button></div>' +
+      '</div>';
+    panel.appendChild(box);
+    var ttsRow = box.querySelector('#qary-tts-row');
+    function paintTTS(g) { ttsRow.querySelectorAll('button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-g') === g); }); }
+    paintTTS(ls('qary_voice_gender', 'female'));
+    ttsRow.addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-g]'); if (!b) return;
+      var g = b.getAttribute('data-g'); paintTTS(g);
+      if (typeof window.qarySetVoiceGender === 'function') window.qarySetVoiceGender(g);
+      else lsSet('qary_voice_gender', g);
+    });
+    var apiInp = box.querySelector('#qary-apikey'); var provInp = box.querySelector('#qary-provider');
+    apiInp.value = ls('qary_ai_apikey', ''); provInp.value = ls('qary_ai_provider', 'anthropic');
+    box.querySelector('#qary-apikey-save').onclick = function () {
+      lsSet('qary_ai_apikey', apiInp.value.trim()); lsSet('qary_ai_provider', provInp.value);
+      if (window.toast) window.toast('🔑 Guardada (' + provInp.value + ')');
+    };
+    box.querySelector('#qary-apikey-clear').onclick = function () { lsSet('qary_ai_apikey', ''); apiInp.value = ''; if (window.toast) window.toast('🔑 Revocada'); };
+    var beInp = box.querySelector('#qary-backend-url'); beInp.value = ls('qary_backend_url', '');
+    box.querySelector('#qary-backend-save').onclick = function () {
+      lsSet('qary_backend_url', beInp.value.trim().replace(/\/$/, ''));
+      if (window.toast) window.toast('🌐 ' + (beInp.value || 'sin conexión'));
+      connectRealtime();
+    };
+  }
+
+  /* ─── I. MAPA REAL-TIME (Socket.IO) ─── */
+  var driverMarkers = {}; var io = null;
+  function loadIO(cb) {
+    if (window.io) return cb(window.io);
+    var s = document.createElement('script');
+    s.src = 'https://cdn.socket.io/4.7.5/socket.io.min.js';
+    s.onload = function () { cb(window.io); };
+    s.onerror = function () { cb(null); };
+    document.head.appendChild(s);
+  }
+  function divIcon(type) {
+    if (!window.L) return null;
+    return window.L.divIcon({ className: '', html: '<div class="qary-drv-mk">' + metaOf(type).emoji + '</div>', iconSize: [36, 36], iconAnchor: [18, 18] });
+  }
+  function upsertDriver(p) {
+    if (!window.APP || !window.APP.lmap || !window.L) return;
+    var m = driverMarkers[p.driverId];
+    if (!m) {
+      var marker = window.L.marker([p.lat, p.lng], { icon: divIcon(p.vehicleType) }).addTo(window.APP.lmap);
+      driverMarkers[p.driverId] = m = { marker: marker, type: p.vehicleType };
+    } else {
+      m.marker.setLatLng([p.lat, p.lng]);
+      if (p.vehicleType && m.type !== p.vehicleType) { m.marker.setIcon(divIcon(p.vehicleType)); m.type = p.vehicleType; }
+    }
+    applyDriverFilter();
+  }
+  function applyDriverFilter() {
+    var cur = QaryTransport.current;
+    Object.keys(driverMarkers).forEach(function (k) {
+      var m = driverMarkers[k]; var el = m.marker.getElement(); if (!el) return;
+      var match = !cur || isCanonMatch(m.type, cur);
+      el.style.display = match ? '' : 'none';
+    });
+  }
+  function connectRealtime() {
+    var url = ls('qary_backend_url', '');
+    if (!url) return;
+    loadIO(function (sio) {
+      if (!sio) return;
+      try { if (io) io.disconnect(); } catch (e) {}
+      io = sio(url, { transports: ['websocket', 'polling'] });
+      io.on('connect', function () { io.emit('subscribe:drivers', QaryTransport.current); });
+      io.on('driver:position', upsertDriver);
+    });
+  }
+  window.qaryConnectRealtime = connectRealtime;
+
+  /* ─── J. INTEGRACIÓN BOTÓN COMPARTIR DEL MODAL REFERIDOS LEGACY ─── */
+  function hookLegacyShareReferral() {
+    if (window.__qaryShareLegacyHook) return;
+    if (typeof window.shareReferral !== 'function') return;
+    window.__qaryShareLegacyHook = 1;
+    var orig = window.shareReferral;
+    window.shareReferral = function () {
+      var code = (window.APP && window.APP.referralCode) || getReferralCode();
+      window.QaryShare.open({
+        title: '🎁 Únete a QARY',
+        text: '🎉 ¡Únete a QARY! Usa mi código ' + code + ' y obtén S/. 10 de bono. Descarga: https://qary.pe/app',
+        refTrack: { name: 'Contacto' },
+      });
+    };
+  }
+
+  /* ─── K. INIT ─── */
+  function start() {
+    setupAIPanel();
+    hookPhoto();
+    hookLegacyShareReferral();
+    syncProfilePhoto();
+    applyTransportVisual();
+    if (ls('qary_backend_url', '')) connectRealtime();
+    // Re-hook & re-paint cuando el legacy renderiza pantallas dinámicas
+    new MutationObserver(function () {
+      setupAIPanel();
+      hookLegacyShareReferral();
+      applyTransportVisual();
+      attachViajesFilters();
+    }).observe(document.body, { childList: true, subtree: true });
+    // Render inicial de pantallas dinámicas si están en el DOM
+    attachViajesFilters();
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else setTimeout(start, 0);
+})();
+</script>
 
 </body>
 </html>
