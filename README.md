@@ -94,6 +94,8 @@ pnpm --filter backend exec vitest run
 | POST | `/api/loans/apply` | Yes | Apply for a loan |
 | GET | `/api/loans` | Yes | List user loans |
 | GET | `/api/loans/:id` | Yes | Get loan with repayment schedule |
+| POST | `/api/loans/:id/approve` | Yes | Approve loan, generate repayment schedule |
+| POST | `/api/loans/:id/disburse` | Yes | Disburse approved loan |
 
 ### KYC / KYB
 | Method | Path | Auth | Description |
@@ -110,6 +112,33 @@ pnpm --filter backend exec vitest run
 | GET | `/api/points/history` | Yes | Get points history |
 | POST | `/api/points/redeem` | Yes | Redeem points |
 
+### Notifications
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/notifications` | Yes | List notifications (paginated, filter unread) |
+| GET | `/api/notifications/unread-count` | Yes | Get unread notification count |
+| POST | `/api/notifications/:id/read` | Yes | Mark notification as read |
+| POST | `/api/notifications/read-all` | Yes | Mark all notifications as read |
+
+### Disputes
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/disputes` | Yes | Open a dispute on a payment |
+| GET | `/api/disputes` | Yes | List user disputes |
+| GET | `/api/disputes/:id` | Yes | Get dispute details |
+| POST | `/api/disputes/:id/evidence` | Yes | Submit evidence for a dispute |
+| POST | `/api/disputes/:id/escalate` | Yes | Escalate a dispute |
+
+### Subscriptions
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/subscriptions` | Yes | Create a recurring subscription |
+| GET | `/api/subscriptions` | Yes | List user subscriptions |
+| GET | `/api/subscriptions/:id` | Yes | Get subscription details |
+| POST | `/api/subscriptions/:id/cancel` | Yes | Cancel a subscription |
+| POST | `/api/subscriptions/:id/pause` | Yes | Pause a subscription |
+| POST | `/api/subscriptions/:id/resume` | Yes | Resume a paused subscription |
+
 ### Payments
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -125,6 +154,9 @@ pnpm --filter backend exec vitest run
 - **FX rate fallback chain**: DB rates → hardcoded defaults → inverse calculation → USD cross rate.
 - **Tiers**: BRONZE → SILVER (1K) → GOLD (5K) → PLATINUM (20K) → DIAMOND (50K) based on lifetime points earned.
 - **Invoice series**: Boletas get `B001-NNNNNNNN`, facturas get `F001-NNNNNNNN` (SUNAT format).
+- **Auto-earn points**: Wallet deposits and transfers automatically earn loyalty points based on tier multiplier.
+- **Dispute lifecycle**: OPENED → EVIDENCE_NEEDED → UNDER_REVIEW → WON/LOST/ACCEPTED with 30-day evidence deadline.
+- **Subscription billing**: Supports daily/weekly/monthly/yearly intervals with pause/resume/cancel lifecycle.
 
 ## Testing
 
@@ -139,7 +171,7 @@ pnpm --filter backend exec vitest run test/kopera-wallets.test.ts
 pnpm --filter backend exec vitest
 ```
 
-58 tests across 10 test files covering auth, wallets, FX, invoices, loans, KYC/KYB, points, payments, and voice payments.
+89 tests across 15 test files covering auth, wallets, FX, invoices, loans (+ admin), KYC/KYB, points (+ auto-earn), payments, voice payments, notifications, disputes, and subscriptions.
 
 ## Configuration
 
