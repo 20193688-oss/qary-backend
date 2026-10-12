@@ -128,6 +128,27 @@ const MODEL_DEFAULTS: Record<string, Record<string, unknown>> = {
   ledgerEntry: {
     description: null,
   },
+  businessProfile: {
+    legalName: null,
+    tradeName: null,
+    incorporationDate: null,
+    economicActivity: null,
+    ciiu: null,
+    fiscalAddress: null,
+    legalRepName: null,
+    legalRepDocType: null,
+    legalRepDocNumber: null,
+    status: 'PENDING',
+    habidomStatus: null,
+    coactivaDebt: false,
+    riskScore: null,
+    reputationScore: null,
+    complianceScore: null,
+    lastScreeningAt: null,
+    verifiedAt: null,
+    rejectedReason: null,
+    screeningReport: null,
+  },
 };
 
 const OPERATORS = new Set(['gt', 'gte', 'lt', 'lte', 'not', 'in', 'contains', 'equals']);

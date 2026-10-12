@@ -42,6 +42,9 @@ import { registerAntExpenseRoutes } from './routes/kopera/ant-expenses.js';
 import { registerUserSessionRoutes } from './routes/kopera/user-sessions.js';
 import { registerEventRoutes } from './routes/kopera/events.js';
 import { registerLedgerRoutes } from './routes/kopera/ledger.js';
+import { registerBusinessProfileRoutes } from './routes/kopera/business-profiles.js';
+import { registerLoanRepaymentRoutes } from './routes/kopera/loan-repayments.js';
+import { registerUserProfileRoutes } from './routes/kopera/user-profiles.js';
 
 export interface AppDeps {
   prisma: PrismaClient;
@@ -118,6 +121,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await registerUserSessionRoutes(app, deps.prisma);
   await registerEventRoutes(app, deps.prisma);
   await registerLedgerRoutes(app, deps.prisma);
+  await registerBusinessProfileRoutes(app, deps.prisma);
+  await registerLoanRepaymentRoutes(app, deps.prisma);
+  await registerUserProfileRoutes(app, deps.prisma);
 
   return app;
 }
