@@ -13,6 +13,7 @@ function serialize(c: any) {
     expiryYear: c.expiryYear,
     holderName: c.holderName,
     isDefault: c.isDefault,
+    frozen: c.frozen ?? false,
     country: c.country,
     bankName: c.bankName,
     createdAt: c.createdAt,
@@ -71,6 +72,73 @@ export async function registerTokenizedCardRoutes(app: FastifyInstance, prisma: 
       if (err.message === 'forbidden') return reply.code(403).send({ error: err.message });
       throw err;
     }
+  });
+
+  app.put('/api/cards/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = z.object({
+      expiryMonth: z.number().int().min(1).max(12).optional(),
+      expiryYear: z.number().int().min(2024).optional(),
+      holderName: z.string().min(1).optional(),
+    }).parse(req.body);
+
+    try {
+      const card = await svc.updateCard(id, req.auth!.userId, body);
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'user', eventType: 'card.updated',
+        payload: { cardId: id },
+        requestId: String(req.id), ip: req.ip,
+      });
+      return serialize(card);
+    } catch (err: any) {
+      if (err.message === 'card_not_found') return reply.code(404).send({ error: err.message });
+      if (err.message === 'forbidden') return reply.code(403).send({ error: err.message });
+      throw err;
+    }
+  });
+
+  app.post('/api/cards/:id/freeze', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      const card = await svc.freezeCard(id, req.auth!.userId);
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'user', eventType: 'card.frozen',
+        payload: { cardId: id },
+        requestId: String(req.id), ip: req.ip,
+      });
+      return serialize(card);
+    } catch (err: any) {
+      if (err.message === 'card_not_found') return reply.code(404).send({ error: err.message });
+      if (err.message === 'forbidden') return reply.code(403).send({ error: err.message });
+      if (err.message === 'already_frozen') return reply.code(400).send({ error: err.message });
+      throw err;
+    }
+  });
+
+  app.post('/api/cards/:id/unfreeze', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      const card = await svc.unfreezeCard(id, req.auth!.userId);
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'user', eventType: 'card.unfrozen',
+        payload: { cardId: id },
+        requestId: String(req.id), ip: req.ip,
+      });
+      return serialize(card);
+    } catch (err: any) {
+      if (err.message === 'card_not_found') return reply.code(404).send({ error: err.message });
+      if (err.message === 'forbidden') return reply.code(403).send({ error: err.message });
+      if (err.message === 'not_frozen') return reply.code(400).send({ error: err.message });
+      throw err;
+    }
+  });
+
+  app.get('/api/cards/expiring', { preHandler: [app.requireAuth] }, async (req) => {
+    const query = req.query as { months?: string };
+    const months = Number(query.months ?? 2);
+    const cards = await svc.checkExpiringCards(months);
+    const userCards = cards.filter((c: any) => c.userId === req.auth!.userId);
+    return userCards.map(serialize);
   });
 
   app.delete('/api/cards/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {

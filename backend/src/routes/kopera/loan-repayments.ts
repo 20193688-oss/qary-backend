@@ -61,6 +61,18 @@ export async function registerLoanRepaymentRoutes(app: FastifyInstance, prisma: 
     return serialize(repayment);
   });
 
+  app.post('/api/loan-repayments/process-due', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const result = await svc.processDueRepayments();
+
+    await audit(prisma, {
+      userId: req.auth!.userId, actor: 'system', eventType: 'loan.repayments_processed',
+      payload: { processed: result.processed },
+      requestId: String(req.id), ip: req.ip,
+    });
+
+    return reply.send(result);
+  });
+
   app.post('/api/repayments/:id/pay', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const body = z.object({

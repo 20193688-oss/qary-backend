@@ -25,6 +25,7 @@ const MODEL_DEFAULTS: Record<string, Record<string, unknown>> = {
     status: 'APPLICATION',
     interestRate: 0.15,
     outstandingBalance: BigInt(0),
+    missedPayments: 0,
   },
   loanRepayment: {
     paidAmount: BigInt(0),
@@ -96,6 +97,7 @@ const MODEL_DEFAULTS: Record<string, Record<string, unknown>> = {
   tokenizedCard: {
     holderName: null,
     isDefault: false,
+    frozen: false,
     country: null,
     bankName: null,
     fingerprint: null,
