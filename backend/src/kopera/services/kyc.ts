@@ -1,0 +1,103 @@
+import type { PrismaClient, Prisma } from '@prisma/client';
+
+export class KycService {
+  constructor(private prisma: PrismaClient) {}
+
+  async start(userId: string, data: {
+    documentType: string;
+    documentNumber: string;
+    documentCountry: string;
+    firstName: string;
+    lastName: string;
+    dateOfBirth?: Date;
+    nationality?: string;
+    address?: Prisma.InputJsonValue;
+  }) {
+    return this.prisma.kycProfile.upsert({
+      where: { userId },
+      update: {
+        documentType: data.documentType as any,
+        documentNumber: data.documentNumber,
+        documentCountry: data.documentCountry.toUpperCase(),
+        firstName: data.firstName,
+        lastName: data.lastName,
+        dateOfBirth: data.dateOfBirth,
+        nationality: data.nationality?.toUpperCase(),
+        address: data.address,
+        status: 'IN_REVIEW',
+      },
+      create: {
+        userId,
+        documentType: data.documentType as any,
+        documentNumber: data.documentNumber,
+        documentCountry: data.documentCountry.toUpperCase(),
+        firstName: data.firstName,
+        lastName: data.lastName,
+        dateOfBirth: data.dateOfBirth,
+        nationality: data.nationality?.toUpperCase(),
+        address: data.address,
+        status: 'IN_REVIEW',
+      },
+    });
+  }
+
+  async getByUser(userId: string) {
+    return this.prisma.kycProfile.findUnique({ where: { userId } });
+  }
+
+  async approve(userId: string, reviewedBy: string) {
+    const profile = await this.prisma.kycProfile.findUnique({ where: { userId } });
+    if (!profile) throw new Error('kyc_not_found');
+    if (profile.status === 'APPROVED') throw new Error('already_approved');
+
+    return this.prisma.kycProfile.update({
+      where: { userId },
+      data: {
+        status: 'APPROVED',
+        verifiedAt: new Date(),
+        reviewedBy,
+        pepCheck: true,
+        sanctionsCheck: true,
+      },
+    });
+  }
+
+  async reject(userId: string, reason: string, reviewedBy: string) {
+    const profile = await this.prisma.kycProfile.findUnique({ where: { userId } });
+    if (!profile) throw new Error('kyc_not_found');
+
+    return this.prisma.kycProfile.update({
+      where: { userId },
+      data: {
+        status: 'REJECTED',
+        rejectedReason: reason,
+        reviewedBy,
+      },
+    });
+  }
+
+  async uploadDocumentUrls(userId: string, data: {
+    documentFrontUrl?: string;
+    documentBackUrl?: string;
+    selfieUrl?: string;
+    livenessImageUrl?: string;
+  }) {
+    const profile = await this.prisma.kycProfile.findUnique({ where: { userId } });
+    if (!profile) throw new Error('kyc_not_found');
+
+    return this.prisma.kycProfile.update({
+      where: { userId },
+      data,
+    });
+  }
+
+  async setRiskScore(userId: string, riskScore: number) {
+    const profile = await this.prisma.kycProfile.findUnique({ where: { userId } });
+    if (!profile) throw new Error('kyc_not_found');
+
+    return this.prisma.kycProfile.update({
+      where: { userId },
+      data: { riskScore },
+    });
+  }
+}
