@@ -394,6 +394,14 @@ export function createInMemoryPrisma(): PrismaClient {
         const [removed] = arr().splice(idx, 1);
         return removed;
       },
+      async deleteMany({ where }: { where?: Record<string, unknown> } = {}) {
+        const toRemove = where ? arr().filter((r) => matches(r, where)) : [...arr()];
+        toRemove.forEach((r) => {
+          const idx = arr().indexOf(r);
+          if (idx >= 0) arr().splice(idx, 1);
+        });
+        return { count: toRemove.length };
+      },
       async count({ where }: { where?: Record<string, unknown> } = {}) {
         if (!where) return arr().length;
         return arr().filter((r) => matches(r, where)).length;
