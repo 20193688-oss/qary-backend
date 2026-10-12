@@ -72,4 +72,21 @@ export class DisputeService {
       data: { status: 'EVIDENCE_NEEDED' },
     });
   }
+
+  async resolve(disputeId: string, outcome: string, notes?: string) {
+    const dispute = await this.prisma.dispute.findUnique({ where: { id: disputeId } });
+    if (!dispute) throw new Error('dispute_not_found');
+    if (dispute.status === 'WON' || dispute.status === 'LOST' || dispute.status === 'ACCEPTED') {
+      throw new Error('dispute_already_resolved');
+    }
+
+    return this.prisma.dispute.update({
+      where: { id: disputeId },
+      data: {
+        status: outcome as any,
+        outcome: notes ?? outcome,
+        resolvedAt: new Date(),
+      },
+    });
+  }
 }

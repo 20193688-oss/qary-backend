@@ -87,9 +87,93 @@ export class SubscriptionService {
     if (sub.userId !== userId) throw new Error('forbidden');
     if (sub.status !== 'paused') throw new Error('not_paused');
 
+    const interval = sub.interval as string;
+    const intervalCount = sub.intervalCount ?? 1;
+    const periodMs = (INTERVAL_MS[interval] ?? INTERVAL_MS['monthly']!) * intervalCount;
+    const now = new Date();
+    const periodEnd = new Date(now.getTime() + periodMs);
+
     return this.prisma.subscription.update({
       where: { id: subscriptionId },
-      data: { status: 'active' },
+      data: {
+        status: 'active',
+        currentPeriodStart: now,
+        currentPeriodEnd: periodEnd,
+        nextBillingDate: periodEnd,
+        retryCount: 0,
+      },
     });
+  }
+
+  async updatePlan(subscriptionId: string, userId: string, planName: string, amount: bigint) {
+    const sub = await this.prisma.subscription.findUnique({ where: { id: subscriptionId } });
+    if (!sub) throw new Error('subscription_not_found');
+    if (sub.userId !== userId) throw new Error('forbidden');
+    if (sub.status === 'cancelled') throw new Error('already_cancelled');
+
+    return this.prisma.subscription.update({
+      where: { id: subscriptionId },
+      data: { planName, amount },
+    });
+  }
+
+  async processDueBillings() {
+    const now = new Date();
+    const due = await this.prisma.subscription.findMany({
+      where: { status: 'active', nextBillingDate: { lte: now } },
+    });
+
+    const results: Array<{ subscriptionId: string; success: boolean; reason?: string }> = [];
+
+    for (const sub of due) {
+      const wallet = await this.prisma.wallet.findFirst({
+        where: { userId: sub.userId, currency: sub.currency, status: 'ACTIVE' },
+      });
+
+      if (!wallet || wallet.balance < sub.amount) {
+        const newRetryCount = (sub.retryCount ?? 0) + 1;
+        const maxRetries = sub.maxRetries ?? 3;
+
+        if (newRetryCount >= maxRetries) {
+          await this.prisma.subscription.update({
+            where: { id: sub.id },
+            data: { status: 'past_due', retryCount: newRetryCount },
+          });
+          results.push({ subscriptionId: sub.id, success: false, reason: 'max_retries_exceeded' });
+        } else {
+          await this.prisma.subscription.update({
+            where: { id: sub.id },
+            data: { retryCount: newRetryCount },
+          });
+          results.push({ subscriptionId: sub.id, success: false, reason: 'insufficient_funds' });
+        }
+        continue;
+      }
+
+      const interval = sub.interval as string;
+      const intervalCount = sub.intervalCount ?? 1;
+      const periodMs = (INTERVAL_MS[interval] ?? INTERVAL_MS['monthly']!) * intervalCount;
+      const newPeriodStart = new Date(now.getTime());
+      const newPeriodEnd = new Date(now.getTime() + periodMs);
+
+      await this.prisma.wallet.update({
+        where: { id: wallet.id },
+        data: { balance: wallet.balance - sub.amount },
+      });
+
+      await this.prisma.subscription.update({
+        where: { id: sub.id },
+        data: {
+          currentPeriodStart: newPeriodStart,
+          currentPeriodEnd: newPeriodEnd,
+          nextBillingDate: newPeriodEnd,
+          retryCount: 0,
+        },
+      });
+
+      results.push({ subscriptionId: sub.id, success: true });
+    }
+
+    return { processed: results.length, results };
   }
 }

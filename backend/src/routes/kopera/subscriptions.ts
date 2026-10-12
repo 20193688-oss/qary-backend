@@ -95,6 +95,44 @@ export async function registerSubscriptionRoutes(app: FastifyInstance, prisma: P
       throw err;
     }
   });
+
+  app.put('/api/subscriptions/:id/plan', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = z.object({
+      planName: z.string().min(1),
+      amount: z.number().positive(),
+    }).parse(req.body);
+
+    try {
+      const sub = await subscriptions.updatePlan(id, req.auth!.userId, body.planName, BigInt(Math.round(body.amount * 100)));
+
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'user', eventType: 'subscription.plan_updated',
+        payload: { subscriptionId: id, planName: body.planName, amount: body.amount },
+        requestId: String(req.id), ip: req.ip,
+      });
+
+      return reply.send(serializeSub(sub));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      if (msg === 'subscription_not_found') return reply.code(404).send({ error: msg });
+      if (msg === 'forbidden') return reply.code(403).send({ error: msg });
+      if (msg === 'already_cancelled') return reply.code(400).send({ error: msg });
+      throw err;
+    }
+  });
+
+  app.post('/api/subscriptions/process-billing', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const result = await subscriptions.processDueBillings();
+
+    await audit(prisma, {
+      userId: req.auth!.userId, actor: 'system', eventType: 'subscription.billing_processed',
+      payload: { processed: result.processed },
+      requestId: String(req.id), ip: req.ip,
+    });
+
+    return reply.send(result);
+  });
 }
 
 function serializeSub(s: any) {

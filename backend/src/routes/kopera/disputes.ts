@@ -83,6 +83,31 @@ export async function registerDisputeRoutes(app: FastifyInstance, prisma: Prisma
       throw err;
     }
   });
+
+  app.post('/api/disputes/:id/resolve', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = z.object({
+      outcome: z.enum(['WON', 'LOST', 'ACCEPTED']),
+      notes: z.string().optional(),
+    }).parse(req.body);
+
+    try {
+      const dispute = await disputes.resolve(id, body.outcome, body.notes);
+
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'user', eventType: 'dispute.resolved',
+        payload: { disputeId: id, outcome: body.outcome },
+        requestId: String(req.id), ip: req.ip,
+      });
+
+      return reply.send(serializeDispute(dispute));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      if (msg === 'dispute_not_found') return reply.code(404).send({ error: msg });
+      if (msg === 'dispute_already_resolved') return reply.code(400).send({ error: msg });
+      throw err;
+    }
+  });
 }
 
 function serializeDispute(d: any) {
