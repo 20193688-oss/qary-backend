@@ -201,6 +201,24 @@ export async function registerWalletRoutes(app: FastifyInstance, prisma: PrismaC
     }
   });
 
+  app.post('/api/wallets/:currency/close', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { currency } = req.params as { currency: string };
+    try {
+      const wallet = await wallets.close(req.auth!.userId, currency);
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'user', eventType: 'wallet.closed',
+        payload: { currency }, requestId: String(req.id), ip: req.ip,
+      });
+      return serializeWallet(wallet);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      if (msg === 'wallet_not_found') return reply.code(404).send({ error: msg });
+      if (msg === 'already_closed') return reply.code(400).send({ error: msg });
+      if (msg === 'balance_not_zero') return reply.code(400).send({ error: msg });
+      throw err;
+    }
+  });
+
   app.get('/api/wallets/:currency/transactions', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { currency } = req.params as { currency: string };
     const query = req.query as { limit?: string; offset?: string };

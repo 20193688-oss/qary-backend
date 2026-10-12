@@ -50,9 +50,13 @@ export class SubscriptionService {
     return this.prisma.subscription.findUnique({ where: { id: subscriptionId } });
   }
 
-  async listByUser(userId: string) {
+  async listByUser(userId: string, opts?: { status?: string; limit?: number; offset?: number }) {
+    const where: Record<string, unknown> = { userId };
+    if (opts?.status) where.status = opts.status;
     return this.prisma.subscription.findMany({
-      where: { userId },
+      where,
+      take: Math.min(opts?.limit ?? 20, 100),
+      skip: opts?.offset ?? 0,
       orderBy: { createdAt: 'desc' },
     });
   }

@@ -44,6 +44,16 @@ export async function registerDisputeRoutes(app: FastifyInstance, prisma: Prisma
     return list.map(serializeDispute);
   });
 
+  app.get('/api/disputes/all', { preHandler: [app.requireAuth] }, async (req) => {
+    const query = req.query as { limit?: string; offset?: string; status?: string };
+    const list = await disputes.listAll({
+      status: query.status,
+      limit: Math.min(Number(query.limit ?? 20), 100),
+      offset: Number(query.offset ?? 0),
+    });
+    return list.map(serializeDispute);
+  });
+
   app.get('/api/disputes/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const dispute = await disputes.getById(id);

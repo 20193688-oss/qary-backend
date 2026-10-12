@@ -65,6 +65,27 @@ export async function registerKycRoutes(app: FastifyInstance, prisma: PrismaClie
     };
   });
 
+  app.get('/api/kyc/all', { preHandler: [app.requireAuth] }, async (req) => {
+    const query = req.query as { limit?: string; offset?: string; status?: string };
+    const list = await kyc.listAll({
+      status: query.status,
+      limit: Math.min(Number(query.limit ?? 20), 100),
+      offset: Number(query.offset ?? 0),
+    });
+    return list.map((p: any) => ({
+      id: p.id,
+      userId: p.userId,
+      status: p.status,
+      documentType: p.documentType,
+      documentCountry: p.documentCountry,
+      firstName: p.firstName,
+      lastName: p.lastName,
+      verifiedAt: p.verifiedAt,
+      riskScore: p.riskScore,
+      createdAt: p.createdAt,
+    }));
+  });
+
   app.post('/api/kyc/approve', { preHandler: [app.requireAuth] }, async (req, reply) => {
     try {
       const profile = await kyc.approve(req.auth!.userId, req.auth!.userId);

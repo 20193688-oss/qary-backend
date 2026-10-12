@@ -37,7 +37,12 @@ export async function registerSubscriptionRoutes(app: FastifyInstance, prisma: P
   });
 
   app.get('/api/subscriptions', { preHandler: [app.requireAuth] }, async (req) => {
-    const list = await subscriptions.listByUser(req.auth!.userId);
+    const query = req.query as { limit?: string; offset?: string; status?: string };
+    const list = await subscriptions.listByUser(req.auth!.userId, {
+      status: query.status,
+      limit: Math.min(Number(query.limit ?? 20), 100),
+      offset: Number(query.offset ?? 0),
+    });
     return list.map(serializeSub);
   });
 
