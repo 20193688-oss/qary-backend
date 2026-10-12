@@ -203,6 +203,40 @@ export class InvoiceService {
     };
   }
 
+  async getAgingReport(senderId: string) {
+    const invoices = await this.prisma.invoice.findMany({ where: { senderId } });
+    const now = new Date();
+    const buckets = { current: [] as any[], overdue1to30: [] as any[], overdue31to60: [] as any[], overdue61to90: [] as any[], overdue90plus: [] as any[] };
+    let totalOutstanding = BigInt(0);
+
+    for (const inv of invoices) {
+      if (inv.status === 'PAID' || inv.status === 'CANCELLED' || inv.status === 'VOIDED') continue;
+      totalOutstanding += inv.totalAmount;
+      const entry = { id: inv.id, number: inv.number, currency: inv.currency, totalAmount: inv.totalAmount, status: inv.status, dueDate: inv.dueDate, createdAt: inv.createdAt };
+
+      if (!inv.dueDate || inv.dueDate >= now) {
+        buckets.current.push(entry);
+      } else {
+        const daysOverdue = Math.floor((now.getTime() - inv.dueDate.getTime()) / (1000 * 60 * 60 * 24));
+        if (daysOverdue <= 30) buckets.overdue1to30.push(entry);
+        else if (daysOverdue <= 60) buckets.overdue31to60.push(entry);
+        else if (daysOverdue <= 90) buckets.overdue61to90.push(entry);
+        else buckets.overdue90plus.push(entry);
+      }
+    }
+
+    return {
+      totalOutstanding,
+      buckets: {
+        current: { count: buckets.current.length, items: buckets.current },
+        overdue1to30: { count: buckets.overdue1to30.length, items: buckets.overdue1to30 },
+        overdue31to60: { count: buckets.overdue31to60.length, items: buckets.overdue31to60 },
+        overdue61to90: { count: buckets.overdue61to90.length, items: buckets.overdue61to90 },
+        overdue90plus: { count: buckets.overdue90plus.length, items: buckets.overdue90plus },
+      },
+    };
+  }
+
   private getDefaultTaxRate(country: string): number {
     const rates: Record<string, number> = {
       PE: 0.18, // IGV

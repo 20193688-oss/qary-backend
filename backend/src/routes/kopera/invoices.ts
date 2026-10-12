@@ -64,6 +64,24 @@ export async function registerInvoiceRoutes(app: FastifyInstance, prisma: Prisma
     };
   });
 
+  app.get('/api/invoices/aging', { preHandler: [app.requireAuth] }, async (req) => {
+    const report = await invoices.getAgingReport(req.auth!.userId);
+    const serializeBucket = (bucket: any) => ({
+      count: bucket.count,
+      items: bucket.items.map((i: any) => ({ ...i, totalAmount: i.totalAmount.toString() })),
+    });
+    return {
+      totalOutstanding: report.totalOutstanding.toString(),
+      buckets: {
+        current: serializeBucket(report.buckets.current),
+        overdue1to30: serializeBucket(report.buckets.overdue1to30),
+        overdue31to60: serializeBucket(report.buckets.overdue31to60),
+        overdue61to90: serializeBucket(report.buckets.overdue61to90),
+        overdue90plus: serializeBucket(report.buckets.overdue90plus),
+      },
+    };
+  });
+
   app.get('/api/invoices', { preHandler: [app.requireAuth] }, async (req) => {
     const query = req.query as { status?: string; limit?: string; offset?: string };
     const list = await invoices.listBySender(req.auth!.userId, {

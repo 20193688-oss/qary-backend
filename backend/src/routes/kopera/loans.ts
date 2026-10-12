@@ -58,6 +58,15 @@ export async function registerLoanRoutes(app: FastifyInstance, prisma: PrismaCli
     };
   });
 
+  app.get('/api/loans/overdue-repayments', { preHandler: [app.requireAuth] }, async (req) => {
+    const repayments = await loans.getOverdueRepayments(req.auth!.userId);
+    return repayments.map((r: any) => ({
+      ...r,
+      amount: r.amount.toString(),
+      paidAmount: r.paidAmount?.toString() ?? '0',
+    }));
+  });
+
   app.get('/api/loans', { preHandler: [app.requireAuth] }, async (req) => {
     const list = await loans.listByUser(req.auth!.userId);
     return list.map(serializeLoan);
