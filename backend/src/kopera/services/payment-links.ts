@@ -95,6 +95,26 @@ export class PaymentLinkService {
     };
   }
 
+  async getExpiringSoon(userId: string, withinDays: number = 7) {
+    const links = await this.prisma.paymentLink.findMany({ where: { userId } });
+    const now = new Date();
+    const cutoff = new Date(now.getTime() + withinDays * 24 * 60 * 60 * 1000);
+
+    return links
+      .filter((l: any) => l.status === 'active' && l.expiresAt && l.expiresAt > now && l.expiresAt <= cutoff)
+      .map((l: any) => ({
+        id: l.id,
+        code: l.code,
+        amount: l.amount,
+        currency: l.currency,
+        description: l.description,
+        expiresAt: l.expiresAt,
+        daysRemaining: Math.ceil((l.expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)),
+        timesUsed: l.timesUsed,
+      }))
+      .sort((a: any, b: any) => a.daysRemaining - b.daysRemaining);
+  }
+
   async deactivate(id: string, userId: string) {
     const link = await this.prisma.paymentLink.findUnique({ where: { id } });
     if (!link) throw new Error('link_not_found');

@@ -65,6 +65,23 @@ export async function registerSavingsGoalRoutes(app: FastifyInstance, prisma: Pr
     };
   });
 
+  app.get('/api/savings-goals/:id/progress', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      const progress = await svc.getGoalProgress(id, req.auth!.userId);
+      return {
+        ...progress,
+        currentAmount: progress.currentAmount.toString(),
+        targetAmount: progress.targetAmount.toString(),
+        remaining: progress.remaining.toString(),
+      };
+    } catch (err: any) {
+      if (err.message === 'goal_not_found') return reply.code(404).send({ error: err.message });
+      if (err.message === 'forbidden') return reply.code(403).send({ error: err.message });
+      throw err;
+    }
+  });
+
   app.get('/api/savings-goals/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const goal = await svc.getById(id);

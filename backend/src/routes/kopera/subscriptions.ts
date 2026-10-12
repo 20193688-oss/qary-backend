@@ -79,6 +79,18 @@ export async function registerSubscriptionRoutes(app: FastifyInstance, prisma: P
     };
   });
 
+  app.get('/api/subscriptions/renewals', { preHandler: [app.requireAuth] }, async (req) => {
+    const countdown = await subscriptions.getRenewalCountdown(req.auth!.userId);
+    return countdown.map((r: any) => ({
+      subscriptionId: r.subscriptionId,
+      planName: r.planName,
+      amount: r.amount.toString(),
+      currency: r.currency,
+      nextBillingDate: r.nextBillingDate,
+      daysUntilRenewal: r.daysUntilRenewal,
+    }));
+  });
+
   app.get('/api/subscriptions/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const sub = await subscriptions.getById(id);

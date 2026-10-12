@@ -125,6 +125,35 @@ export class SavingsGoalService {
     };
   }
 
+  async getGoalProgress(id: string, userId: string) {
+    const goal = await this.prisma.savingsGoal.findUnique({ where: { id } });
+    if (!goal) throw new Error('goal_not_found');
+    if (goal.userId !== userId) throw new Error('forbidden');
+
+    const progressPercent = goal.targetAmount > BigInt(0)
+      ? Math.min(100, Math.round(Number(goal.currentAmount * BigInt(10000) / goal.targetAmount)) / 100)
+      : 0;
+
+    const remaining = goal.targetAmount - goal.currentAmount;
+    let daysRemaining: number | null = null;
+    if (goal.deadline) {
+      daysRemaining = Math.max(0, Math.ceil((goal.deadline.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+    }
+
+    return {
+      goalId: goal.id,
+      name: goal.name,
+      currentAmount: goal.currentAmount,
+      targetAmount: goal.targetAmount,
+      remaining: remaining > BigInt(0) ? remaining : BigInt(0),
+      currency: goal.currency,
+      progressPercent,
+      status: goal.status,
+      deadline: goal.deadline,
+      daysRemaining,
+    };
+  }
+
   async archive(id: string, userId: string) {
     const goal = await this.prisma.savingsGoal.findUnique({ where: { id } });
     if (!goal) throw new Error('goal_not_found');

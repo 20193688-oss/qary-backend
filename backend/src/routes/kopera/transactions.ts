@@ -80,6 +80,29 @@ export async function registerTransactionRoutes(app: FastifyInstance, prisma: Pr
       .send(header + rows);
   });
 
+  app.get('/api/transaction-history/monthly/:currency', { preHandler: [app.requireAuth] }, async (req) => {
+    const { currency } = req.params as { currency: string };
+    const query = req.query as { year?: string };
+    const year = Number(query.year ?? new Date().getFullYear());
+    const breakdown = await svc.getMonthlyBreakdown(req.auth!.userId, currency, year);
+    return breakdown.map((m) => ({
+      month: m.month,
+      totalIn: m.totalIn.toString(),
+      totalOut: m.totalOut.toString(),
+      transactionCount: m.transactionCount,
+    }));
+  });
+
+  app.get('/api/transaction-history/distribution', { preHandler: [app.requireAuth] }, async (req) => {
+    const query = req.query as { currency?: string };
+    const dist = await svc.getTypeDistribution(req.auth!.userId, query.currency);
+    const byType: Record<string, { count: number; totalAmount: string }> = {};
+    for (const [type, data] of Object.entries(dist.byType)) {
+      byType[type] = { count: data.count, totalAmount: data.totalAmount.toString() };
+    }
+    return { totalTransactions: dist.totalTransactions, byType };
+  });
+
   app.get('/api/transaction-history/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const txn = await svc.getTransaction(id, req.auth!.userId);
