@@ -53,6 +53,15 @@ export async function registerUserProfileRoutes(app: FastifyInstance, prisma: Pr
     }
   });
 
+  app.get('/api/profile/account-overview', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    try {
+      return await svc.getAccountOverview(req.auth!.userId);
+    } catch (e: any) {
+      if (e.message === 'user_not_found') return reply.code(404).send({ error: e.message });
+      throw e;
+    }
+  });
+
   app.get('/api/profile/security-activity', { preHandler: [app.requireAuth] }, async (req) => {
     const query = req.query as { limit?: string };
     const limit = Math.min(Number(query.limit ?? 20), 100);

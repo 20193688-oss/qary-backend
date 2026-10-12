@@ -87,6 +87,10 @@ export async function registerKycRoutes(app: FastifyInstance, prisma: PrismaClie
     }
   });
 
+  app.get('/api/kyc/compliance-summary', { preHandler: [app.requireAuth] }, async (req) => {
+    return kyc.getComplianceSummary(req.auth!.userId);
+  });
+
   app.get('/api/kyc/all', { preHandler: [app.requireAuth] }, async (req) => {
     const query = req.query as { limit?: string; offset?: string; status?: string };
     const list = await kyc.listAll({

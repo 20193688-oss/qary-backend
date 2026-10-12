@@ -99,6 +99,24 @@ export async function registerScheduledTransferRoutes(app: FastifyInstance, pris
     };
   });
 
+  app.get('/api/scheduled-transfers/reliability-report', { preHandler: [app.requireAuth] }, async (req) => {
+    const result = await svc.getReliabilityReport(req.auth!.userId);
+    const committedByCurrency: Record<string, string> = {};
+    for (const [cur, amt] of Object.entries(result.totalCommittedByCurrency)) {
+      committedByCurrency[cur] = amt.toString();
+    }
+    return {
+      totalScheduled: result.totalScheduled,
+      activeCount: result.activeCount,
+      completedCount: result.completedCount,
+      cancelledCount: result.cancelledCount,
+      totalExecutions: result.totalExecutions,
+      completionRate: result.completionRate,
+      totalCommittedByCurrency: committedByCurrency,
+      topRecipients: result.topRecipients,
+    };
+  });
+
   app.get('/api/scheduled-transfers/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const st = await svc.getById(id);

@@ -254,6 +254,39 @@ export class WalletService {
     };
   }
 
+  async getCashFlowReport(userId: string) {
+    const txns = await this.prisma.transaction.findMany({ where: { userId, status: 'COMPLETED' } });
+
+    const byCurrency: Record<string, { inflow: bigint; outflow: bigint; net: bigint; count: number }> = {};
+
+    for (const t of txns) {
+      if (!byCurrency[t.currency]) {
+        byCurrency[t.currency] = { inflow: BigInt(0), outflow: BigInt(0), net: BigInt(0), count: 0 };
+      }
+      const entry = byCurrency[t.currency];
+      entry.count++;
+
+      if (t.type === 'DEPOSIT' || (t.type === 'TRANSFER' && (t as any).receiverWalletId)) {
+        entry.inflow += t.amount;
+      }
+      if (t.type === 'WITHDRAWAL' || (t.type === 'TRANSFER' && (t as any).senderWalletId)) {
+        entry.outflow += t.amount;
+      }
+    }
+
+    for (const entry of Object.values(byCurrency)) {
+      entry.net = entry.inflow - entry.outflow;
+    }
+
+    const totalTransactions = txns.length;
+    const byType: Record<string, number> = {};
+    for (const t of txns) {
+      byType[t.type] = (byType[t.type] ?? 0) + 1;
+    }
+
+    return { totalTransactions, byCurrency, byType };
+  }
+
   async freeze(userId: string, currency: string) {
     const wallet = await this.getWallet(userId, currency);
     if (!wallet) throw new Error('wallet_not_found');
