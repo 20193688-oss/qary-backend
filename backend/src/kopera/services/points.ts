@@ -192,6 +192,59 @@ export class PointsService {
     };
   }
 
+  async getRedemptionAnalysis(userId: string) {
+    const pts = await this.getOrCreate(userId);
+    const history = await this.prisma.pointsHistory.findMany({ where: { pointsId: pts.id } });
+
+    let totalEarned = 0;
+    let totalRedeemed = 0;
+    let earnCount = 0;
+    let redeemCount = 0;
+    const byMonth: Record<string, { earned: number; redeemed: number }> = {};
+
+    for (const h of history) {
+      const month = new Date(h.createdAt).toISOString().slice(0, 7);
+      if (!byMonth[month]) byMonth[month] = { earned: 0, redeemed: 0 };
+
+      if (h.type === 'EARN') {
+        totalEarned += h.amount;
+        earnCount++;
+        byMonth[month].earned += h.amount;
+      } else {
+        totalRedeemed += Math.abs(h.amount);
+        redeemCount++;
+        byMonth[month].redeemed += Math.abs(h.amount);
+      }
+    }
+
+    const redemptionRate = totalEarned > 0
+      ? Math.round((totalRedeemed / totalEarned) * 10000) / 100
+      : 0;
+    const avgEarnAmount = earnCount > 0 ? Math.round(totalEarned / earnCount) : 0;
+    const avgRedeemAmount = redeemCount > 0 ? Math.round(totalRedeemed / redeemCount) : 0;
+
+    const months = Object.keys(byMonth).sort();
+    const trend = months.map((m) => ({
+      month: m,
+      earned: byMonth[m].earned,
+      redeemed: byMonth[m].redeemed,
+      net: byMonth[m].earned - byMonth[m].redeemed,
+    }));
+
+    return {
+      balance: pts.balance,
+      tier: pts.tier,
+      totalEarned,
+      totalRedeemed,
+      redemptionRate,
+      earnCount,
+      redeemCount,
+      avgEarnAmount,
+      avgRedeemAmount,
+      trend,
+    };
+  }
+
   private calculateTier(lifetimeEarned: number): string {
     if (lifetimeEarned >= TIER_THRESHOLDS.DIAMOND) return 'DIAMOND';
     if (lifetimeEarned >= TIER_THRESHOLDS.PLATINUM) return 'PLATINUM';

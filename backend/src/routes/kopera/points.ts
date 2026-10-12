@@ -32,6 +32,10 @@ export async function registerPointsRoutes(app: FastifyInstance, prisma: PrismaC
     return points.getTierProgress(req.auth!.userId);
   });
 
+  app.get('/api/points/redemption-analysis', { preHandler: [app.requireAuth] }, async (req) => {
+    return points.getRedemptionAnalysis(req.auth!.userId);
+  });
+
   app.get('/api/points/history', { preHandler: [app.requireAuth] }, async (req) => {
     const query = req.query as { limit?: string; offset?: string; type?: string };
     return points.getHistory(req.auth!.userId, {

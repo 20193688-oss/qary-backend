@@ -175,6 +175,52 @@ export class ReferralService {
     };
   }
 
+  async getReferralROI(userId: string) {
+    const referral = await this.prisma.referral.findFirst({ where: { referrerId: userId } });
+    if (!referral) {
+      return { hasCode: false, signupCount: 0, rewardedCount: 0, totalPointsEarned: 0, pointsPerSignup: 0, pointsPerReward: 0, conversionRate: 0 };
+    }
+
+    const signups = await this.prisma.referralSignup.findMany({ where: { referralId: referral.id } });
+    const rewarded = signups.filter((s: any) => s.status === 'rewarded');
+    const pending = signups.filter((s: any) => s.status === 'signed_up');
+
+    const pointsPerSignup = referral.signupCount > 0
+      ? Math.round(referral.totalPointsEarned / referral.signupCount)
+      : 0;
+    const pointsPerReward = referral.rewardedCount > 0
+      ? Math.round(referral.totalPointsEarned / referral.rewardedCount)
+      : 0;
+    const conversionRate = referral.signupCount > 0
+      ? Math.round((referral.rewardedCount / referral.signupCount) * 10000) / 100
+      : 0;
+
+    let avgConversionTimeMs: number | null = null;
+    const conversionTimes: number[] = [];
+    for (const s of rewarded) {
+      if ((s as any).rewardedAt && s.createdAt) {
+        conversionTimes.push(new Date((s as any).rewardedAt).getTime() - new Date(s.createdAt).getTime());
+      }
+    }
+    if (conversionTimes.length > 0) {
+      avgConversionTimeMs = Math.round(conversionTimes.reduce((a, b) => a + b, 0) / conversionTimes.length);
+    }
+
+    return {
+      hasCode: true,
+      code: referral.code,
+      status: referral.status,
+      signupCount: referral.signupCount,
+      rewardedCount: referral.rewardedCount,
+      pendingCount: pending.length,
+      totalPointsEarned: referral.totalPointsEarned,
+      pointsPerSignup,
+      pointsPerReward,
+      conversionRate,
+      avgConversionTimeMs,
+    };
+  }
+
   async listAll(opts?: { status?: string; limit?: number; offset?: number }) {
     const where: Record<string, unknown> = {};
     if (opts?.status) where.status = opts.status;

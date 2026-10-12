@@ -62,6 +62,26 @@ export async function registerWalletRoutes(app: FastifyInstance, prisma: PrismaC
     return { totalTransactions: result.totalTransactions, byCurrency, byType: result.byType };
   });
 
+  app.get('/api/wallets/consolidation-report', { preHandler: [app.requireAuth] }, async (req) => {
+    const result = await wallets.getConsolidationReport(req.auth!.userId);
+    const byCurrency: Record<string, any> = {};
+    for (const [cur, v] of Object.entries(result.byCurrency)) {
+      byCurrency[cur] = { count: v.count, totalBalance: v.totalBalance.toString(), walletIds: v.walletIds };
+    }
+    return {
+      totalWallets: result.totalWallets,
+      activeCount: result.activeCount,
+      frozenCount: result.frozenCount,
+      closedCount: result.closedCount,
+      zeroBalanceCount: result.zeroBalanceCount,
+      lowBalanceCount: result.lowBalanceCount,
+      totalBalance: result.totalBalance.toString(),
+      totalHold: result.totalHold.toString(),
+      byCurrency,
+      recommendations: result.recommendations,
+    };
+  });
+
   app.get('/api/wallets', { preHandler: [app.requireAuth] }, async (req) => {
     return wallets.getAllBalances(req.auth!.userId);
   });

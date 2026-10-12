@@ -224,6 +224,59 @@ export class ScheduledTransferService {
     };
   }
 
+  async getCostProjection(userId: string, periodDays = 90) {
+    const active = await this.prisma.scheduledTransfer.findMany({
+      where: { userId, status: 'active' },
+    });
+
+    const projectedByCurrency: Record<string, bigint> = {};
+    const details: Array<{
+      id: string;
+      toUserId: string;
+      currency: string;
+      amount: bigint;
+      frequency: string;
+      executionsInPeriod: number;
+      projectedCost: bigint;
+    }> = [];
+
+    for (const s of active) {
+      if (s.frequency === 'once') {
+        const now = new Date();
+        const endDate = new Date(now.getTime() + periodDays * 24 * 60 * 60 * 1000);
+        const inPeriod = s.nextExecutionDate && s.nextExecutionDate >= now && s.nextExecutionDate <= endDate && s.executionCount === 0 ? 1 : 0;
+        const cost = s.amount * BigInt(inPeriod);
+        projectedByCurrency[s.currency] = (projectedByCurrency[s.currency] ?? BigInt(0)) + cost;
+        details.push({
+          id: s.id, toUserId: s.toUserId, currency: s.currency,
+          amount: s.amount, frequency: s.frequency,
+          executionsInPeriod: inPeriod, projectedCost: cost,
+        });
+        continue;
+      }
+
+      const intervalMs = INTERVAL_MS[s.frequency] ?? 0;
+      if (intervalMs === 0) continue;
+      const periodMs = periodDays * 24 * 60 * 60 * 1000;
+      const executionsInPeriod = Math.floor(periodMs / intervalMs);
+      const cost = s.amount * BigInt(executionsInPeriod);
+
+      projectedByCurrency[s.currency] = (projectedByCurrency[s.currency] ?? BigInt(0)) + cost;
+      details.push({
+        id: s.id, toUserId: s.toUserId, currency: s.currency,
+        amount: s.amount, frequency: s.frequency,
+        executionsInPeriod, projectedCost: cost,
+      });
+    }
+
+    return {
+      periodDays,
+      activeTransfers: active.length,
+      projectedByCurrency,
+      details,
+    };
+  }
+
   async processDueTransfers() {
     const now = new Date();
     const due = await this.prisma.scheduledTransfer.findMany({
