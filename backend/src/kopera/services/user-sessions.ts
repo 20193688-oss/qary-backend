@@ -91,6 +91,40 @@ export class UserSessionService {
     };
   }
 
+  async getDeviceReport(userId: string) {
+    const all = await this.prisma.userSession.findMany({ where: { userId } });
+    const byDevice: Record<string, { deviceName: string | null; sessionCount: number; ips: Set<string>; lastSeen: Date | null }> = {};
+
+    for (const s of all) {
+      if (!byDevice[s.deviceId]) {
+        byDevice[s.deviceId] = { deviceName: (s as any).deviceName ?? null, sessionCount: 0, ips: new Set(), lastSeen: null };
+      }
+      const entry = byDevice[s.deviceId];
+      entry.sessionCount++;
+      if (s.ip) entry.ips.add(s.ip);
+      const activity = s.lastActiveAt ?? s.createdAt;
+      if (!entry.lastSeen || activity > entry.lastSeen) entry.lastSeen = activity;
+    }
+
+    const devices = Object.entries(byDevice).map(([deviceId, data]) => ({
+      deviceId,
+      deviceName: data.deviceName,
+      sessionCount: data.sessionCount,
+      uniqueIps: data.ips.size,
+      lastSeen: data.lastSeen,
+      suspicious: data.ips.size > 10,
+    }));
+
+    const suspiciousCount = devices.filter((d) => d.suspicious).length;
+
+    return {
+      totalDevices: devices.length,
+      totalSessions: all.length,
+      suspiciousDevices: suspiciousCount,
+      devices,
+    };
+  }
+
   async cleanupExpired() {
     const now = new Date();
     const expired = await this.prisma.userSession.findMany({

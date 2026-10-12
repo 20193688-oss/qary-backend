@@ -147,6 +147,34 @@ export class BankAccountService {
     };
   }
 
+  async getPayoutReadiness(userId: string) {
+    const accounts = await this.prisma.bankAccount.findMany({ where: { userId } });
+
+    const readyAccounts: Array<{ id: string; bankName: string; rail: string; country: string; currency: string }> = [];
+    const pendingAccounts: Array<{ id: string; bankName: string; reason: string }> = [];
+
+    for (const a of accounts) {
+      if (a.isVerified) {
+        readyAccounts.push({ id: a.id, bankName: a.bankName, rail: a.rail, country: a.country, currency: a.currency });
+      } else {
+        pendingAccounts.push({ id: a.id, bankName: a.bankName, reason: 'not_verified' });
+      }
+    }
+
+    const countryCoverage = [...new Set(readyAccounts.map((a) => a.country))];
+    const railCoverage = [...new Set(readyAccounts.map((a) => a.rail))];
+
+    return {
+      totalAccounts: accounts.length,
+      readyCount: readyAccounts.length,
+      pendingCount: pendingAccounts.length,
+      readyAccounts,
+      pendingAccounts,
+      countryCoverage,
+      railCoverage,
+    };
+  }
+
   async removeAccount(id: string, userId: string) {
     const acct = await this.prisma.bankAccount.findUnique({ where: { id } });
     if (!acct) throw new Error('account_not_found');

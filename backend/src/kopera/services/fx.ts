@@ -189,6 +189,49 @@ export class FxService {
     });
   }
 
+  async getSpreadAnalysis(userId: string) {
+    const txns = await this.prisma.transaction.findMany({
+      where: { userId, type: 'FX_CONVERSION', status: 'COMPLETED' },
+    });
+
+    if (txns.length === 0) {
+      return { totalConversions: 0, avgSpreadBps: 0, totalVolume: BigInt(0), byPair: {}, bestRate: null, worstRate: null };
+    }
+
+    const byPair: Record<string, { count: number; totalVolume: bigint; rates: number[] }> = {};
+    let bestRate: { pair: string; rate: number } | null = null;
+    let worstRate: { pair: string; rate: number } | null = null;
+
+    for (const t of txns) {
+      const src = (t as any).fxSourceCurrency ?? t.currency;
+      const tgt = (t as any).fxTargetCurrency ?? '';
+      const pair = `${src}/${tgt}`;
+      const rate = (t as any).fxRate ?? 0;
+
+      if (!byPair[pair]) byPair[pair] = { count: 0, totalVolume: BigInt(0), rates: [] };
+      byPair[pair].count++;
+      byPair[pair].totalVolume += (t as any).fxSourceAmount ?? BigInt(0);
+      if (rate > 0) byPair[pair].rates.push(rate);
+
+      if (rate > 0) {
+        if (!bestRate || rate > bestRate.rate) bestRate = { pair, rate };
+        if (!worstRate || rate < worstRate.rate) worstRate = { pair, rate };
+      }
+    }
+
+    let totalVolume = BigInt(0);
+    const pairSummary: Record<string, { count: number; totalVolume: bigint; avgRate: number }> = {};
+    for (const [pair, data] of Object.entries(byPair)) {
+      totalVolume += data.totalVolume;
+      const avgRate = data.rates.length > 0
+        ? Math.round((data.rates.reduce((s, r) => s + r, 0) / data.rates.length) * 1e6) / 1e6
+        : 0;
+      pairSummary[pair] = { count: data.count, totalVolume: data.totalVolume, avgRate };
+    }
+
+    return { totalConversions: txns.length, totalVolume, byPair: pairSummary, bestRate, worstRate };
+  }
+
   async storeRate(baseCurrency: string, quoteCurrency: string, bid: number, ask: number, source: string) {
     const mid = (bid + ask) / 2;
     const spread = ask - bid;
