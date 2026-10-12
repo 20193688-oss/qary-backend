@@ -46,9 +46,11 @@ export class ScheduledTransferService {
     });
   }
 
-  async listByUser(userId: string) {
+  async listByUser(userId: string, opts?: { status?: string }) {
+    const where: Record<string, unknown> = { userId };
+    if (opts?.status) where.status = opts.status;
     return this.prisma.scheduledTransfer.findMany({
-      where: { userId },
+      where,
       orderBy: { createdAt: 'desc' },
     });
   }

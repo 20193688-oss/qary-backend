@@ -24,9 +24,11 @@ export class NotificationService {
     });
   }
 
-  async listByUser(userId: string, opts: { limit?: number; offset?: number; unreadOnly?: boolean } = {}) {
+  async listByUser(userId: string, opts: { limit?: number; offset?: number; unreadOnly?: boolean; type?: string; channel?: string } = {}) {
     const where: Record<string, unknown> = { userId };
     if (opts.unreadOnly) where.readAt = null;
+    if (opts.type) where.type = opts.type;
+    if (opts.channel) where.channel = opts.channel;
     return this.prisma.notification.findMany({
       where,
       take: Math.min(opts.limit ?? 20, 100),
@@ -80,6 +82,12 @@ export class NotificationService {
     return this.prisma.notification.update({
       where: { id },
       data: { failedAt: new Date(), failReason: reason },
+    });
+  }
+
+  async deleteAllRead(userId: string) {
+    return this.prisma.notification.deleteMany({
+      where: { userId, readAt: { not: null } },
     });
   }
 

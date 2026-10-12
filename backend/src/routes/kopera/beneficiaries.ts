@@ -47,6 +47,13 @@ export async function registerBeneficiaryRoutes(app: FastifyInstance, prisma: Pr
     return list.map(serialize);
   });
 
+  app.get('/api/beneficiaries/search', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const query = req.query as { q?: string };
+    if (!query.q) return reply.code(400).send({ error: 'query_required' });
+    const results = await svc.search(req.auth!.userId, query.q);
+    return results.map(serialize);
+  });
+
   app.get('/api/beneficiaries/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const b = await svc.getById(id);

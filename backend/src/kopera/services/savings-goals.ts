@@ -94,6 +94,37 @@ export class SavingsGoalService {
     return this.prisma.savingsGoal.update({ where: { id }, data: updateData });
   }
 
+  async getSummary(userId: string) {
+    const goals = await this.prisma.savingsGoal.findMany({ where: { userId } });
+
+    let totalTarget = BigInt(0);
+    let totalSaved = BigInt(0);
+    const byStatus: Record<string, number> = { active: 0, completed: 0, archived: 0 };
+    let nearestDeadline: Date | null = null;
+
+    for (const g of goals) {
+      totalTarget += g.targetAmount;
+      totalSaved += g.currentAmount;
+      byStatus[g.status] = (byStatus[g.status] ?? 0) + 1;
+      if (g.status === 'active' && g.deadline) {
+        if (!nearestDeadline || g.deadline < nearestDeadline) {
+          nearestDeadline = g.deadline;
+        }
+      }
+    }
+
+    return {
+      totalGoals: goals.length,
+      totalTarget,
+      totalSaved,
+      overallProgress: totalTarget > BigInt(0)
+        ? Math.min(100, Math.round(Number(totalSaved * BigInt(10000) / totalTarget)) / 100)
+        : 0,
+      byStatus,
+      nearestDeadline,
+    };
+  }
+
   async archive(id: string, userId: string) {
     const goal = await this.prisma.savingsGoal.findUnique({ where: { id } });
     if (!goal) throw new Error('goal_not_found');

@@ -57,6 +57,15 @@ export class BeneficiaryService {
     });
   }
 
+  async search(userId: string, query: string) {
+    const all = await this.prisma.beneficiary.findMany({ where: { userId } });
+    const q = query.toLowerCase();
+    return all.filter((b: any) =>
+      b.nickname.toLowerCase().includes(q) ||
+      (b.recipientEmail && b.recipientEmail.toLowerCase().includes(q))
+    );
+  }
+
   async remove(beneficiaryId: string, userId: string) {
     const b = await this.prisma.beneficiary.findUnique({ where: { id: beneficiaryId } });
     if (!b) throw new Error('beneficiary_not_found');

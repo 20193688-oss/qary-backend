@@ -53,6 +53,18 @@ export async function registerSavingsGoalRoutes(app: FastifyInstance, prisma: Pr
     return list.map(serialize);
   });
 
+  app.get('/api/savings-goals/summary', { preHandler: [app.requireAuth] }, async (req) => {
+    const summary = await svc.getSummary(req.auth!.userId);
+    return {
+      totalGoals: summary.totalGoals,
+      totalTarget: summary.totalTarget.toString(),
+      totalSaved: summary.totalSaved.toString(),
+      overallProgress: summary.overallProgress,
+      byStatus: summary.byStatus,
+      nearestDeadline: summary.nearestDeadline,
+    };
+  });
+
   app.get('/api/savings-goals/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const goal = await svc.getById(id);
