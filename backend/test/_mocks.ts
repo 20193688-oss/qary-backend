@@ -112,12 +112,54 @@ const MODEL_DEFAULTS: Record<string, Record<string, unknown>> = {
     suggestion: null,
     savingsIfCut: null,
   },
+  userSession: {
+    deviceName: null,
+    userAgent: null,
+    revokedAt: null,
+  },
+  event: {
+    userId: null,
+    requestId: null,
+    ip: null,
+    userAgent: null,
+    agentId: null,
+    severity: null,
+  },
+  ledgerEntry: {
+    description: null,
+  },
 };
+
+const OPERATORS = new Set(['gt', 'gte', 'lt', 'lte', 'not', 'in', 'contains', 'equals']);
+
+function isOperatorObject(obj: Record<string, unknown>): boolean {
+  return Object.keys(obj).every(k => OPERATORS.has(k));
+}
+
+function applyOperator(rv: unknown, op: string, val: unknown): boolean {
+  if (op === 'not') return rv !== val;
+  if (op === 'in') return Array.isArray(val) && val.includes(rv);
+  if (op === 'contains') return typeof rv === 'string' && typeof val === 'string' && rv.includes(val);
+  if (op === 'equals') return rv === val;
+  const a = rv instanceof Date ? rv.getTime() : (typeof rv === 'bigint' ? Number(rv) : Number(rv));
+  const b = val instanceof Date ? val.getTime() : (typeof val === 'bigint' ? Number(val) : Number(val));
+  if (op === 'gt') return a > b;
+  if (op === 'gte') return a >= b;
+  if (op === 'lt') return a < b;
+  if (op === 'lte') return a <= b;
+  return true;
+}
 
 function matches(row: Row, where: Record<string, unknown>): boolean {
   for (const [k, v] of Object.entries(where)) {
     if (v && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date)) {
       const compound = v as Record<string, unknown>;
+      if (isOperatorObject(compound)) {
+        for (const [op, val] of Object.entries(compound)) {
+          if (!applyOperator(row[k], op, val)) return false;
+        }
+        continue;
+      }
       for (const [ck, cv] of Object.entries(compound)) {
         if (row[ck] !== cv) return false;
       }

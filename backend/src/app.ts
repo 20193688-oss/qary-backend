@@ -39,6 +39,9 @@ import { registerTokenizedCardRoutes } from './routes/kopera/tokenized-cards.js'
 import { registerBankAccountRoutes } from './routes/kopera/bank-accounts.js';
 import { registerTransactionRoutes } from './routes/kopera/transactions.js';
 import { registerAntExpenseRoutes } from './routes/kopera/ant-expenses.js';
+import { registerUserSessionRoutes } from './routes/kopera/user-sessions.js';
+import { registerEventRoutes } from './routes/kopera/events.js';
+import { registerLedgerRoutes } from './routes/kopera/ledger.js';
 
 export interface AppDeps {
   prisma: PrismaClient;
@@ -112,6 +115,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await registerBankAccountRoutes(app, deps.prisma);
   await registerTransactionRoutes(app, deps.prisma);
   await registerAntExpenseRoutes(app, deps.prisma);
+  await registerUserSessionRoutes(app, deps.prisma);
+  await registerEventRoutes(app, deps.prisma);
+  await registerLedgerRoutes(app, deps.prisma);
 
   return app;
 }
