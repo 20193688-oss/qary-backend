@@ -46,6 +46,22 @@ export async function registerSubscriptionRoutes(app: FastifyInstance, prisma: P
     return list.map(serializeSub);
   });
 
+  app.get('/api/subscriptions/summary', { preHandler: [app.requireAuth] }, async (req) => {
+    const summary = await subscriptions.getSpendingSummary(req.auth!.userId);
+    const monthlyBurn: Record<string, string> = {};
+    for (const [cur, amt] of Object.entries(summary.monthlyBurnByCurrency)) {
+      monthlyBurn[cur] = amt.toString();
+    }
+    return {
+      activeCount: summary.activeCount,
+      byStatus: summary.byStatus,
+      monthlyBurnByCurrency: monthlyBurn,
+      mostExpensive: summary.mostExpensive
+        ? { ...summary.mostExpensive, amount: summary.mostExpensive.amount.toString() }
+        : null,
+    };
+  });
+
   app.get('/api/subscriptions/upcoming', { preHandler: [app.requireAuth] }, async (req) => {
     const query = req.query as { days?: string };
     const days = Math.min(Number(query.days ?? 30), 365);

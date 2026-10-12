@@ -33,6 +33,22 @@ export class BankAccountService {
     return this.prisma.bankAccount.findUnique({ where: { id } });
   }
 
+  async updateAccount(id: string, userId: string, data: {
+    holderName?: string;
+    bankName?: string;
+    bankCode?: string;
+    accountType?: string;
+  }) {
+    const acct = await this.prisma.bankAccount.findUnique({ where: { id } });
+    if (!acct) throw new Error('account_not_found');
+    if (acct.userId !== userId) throw new Error('forbidden');
+
+    return this.prisma.bankAccount.update({
+      where: { id },
+      data,
+    });
+  }
+
   async setDefault(id: string, userId: string) {
     const acct = await this.prisma.bankAccount.findUnique({ where: { id } });
     if (!acct) throw new Error('account_not_found');

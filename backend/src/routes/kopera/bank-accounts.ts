@@ -57,6 +57,25 @@ export async function registerBankAccountRoutes(app: FastifyInstance, prisma: Pr
     return accounts.map(serialize);
   });
 
+  app.patch('/api/bank-accounts/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = z.object({
+      holderName: z.string().min(1).max(200).optional(),
+      bankName: z.string().min(1).max(200).optional(),
+      bankCode: z.string().optional(),
+      accountType: z.enum(['savings', 'checking']).optional(),
+    }).parse(req.body);
+
+    try {
+      const acct = await svc.updateAccount(id, req.auth!.userId, body);
+      return serialize(acct);
+    } catch (err: any) {
+      if (err.message === 'account_not_found') return reply.code(404).send({ error: err.message });
+      if (err.message === 'forbidden') return reply.code(403).send({ error: err.message });
+      throw err;
+    }
+  });
+
   app.get('/api/bank-accounts/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const acct = await svc.getAccount(id);

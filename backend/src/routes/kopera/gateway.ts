@@ -108,6 +108,18 @@ export async function registerGatewayRoutes(app: FastifyInstance, prisma: Prisma
     return reply.code(201).send(serializeGatewayPayment(gatewayPayment));
   });
 
+  app.get('/api/gateway/payments/stats', { preHandler: [app.requireAuth] }, async (req) => {
+    const stats = await gateway.getPaymentStats(req.auth!.userId);
+    return {
+      totalPayments: stats.totalPayments,
+      totalVolume: stats.totalVolume.toString(),
+      totalFees: stats.totalFees.toString(),
+      avgTransactionSize: stats.avgTransactionSize.toString(),
+      byMethod: stats.byMethod,
+      byStatus: stats.byStatus,
+    };
+  });
+
   app.get('/api/gateway/payments/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const gp = await gateway.findById(id);

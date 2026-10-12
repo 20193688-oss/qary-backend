@@ -121,6 +121,52 @@ export class SubscriptionService {
     });
   }
 
+  async getSpendingSummary(userId: string) {
+    const subs = await this.prisma.subscription.findMany({
+      where: { userId, status: 'active' },
+    });
+
+    const byCurrency: Record<string, bigint> = {};
+    const byStatus: Record<string, number> = {};
+    let mostExpensive: { planName: string; amount: bigint; currency: string } | null = null;
+
+    const allSubs = await this.prisma.subscription.findMany({ where: { userId } });
+    for (const s of allSubs) {
+      byStatus[s.status] = (byStatus[s.status] ?? 0) + 1;
+    }
+
+    const monthlyMultiplier: Record<string, number> = {
+      daily: 30,
+      weekly: 4,
+      monthly: 1,
+      yearly: 1,
+    };
+    const yearlyDivisor: Record<string, number> = {
+      yearly: 12,
+    };
+
+    for (const s of subs) {
+      const interval = s.interval as string;
+      const intervalCount = s.intervalCount ?? 1;
+      const mult = monthlyMultiplier[interval] ?? 1;
+      const div = yearlyDivisor[interval] ?? 1;
+      const monthlyAmount = (s.amount * BigInt(mult)) / (BigInt(intervalCount) * BigInt(div));
+
+      byCurrency[s.currency] = (byCurrency[s.currency] ?? BigInt(0)) + monthlyAmount;
+
+      if (!mostExpensive || s.amount > mostExpensive.amount) {
+        mostExpensive = { planName: s.planName, amount: s.amount, currency: s.currency };
+      }
+    }
+
+    return {
+      activeCount: subs.length,
+      byStatus,
+      monthlyBurnByCurrency: byCurrency,
+      mostExpensive,
+    };
+  }
+
   async getUpcomingBillings(userId: string, daysAhead = 30) {
     const cutoff = new Date(Date.now() + daysAhead * 24 * 60 * 60 * 1000);
     const subs = await this.prisma.subscription.findMany({
