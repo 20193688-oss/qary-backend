@@ -45,6 +45,7 @@ import { registerLedgerRoutes } from './routes/kopera/ledger.js';
 import { registerBusinessProfileRoutes } from './routes/kopera/business-profiles.js';
 import { registerLoanRepaymentRoutes } from './routes/kopera/loan-repayments.js';
 import { registerUserProfileRoutes } from './routes/kopera/user-profiles.js';
+import { registerDashboardRoutes } from './routes/kopera/dashboard.js';
 
 export interface AppDeps {
   prisma: PrismaClient;
@@ -124,6 +125,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await registerBusinessProfileRoutes(app, deps.prisma);
   await registerLoanRepaymentRoutes(app, deps.prisma);
   await registerUserProfileRoutes(app, deps.prisma);
+  await registerDashboardRoutes(app, deps.prisma);
 
   return app;
 }
