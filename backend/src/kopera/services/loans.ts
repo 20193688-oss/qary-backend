@@ -82,6 +82,19 @@ export class LoanService {
     });
   }
 
+  async reject(loanId: string, reason: string, rejectedBy: string) {
+    const loan = await this.prisma.loan.findUnique({ where: { id: loanId } });
+    if (!loan) throw new Error('loan_not_found');
+    if (loan.status !== 'APPLICATION' && loan.status !== 'UNDERWRITING') {
+      throw new Error('loan_not_pending');
+    }
+
+    return this.prisma.loan.update({
+      where: { id: loanId },
+      data: { status: 'REJECTED', rejectedReason: reason, rejectedBy },
+    });
+  }
+
   async getById(loanId: string) {
     return this.prisma.loan.findUnique({
       where: { id: loanId },

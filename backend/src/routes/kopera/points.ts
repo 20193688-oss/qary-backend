@@ -19,6 +19,23 @@ export async function registerPointsRoutes(app: FastifyInstance, prisma: PrismaC
     );
   });
 
+  app.post('/api/points/earn', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const body = z.object({
+      userId: z.string().min(1),
+      amount: z.number().int().positive(),
+      reason: z.string().min(1),
+      referenceId: z.string().optional(),
+    }).parse(req.body);
+
+    const result = await points.earn(body.userId, body.amount, body.reason, body.referenceId);
+    return reply.code(201).send({
+      userId: body.userId,
+      balance: result.balance,
+      tier: result.tier,
+      earned: body.amount,
+    });
+  });
+
   app.post('/api/points/redeem', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const body = z.object({
       amount: z.number().int().positive(),

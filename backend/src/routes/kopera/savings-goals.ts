@@ -60,6 +60,34 @@ export async function registerSavingsGoalRoutes(app: FastifyInstance, prisma: Pr
     return serialize(goal);
   });
 
+  app.patch('/api/savings-goals/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = z.object({
+      name: z.string().min(1).max(200).optional(),
+      targetAmount: z.number().positive().optional(),
+      deadline: z.string().datetime().nullable().optional(),
+    }).parse(req.body);
+
+    try {
+      const goal = await svc.update(id, req.auth!.userId, {
+        name: body.name,
+        targetAmount: body.targetAmount !== undefined ? BigInt(Math.round(body.targetAmount * 100)) : undefined,
+        deadline: body.deadline === null ? null : body.deadline ? new Date(body.deadline) : undefined,
+      });
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'user', eventType: 'savings_goal.updated',
+        payload: { goalId: id, ...body },
+        requestId: String(req.id), ip: req.ip,
+      });
+      return serialize(goal);
+    } catch (err: any) {
+      if (err.message === 'goal_not_found') return reply.code(404).send({ error: err.message });
+      if (err.message === 'forbidden') return reply.code(403).send({ error: err.message });
+      if (err.message === 'goal_archived') return reply.code(400).send({ error: err.message });
+      throw err;
+    }
+  });
+
   app.post('/api/savings-goals/:id/contribute', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const body = z.object({ amount: z.number().positive() }).parse(req.body);

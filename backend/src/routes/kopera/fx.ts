@@ -156,6 +156,38 @@ export async function registerFxRoutes(app: FastifyInstance, prisma: PrismaClien
     });
   });
 
+  app.post('/api/fx/rates', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const body = z.object({
+      baseCurrency: z.string().length(3),
+      quoteCurrency: z.string().length(3),
+      bid: z.number().positive(),
+      ask: z.number().positive(),
+      source: z.string().min(1).max(100),
+    }).parse(req.body);
+
+    if (body.bid >= body.ask) return reply.code(400).send({ error: 'bid_must_be_less_than_ask' });
+
+    const rate = await fx.storeRate(body.baseCurrency, body.quoteCurrency, body.bid, body.ask, body.source);
+
+    await audit(prisma, {
+      userId: req.auth!.userId, actor: 'admin', eventType: 'fx.rate_stored',
+      payload: { baseCurrency: body.baseCurrency, quoteCurrency: body.quoteCurrency, bid: body.bid, ask: body.ask },
+      requestId: String(req.id), ip: req.ip,
+    });
+
+    return reply.code(201).send({
+      id: rate.id,
+      baseCurrency: rate.baseCurrency,
+      quoteCurrency: rate.quoteCurrency,
+      bid: rate.bid,
+      ask: rate.ask,
+      mid: rate.mid,
+      spread: rate.spread,
+      source: rate.source,
+      validFrom: rate.validFrom,
+    });
+  });
+
   app.post('/api/fx/quote', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const body = z.object({
       amount: z.number().positive(),
