@@ -59,7 +59,8 @@ export async function registerScheduledTransferRoutes(app: FastifyInstance, pris
   });
 
   app.get('/api/scheduled-transfers', { preHandler: [app.requireAuth] }, async (req) => {
-    const list = await svc.listByUser(req.auth!.userId);
+    const query = req.query as { status?: string };
+    const list = await svc.listByUser(req.auth!.userId, { status: query.status });
     return list.map(serialize);
   });
 

@@ -46,6 +46,23 @@ export async function registerSubscriptionRoutes(app: FastifyInstance, prisma: P
     return list.map(serializeSub);
   });
 
+  app.get('/api/subscriptions/upcoming', { preHandler: [app.requireAuth] }, async (req) => {
+    const query = req.query as { days?: string };
+    const days = Math.min(Number(query.days ?? 30), 365);
+    const result = await subscriptions.getUpcomingBillings(req.auth!.userId, days);
+    return {
+      totalDue: result.totalDue.toString(),
+      count: result.count,
+      billings: result.billings.map((b: any) => ({
+        subscriptionId: b.subscriptionId,
+        planName: b.planName,
+        amount: b.amount.toString(),
+        currency: b.currency,
+        dueDate: b.dueDate,
+      })),
+    };
+  });
+
   app.get('/api/subscriptions/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const sub = await subscriptions.getById(id);

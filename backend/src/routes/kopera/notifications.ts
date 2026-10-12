@@ -36,11 +36,13 @@ export async function registerNotificationRoutes(app: FastifyInstance, prisma: P
   });
 
   app.get('/api/notifications', { preHandler: [app.requireAuth] }, async (req) => {
-    const query = req.query as { limit?: string; offset?: string; unreadOnly?: string };
+    const query = req.query as { limit?: string; offset?: string; unreadOnly?: string; type?: string; channel?: string };
     const list = await notifications.listByUser(req.auth!.userId, {
       limit: Math.min(Number(query.limit ?? 20), 100),
       offset: Number(query.offset ?? 0),
       unreadOnly: query.unreadOnly === 'true',
+      type: query.type,
+      channel: query.channel,
     });
     return list.map(serializeNotification);
   });

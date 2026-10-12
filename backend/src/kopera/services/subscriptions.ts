@@ -121,6 +121,34 @@ export class SubscriptionService {
     });
   }
 
+  async getUpcomingBillings(userId: string, daysAhead = 30) {
+    const cutoff = new Date(Date.now() + daysAhead * 24 * 60 * 60 * 1000);
+    const subs = await this.prisma.subscription.findMany({
+      where: { userId, status: 'active' },
+    });
+
+    const upcoming = subs
+      .filter((s: any) => s.nextBillingDate && s.nextBillingDate <= cutoff)
+      .sort((a: any, b: any) => a.nextBillingDate.getTime() - b.nextBillingDate.getTime());
+
+    let totalDue = BigInt(0);
+    for (const s of upcoming) {
+      totalDue += s.amount;
+    }
+
+    return {
+      totalDue,
+      count: upcoming.length,
+      billings: upcoming.map((s: any) => ({
+        subscriptionId: s.id,
+        planName: s.planName,
+        amount: s.amount,
+        currency: s.currency,
+        dueDate: s.nextBillingDate,
+      })),
+    };
+  }
+
   async processDueBillings() {
     const now = new Date();
     const due = await this.prisma.subscription.findMany({
