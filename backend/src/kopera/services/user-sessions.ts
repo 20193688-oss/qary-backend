@@ -64,6 +64,33 @@ export class UserSessionService {
     });
   }
 
+  async getSecurityOverview(userId: string) {
+    const all = await this.prisma.userSession.findMany({ where: { userId } });
+    let activeCount = 0;
+    let revokedCount = 0;
+    let expiredCount = 0;
+    const uniqueIps = new Set<string>();
+    const uniqueDevices = new Set<string>();
+    const now = new Date();
+
+    for (const s of all) {
+      if (s.revokedAt) revokedCount++;
+      else if (s.expiresAt && s.expiresAt <= now) expiredCount++;
+      else activeCount++;
+      if (s.ip) uniqueIps.add(s.ip);
+      if (s.deviceId) uniqueDevices.add(s.deviceId);
+    }
+
+    return {
+      totalSessions: all.length,
+      activeSessions: activeCount,
+      revokedSessions: revokedCount,
+      expiredSessions: expiredCount,
+      uniqueIps: uniqueIps.size,
+      uniqueDevices: uniqueDevices.size,
+    };
+  }
+
   async cleanupExpired() {
     const now = new Date();
     const expired = await this.prisma.userSession.findMany({

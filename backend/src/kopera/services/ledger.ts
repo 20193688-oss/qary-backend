@@ -42,6 +42,47 @@ export class LedgerService {
     }));
   }
 
+  async getFlowAnalysis(walletId: string) {
+    const entries = await this.prisma.ledgerEntry.findMany({
+      where: { walletId },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    let totalCredits = BigInt(0);
+    let totalDebits = BigInt(0);
+    let peakBalance = BigInt(0);
+    let lowestBalance = BigInt(0);
+    let largestCredit = BigInt(0);
+    let largestDebit = BigInt(0);
+    let isFirst = true;
+
+    for (const e of entries) {
+      if (e.entryType === 'CREDIT') {
+        totalCredits += e.amount;
+        if (e.amount > largestCredit) largestCredit = e.amount;
+      } else {
+        totalDebits += e.amount;
+        const absAmount = e.amount < BigInt(0) ? -e.amount : e.amount;
+        if (absAmount > largestDebit) largestDebit = absAmount;
+      }
+      if (isFirst || e.balanceAfter > peakBalance) peakBalance = e.balanceAfter;
+      if (isFirst || e.balanceAfter < lowestBalance) lowestBalance = e.balanceAfter;
+      isFirst = false;
+    }
+
+    return {
+      walletId,
+      entryCount: entries.length,
+      totalCredits,
+      totalDebits,
+      netFlow: totalCredits + totalDebits,
+      peakBalance,
+      lowestBalance,
+      largestCredit,
+      largestDebit,
+    };
+  }
+
   async getStatement(walletId: string, from: string, to: string) {
     const entries = await this.prisma.ledgerEntry.findMany({
       where: {

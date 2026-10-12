@@ -71,6 +71,34 @@ export class EventService {
     return { totalEvents: events.length, byEventType, bySeverity, byActor };
   }
 
+  async getActivityTimeline(userId: string, days = 30) {
+    const events = await this.prisma.event.findMany({ where: { userId } });
+
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const recent = events.filter((e: any) => new Date(e.createdAt) >= cutoff);
+
+    const byDay: Record<string, number> = {};
+    const byType: Record<string, number> = {};
+
+    for (const e of recent) {
+      const day = new Date(e.createdAt).toISOString().slice(0, 10);
+      byDay[day] = (byDay[day] ?? 0) + 1;
+      byType[e.eventType] = (byType[e.eventType] ?? 0) + 1;
+    }
+
+    const topTypes = Object.entries(byType)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([type, count]) => ({ type, count }));
+
+    return {
+      totalEvents: recent.length,
+      days,
+      byDay,
+      topEventTypes: topTypes,
+    };
+  }
+
   async listByRequest(requestId: string) {
     return this.prisma.event.findMany({
       where: { requestId },

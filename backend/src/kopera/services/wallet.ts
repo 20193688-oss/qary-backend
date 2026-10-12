@@ -327,6 +327,40 @@ export class WalletService {
     });
   }
 
+  async getActivitySummary(userId: string) {
+    const userWallets = await this.getWallets(userId);
+    const txns = await this.prisma.transaction.findMany({ where: { userId } });
+
+    const byWallet: Record<string, { currency: string; deposits: number; withdrawals: number; transfers: number; depositVolume: bigint; withdrawalVolume: bigint; transferVolume: bigint; lastActivityAt: Date | null }> = {};
+
+    for (const w of userWallets) {
+      byWallet[w.id] = {
+        currency: w.currency,
+        deposits: 0, withdrawals: 0, transfers: 0,
+        depositVolume: BigInt(0), withdrawalVolume: BigInt(0), transferVolume: BigInt(0),
+        lastActivityAt: null,
+      };
+    }
+
+    for (const t of txns) {
+      const wId = (t as any).senderWalletId ?? (t as any).receiverWalletId;
+      if (!wId || !byWallet[wId]) continue;
+      const entry = byWallet[wId];
+      if (t.type === 'DEPOSIT') { entry.deposits++; entry.depositVolume += t.amount; }
+      else if (t.type === 'WITHDRAWAL') { entry.withdrawals++; entry.withdrawalVolume += t.amount; }
+      else if (t.type === 'TRANSFER') { entry.transfers++; entry.transferVolume += t.amount; }
+      const txDate = t.processedAt ?? t.createdAt;
+      if (!entry.lastActivityAt || txDate > entry.lastActivityAt) entry.lastActivityAt = txDate;
+    }
+
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const dormantWallets = Object.entries(byWallet)
+      .filter(([, v]) => !v.lastActivityAt || v.lastActivityAt < thirtyDaysAgo)
+      .map(([id, v]) => ({ walletId: id, currency: v.currency }));
+
+    return { walletCount: userWallets.length, byWallet, dormantWallets };
+  }
+
   async setDefault(userId: string, currency: string) {
     const wallet = await this.getWallet(userId, currency);
     if (!wallet) throw new Error('wallet_not_found');

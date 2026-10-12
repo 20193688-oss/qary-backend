@@ -41,6 +41,13 @@ export async function registerEventRoutes(app: FastifyInstance, prisma: PrismaCl
     return svc.countByType(req.auth!.userId);
   });
 
+  app.get('/api/events/timeline', { preHandler: [app.requireAuth] }, async (req) => {
+    const q = z.object({
+      days: z.coerce.number().int().min(1).max(365).optional(),
+    }).parse(req.query);
+    return svc.getActivityTimeline(req.auth!.userId, q.days);
+  });
+
   app.get('/api/events/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const event = await svc.getById(id);

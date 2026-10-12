@@ -144,6 +144,49 @@ export class LoanRepaymentService {
     };
   }
 
+  async getPaymentHistory(loanId: string) {
+    const repayments = await this.prisma.loanRepayment.findMany({
+      where: { loanId },
+      orderBy: { installment: 'asc' },
+    });
+
+    let totalPaid = BigInt(0);
+    let totalOwed = BigInt(0);
+    let onTimeCount = 0;
+    let lateCount = 0;
+    const payments: Array<{ installment: number; amount: bigint; paidAmount: bigint; dueDate: Date; paidAt: Date | null; status: string }> = [];
+
+    for (const r of repayments) {
+      totalOwed += r.amount;
+      totalPaid += r.paidAmount;
+      if (r.status === 'PAID') {
+        if (r.paidAt && r.dueDate && r.paidAt <= r.dueDate) onTimeCount++;
+        else lateCount++;
+      } else if (r.status === 'OVERDUE') {
+        lateCount++;
+      }
+      payments.push({
+        installment: r.installment,
+        amount: r.amount,
+        paidAmount: r.paidAmount,
+        dueDate: r.dueDate,
+        paidAt: r.paidAt,
+        status: r.status,
+      });
+    }
+
+    return {
+      loanId,
+      totalInstallments: repayments.length,
+      totalOwed,
+      totalPaid,
+      remaining: totalOwed - totalPaid,
+      onTimePayments: onTimeCount,
+      latePayments: lateCount,
+      payments,
+    };
+  }
+
   async getScheduleSummary(loanId: string) {
     const repayments = await this.prisma.loanRepayment.findMany({
       where: { loanId },
