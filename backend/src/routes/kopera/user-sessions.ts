@@ -55,6 +55,10 @@ export async function registerUserSessionRoutes(app: FastifyInstance, prisma: Pr
     return svc.getSecurityOverview(req.auth!.userId);
   });
 
+  app.get('/api/sessions/device-report', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getDeviceReport(req.auth!.userId);
+  });
+
   app.get('/api/sessions/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const session = await svc.getSession(id, req.auth!.userId);

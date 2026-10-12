@@ -89,6 +89,43 @@ export class BeneficiaryService {
     return { totalBeneficiaries: all.length, byCurrency, addedLast30Days };
   }
 
+  async getTransferReadiness(userId: string) {
+    const beneficiaries = await this.prisma.beneficiary.findMany({ where: { userId } });
+    const wallets = await this.prisma.wallet.findMany({ where: { userId, status: 'ACTIVE' } });
+
+    const walletCurrencies = new Map<string, bigint>();
+    for (const w of wallets) {
+      walletCurrencies.set(w.currency, w.availableBalance);
+    }
+
+    const ready: Array<{ nickname: string; recipientUserId: string; currency: string; availableBalance: string }> = [];
+    const notReady: Array<{ nickname: string; recipientUserId: string; reason: string }> = [];
+
+    for (const b of beneficiaries) {
+      const cur = (b as any).currency;
+      if (!cur) {
+        notReady.push({ nickname: b.nickname, recipientUserId: b.recipientUserId, reason: 'no_currency_set' });
+        continue;
+      }
+      const balance = walletCurrencies.get(cur);
+      if (balance === undefined) {
+        notReady.push({ nickname: b.nickname, recipientUserId: b.recipientUserId, reason: 'no_matching_wallet' });
+      } else if (balance <= BigInt(0)) {
+        notReady.push({ nickname: b.nickname, recipientUserId: b.recipientUserId, reason: 'zero_balance' });
+      } else {
+        ready.push({ nickname: b.nickname, recipientUserId: b.recipientUserId, currency: cur, availableBalance: balance.toString() });
+      }
+    }
+
+    return {
+      totalBeneficiaries: beneficiaries.length,
+      readyCount: ready.length,
+      notReadyCount: notReady.length,
+      ready,
+      notReady,
+    };
+  }
+
   async remove(beneficiaryId: string, userId: string) {
     const b = await this.prisma.beneficiary.findUnique({ where: { id: beneficiaryId } });
     if (!b) throw new Error('beneficiary_not_found');

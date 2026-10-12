@@ -157,6 +157,47 @@ export class TokenizedCardService {
     };
   }
 
+  async getExpiryForecast(userId: string) {
+    const cards = await this.prisma.tokenizedCard.findMany({ where: { userId } });
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+
+    const expired: Array<{ id: string; last4: string; network: string; expiryMonth: number; expiryYear: number }> = [];
+    const expiringWithin3Months: typeof expired = [];
+    const expiringWithin6Months: typeof expired = [];
+    const safe: typeof expired = [];
+
+    for (const c of cards) {
+      const item = { id: c.id, last4: c.last4, network: c.network, expiryMonth: c.expiryMonth, expiryYear: c.expiryYear };
+      const expiryDate = new Date(c.expiryYear, c.expiryMonth, 0);
+      const monthsUntilExpiry = (c.expiryYear - currentYear) * 12 + (c.expiryMonth - currentMonth);
+
+      if (expiryDate < now) {
+        expired.push(item);
+      } else if (monthsUntilExpiry <= 3) {
+        expiringWithin3Months.push(item);
+      } else if (monthsUntilExpiry <= 6) {
+        expiringWithin6Months.push(item);
+      } else {
+        safe.push(item);
+      }
+    }
+
+    const urgency = expired.length > 0 ? 'critical' : expiringWithin3Months.length > 0 ? 'warning' : 'ok';
+
+    return {
+      totalCards: cards.length,
+      expired: expired.length,
+      expiringWithin3Months: expiringWithin3Months.length,
+      expiringWithin6Months: expiringWithin6Months.length,
+      safe: safe.length,
+      urgency,
+      expiredCards: expired,
+      soonExpiringCards: expiringWithin3Months,
+    };
+  }
+
   async removeCard(id: string, userId: string) {
     const card = await this.prisma.tokenizedCard.findUnique({ where: { id } });
     if (!card) throw new Error('card_not_found');

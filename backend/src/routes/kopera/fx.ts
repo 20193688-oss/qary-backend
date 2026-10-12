@@ -59,6 +59,15 @@ export async function registerFxRoutes(app: FastifyInstance, prisma: PrismaClien
     return fx.getSupportedPairs();
   });
 
+  app.get('/api/fx/spread-analysis', { preHandler: [app.requireAuth] }, async (req) => {
+    const result = await fx.getSpreadAnalysis(req.auth!.userId);
+    const byPair: Record<string, { count: number; totalVolume: string; avgRate: number }> = {};
+    for (const [pair, data] of Object.entries(result.byPair)) {
+      byPair[pair] = { count: data.count, totalVolume: data.totalVolume.toString(), avgRate: data.avgRate };
+    }
+    return { totalConversions: result.totalConversions, totalVolume: result.totalVolume.toString(), byPair, bestRate: result.bestRate, worstRate: result.worstRate };
+  });
+
   app.post('/api/fx/convert', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const body = z.object({
       amount: z.number().positive(),
