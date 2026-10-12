@@ -64,6 +64,24 @@ export async function registerScheduledTransferRoutes(app: FastifyInstance, pris
     return list.map(serialize);
   });
 
+  app.get('/api/scheduled-transfers/summary', { preHandler: [app.requireAuth] }, async (req) => {
+    const summary = await svc.getSummary(req.auth!.userId);
+    const amountByCurrency: Record<string, string> = {};
+    for (const [cur, amt] of Object.entries(summary.totalAmountByCurrency)) {
+      amountByCurrency[cur] = amt.toString();
+    }
+    return {
+      activeCount: summary.activeCount,
+      pausedCount: summary.pausedCount,
+      totalCount: summary.totalCount,
+      byFrequency: summary.byFrequency,
+      totalAmountByCurrency: amountByCurrency,
+      nextUpcoming: summary.nextUpcoming
+        ? { ...summary.nextUpcoming, amount: summary.nextUpcoming.amount.toString() }
+        : null,
+    };
+  });
+
   app.get('/api/scheduled-transfers/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const st = await svc.getById(id);

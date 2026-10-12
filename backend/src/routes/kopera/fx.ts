@@ -179,6 +179,17 @@ export async function registerFxRoutes(app: FastifyInstance, prisma: PrismaClien
     });
   });
 
+  app.post('/api/fx/rates/bulk', { preHandler: [app.requireAuth] }, async (req) => {
+    const body = z.object({
+      pairs: z.array(z.object({
+        base: z.string().length(3),
+        quote: z.string().length(3),
+      })).min(1).max(20),
+    }).parse(req.body);
+
+    return fx.getBulkRates(body.pairs);
+  });
+
   app.post('/api/fx/rates', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const body = z.object({
       baseCurrency: z.string().length(3),
