@@ -54,6 +54,16 @@ export async function registerDisputeRoutes(app: FastifyInstance, prisma: Prisma
     };
   });
 
+  app.get('/api/disputes/expiring-evidence', { preHandler: [app.requireAuth] }, async (req) => {
+    const query = req.query as { days?: string };
+    const withinDays = Math.min(Number(query.days ?? 7), 90);
+    const results = await disputes.getExpiringEvidence(req.auth!.userId, withinDays);
+    return results.map((d: any) => ({
+      ...d,
+      amount: d.amount.toString(),
+    }));
+  });
+
   app.get('/api/disputes/all', { preHandler: [app.requireAuth] }, async (req) => {
     const query = req.query as { limit?: string; offset?: string; status?: string };
     const list = await disputes.listAll({

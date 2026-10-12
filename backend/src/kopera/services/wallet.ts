@@ -231,6 +231,29 @@ export class WalletService {
     }));
   }
 
+  async getPortfolio(userId: string) {
+    const wallets = await this.getWallets(userId);
+    const byStatus: Record<string, number> = {};
+    const balanceByCurrency: Record<string, bigint> = {};
+    let totalHold = BigInt(0);
+
+    for (const w of wallets) {
+      byStatus[w.status] = (byStatus[w.status] ?? 0) + 1;
+      if (w.status === 'ACTIVE') {
+        balanceByCurrency[w.currency] = (balanceByCurrency[w.currency] ?? BigInt(0)) + w.balance;
+      }
+      totalHold += w.holdBalance;
+    }
+
+    return {
+      totalWallets: wallets.length,
+      byStatus,
+      balanceByCurrency,
+      totalHold,
+      currencies: Object.keys(balanceByCurrency),
+    };
+  }
+
   async freeze(userId: string, currency: string) {
     const wallet = await this.getWallet(userId, currency);
     if (!wallet) throw new Error('wallet_not_found');

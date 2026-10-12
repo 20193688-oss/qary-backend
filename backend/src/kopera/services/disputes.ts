@@ -113,6 +113,31 @@ export class DisputeService {
     };
   }
 
+  async getExpiringEvidence(userId: string, withinDays: number = 7) {
+    const disputes = await this.prisma.dispute.findMany({ where: { userId } });
+    const now = new Date();
+    const cutoff = new Date(now.getTime() + withinDays * 24 * 60 * 60 * 1000);
+
+    return disputes
+      .filter((d: any) =>
+        (d.status === 'OPENED' || d.status === 'EVIDENCE_NEEDED') &&
+        d.evidenceDeadline &&
+        d.evidenceDeadline > now &&
+        d.evidenceDeadline <= cutoff,
+      )
+      .map((d: any) => ({
+        id: d.id,
+        gatewayPaymentId: d.gatewayPaymentId,
+        reason: d.reason,
+        amount: d.amount,
+        currency: d.currency,
+        status: d.status,
+        evidenceDeadline: d.evidenceDeadline,
+        daysRemaining: Math.ceil((d.evidenceDeadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)),
+      }))
+      .sort((a: any, b: any) => a.daysRemaining - b.daysRemaining);
+  }
+
   async resolve(disputeId: string, outcome: string, notes?: string) {
     const dispute = await this.prisma.dispute.findUnique({ where: { id: disputeId } });
     if (!dispute) throw new Error('dispute_not_found');

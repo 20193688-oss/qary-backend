@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { UserProfileService } from '../../kopera/services/user-profiles.js';
+import { EventService } from '../../kopera/services/events.js';
 import { audit } from '../../lib/audit.js';
 
 function serialize(u: any) {
@@ -25,6 +26,7 @@ function serialize(u: any) {
 
 export async function registerUserProfileRoutes(app: FastifyInstance, prisma: PrismaClient) {
   const svc = new UserProfileService(prisma);
+  const eventSvc = new EventService(prisma);
 
   app.get('/api/profile', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const user = await svc.getProfile(req.auth!.userId);
@@ -49,6 +51,22 @@ export async function registerUserProfileRoutes(app: FastifyInstance, prisma: Pr
       if (e.message === 'user_not_found') return reply.code(404).send({ error: e.message });
       throw e;
     }
+  });
+
+  app.get('/api/profile/security-activity', { preHandler: [app.requireAuth] }, async (req) => {
+    const query = req.query as { limit?: string };
+    const limit = Math.min(Number(query.limit ?? 20), 100);
+    const events = await eventSvc.list({ userId: req.auth!.userId, limit: 200 });
+    const securityEvents = events
+      .filter((e: any) => e.eventType.startsWith('profile.') || e.eventType === 'auth.login' || e.eventType === 'auth.verify')
+      .slice(0, limit)
+      .map((e: any) => ({
+        id: e.id,
+        eventType: e.eventType,
+        ip: e.ip,
+        createdAt: e.createdAt,
+      }));
+    return securityEvents;
   });
 
   app.post('/api/profile/mfa/enable', { preHandler: [app.requireAuth] }, async (req, reply) => {

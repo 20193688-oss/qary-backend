@@ -19,6 +19,21 @@ export async function registerWalletRoutes(app: FastifyInstance, prisma: PrismaC
     } catch { /* best-effort */ }
   }
 
+  app.get('/api/wallets/portfolio', { preHandler: [app.requireAuth] }, async (req) => {
+    const portfolio = await wallets.getPortfolio(req.auth!.userId);
+    const balanceByCurrency: Record<string, string> = {};
+    for (const [k, v] of Object.entries(portfolio.balanceByCurrency)) {
+      balanceByCurrency[k] = (v as bigint).toString();
+    }
+    return {
+      totalWallets: portfolio.totalWallets,
+      byStatus: portfolio.byStatus,
+      balanceByCurrency,
+      totalHold: portfolio.totalHold.toString(),
+      currencies: portfolio.currencies,
+    };
+  });
+
   app.get('/api/wallets', { preHandler: [app.requireAuth] }, async (req) => {
     return wallets.getAllBalances(req.auth!.userId);
   });

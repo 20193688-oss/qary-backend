@@ -129,6 +129,27 @@ export class LoanService {
     };
   }
 
+  async getOverdueRepayments(userId: string) {
+    const loans = await this.prisma.loan.findMany({ where: { userId } });
+    const loanIds = new Set(loans.map((l: any) => l.id));
+    if (loanIds.size === 0) return [];
+
+    const now = new Date();
+    const allRepayments = await this.prisma.loanRepayment.findMany({});
+    return allRepayments
+      .filter((r: any) => loanIds.has(r.loanId) && r.status !== 'PAID' && r.dueDate < now)
+      .map((r: any) => ({
+        id: r.id,
+        loanId: r.loanId,
+        installment: r.installment,
+        dueDate: r.dueDate,
+        amount: r.amount,
+        paidAmount: r.paidAmount,
+        status: r.status,
+        daysOverdue: Math.floor((now.getTime() - r.dueDate.getTime()) / (1000 * 60 * 60 * 24)),
+      }));
+  }
+
   async simulate(principalAmount: number, currency: string, termMonths: number, interestRate?: number) {
     const rate = interestRate ?? this.getDefaultRate(currency);
     const { monthlyPayment, totalInterest, tcea } = this.calculateAmortization(
