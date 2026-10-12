@@ -125,6 +125,33 @@ export class KycService {
     };
   }
 
+  async getVerificationProgress(userId: string) {
+    const profile = await this.prisma.kycProfile.findUnique({ where: { userId } });
+    if (!profile) throw new Error('kyc_not_found');
+
+    const steps = [
+      { step: 'personal_info', completed: !!(profile.firstName && profile.lastName), description: 'First and last name' },
+      { step: 'document_type', completed: !!profile.documentType, description: 'Document type selected' },
+      { step: 'document_number', completed: !!profile.documentNumber, description: 'Document number provided' },
+      { step: 'document_front', completed: !!(profile as any).documentFrontUrl, description: 'Front of document uploaded' },
+      { step: 'document_back', completed: !!(profile as any).documentBackUrl, description: 'Back of document uploaded' },
+      { step: 'selfie', completed: !!(profile as any).selfieUrl, description: 'Selfie uploaded' },
+      { step: 'liveness', completed: !!(profile as any).livenessImageUrl, description: 'Liveness check completed' },
+      { step: 'review', completed: profile.status === 'APPROVED' || profile.status === 'REJECTED', description: 'Review completed' },
+    ];
+
+    const completedCount = steps.filter(s => s.completed).length;
+    const progressPercent = Math.round((completedCount / steps.length) * 100);
+
+    return {
+      status: profile.status,
+      progressPercent,
+      completedSteps: completedCount,
+      totalSteps: steps.length,
+      steps,
+    };
+  }
+
   async setRiskScore(userId: string, riskScore: number) {
     const profile = await this.prisma.kycProfile.findUnique({ where: { userId } });
     if (!profile) throw new Error('kyc_not_found');

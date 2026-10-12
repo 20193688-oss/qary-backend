@@ -121,6 +121,42 @@ export class TokenizedCardService {
     });
   }
 
+  async getUsageAnalytics(userId: string) {
+    const cards = await this.prisma.tokenizedCard.findMany({ where: { userId } });
+    const byNetwork: Record<string, number> = {};
+    const byCountry: Record<string, number> = {};
+    let defaultCard: { id: string; last4: string; network: string } | null = null;
+    let frozenCount = 0;
+    const now = new Date();
+    let expiringCount = 0;
+    let expiredCount = 0;
+
+    for (const c of cards) {
+      byNetwork[c.network] = (byNetwork[c.network] ?? 0) + 1;
+      if ((c as any).country) {
+        byCountry[(c as any).country] = (byCountry[(c as any).country] ?? 0) + 1;
+      }
+      if (c.isDefault) defaultCard = { id: c.id, last4: c.last4, network: c.network };
+      if ((c as any).frozen) frozenCount++;
+      if (c.expiryYear < now.getFullYear() || (c.expiryYear === now.getFullYear() && c.expiryMonth < now.getMonth() + 1)) {
+        expiredCount++;
+      } else if (c.expiryYear === now.getFullYear() && c.expiryMonth <= now.getMonth() + 3) {
+        expiringCount++;
+      }
+    }
+
+    return {
+      totalCards: cards.length,
+      activeCards: cards.length - frozenCount,
+      frozenCards: frozenCount,
+      expiredCards: expiredCount,
+      expiringSoonCards: expiringCount,
+      byNetwork,
+      byCountry,
+      defaultCard,
+    };
+  }
+
   async removeCard(id: string, userId: string) {
     const card = await this.prisma.tokenizedCard.findUnique({ where: { id } });
     if (!card) throw new Error('card_not_found');
