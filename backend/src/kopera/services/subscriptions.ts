@@ -214,6 +214,43 @@ export class SubscriptionService {
       .sort((a: any, b: any) => a.daysUntilRenewal - b.daysUntilRenewal);
   }
 
+  async getChurnAnalysis(userId: string) {
+    const allSubs = await this.prisma.subscription.findMany({ where: { userId } });
+    const cancelled = allSubs.filter((s: any) => s.status === 'cancelled');
+
+    let totalLifetimeMs = 0;
+    let totalSpendBeforeChurn = BigInt(0);
+    const byPlan: Record<string, number> = {};
+
+    for (const s of cancelled) {
+      const cancelDate = (s as any).cancelledAt ?? s.createdAt;
+      totalLifetimeMs += cancelDate.getTime() - s.createdAt.getTime();
+      totalSpendBeforeChurn += s.amount;
+      byPlan[s.planName] = (byPlan[s.planName] ?? 0) + 1;
+    }
+
+    const avgLifetimeDays = cancelled.length > 0
+      ? Math.round(totalLifetimeMs / cancelled.length / (1000 * 60 * 60 * 24) * 10) / 10
+      : 0;
+    const churnRate = allSubs.length > 0
+      ? Math.round(cancelled.length / allSubs.length * 10000) / 100
+      : 0;
+
+    const mostCancelledPlans = Object.entries(byPlan)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([plan, count]) => ({ plan, count }));
+
+    return {
+      totalSubscriptions: allSubs.length,
+      cancelledCount: cancelled.length,
+      churnRate,
+      avgLifetimeDays,
+      totalSpendBeforeChurn,
+      mostCancelledPlans,
+    };
+  }
+
   async processDueBillings() {
     const now = new Date();
     const due = await this.prisma.subscription.findMany({

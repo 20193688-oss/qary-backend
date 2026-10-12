@@ -65,6 +65,19 @@ export async function registerSavingsGoalRoutes(app: FastifyInstance, prisma: Pr
     };
   });
 
+  app.get('/api/savings-goals/completion-forecast', { preHandler: [app.requireAuth] }, async (req) => {
+    const result = await svc.getCompletionForecast(req.auth!.userId);
+    return {
+      totalActiveGoals: result.totalActiveGoals,
+      atRiskCount: result.atRiskCount,
+      forecasts: result.forecasts.map((f: any) => ({
+        ...f,
+        currentAmount: f.currentAmount.toString(),
+        targetAmount: f.targetAmount.toString(),
+      })),
+    };
+  });
+
   app.get('/api/savings-goals/:id/progress', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     try {

@@ -67,6 +67,20 @@ export async function registerLoanRoutes(app: FastifyInstance, prisma: PrismaCli
     }));
   });
 
+  app.get('/api/loans/risk-assessment', { preHandler: [app.requireAuth] }, async (req) => {
+    const result = await loans.getRiskAssessment(req.auth!.userId);
+    return {
+      activeLoans: result.activeLoans,
+      totalPrincipal: result.totalPrincipal.toString(),
+      totalOutstanding: result.totalOutstanding.toString(),
+      debtToPrincipalRatio: result.debtToPrincipalRatio,
+      overdueInstallments: result.overdueInstallments,
+      onTimePercent: result.onTimePercent,
+      totalInterestPaid: result.totalInterestPaid.toString(),
+      totalInterestRemaining: result.totalInterestRemaining.toString(),
+    };
+  });
+
   app.get('/api/loans', { preHandler: [app.requireAuth] }, async (req) => {
     const list = await loans.listByUser(req.auth!.userId);
     return list.map(serializeLoan);

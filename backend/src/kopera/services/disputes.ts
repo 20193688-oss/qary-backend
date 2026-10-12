@@ -138,6 +138,40 @@ export class DisputeService {
       .sort((a: any, b: any) => a.daysRemaining - b.daysRemaining);
   }
 
+  async getResolutionReport(userId: string) {
+    const disputes = await this.prisma.dispute.findMany({ where: { userId } });
+    const resolved = disputes.filter((d: any) => d.resolvedAt);
+
+    const byOutcome: Record<string, number> = {};
+    const byReason: Record<string, { count: number; totalMs: number }> = {};
+    let evidenceSubmittedCount = 0;
+
+    for (const d of resolved) {
+      byOutcome[d.status] = (byOutcome[d.status] ?? 0) + 1;
+      const reason = d.reason ?? 'unknown';
+      if (!byReason[reason]) byReason[reason] = { count: 0, totalMs: 0 };
+      byReason[reason].count++;
+      byReason[reason].totalMs += d.resolvedAt!.getTime() - d.createdAt.getTime();
+      if ((d as any).evidenceSubmitted) evidenceSubmittedCount++;
+    }
+
+    const avgResolutionByReason: Record<string, number> = {};
+    for (const [reason, data] of Object.entries(byReason)) {
+      avgResolutionByReason[reason] = Math.round(data.totalMs / data.count / (1000 * 60 * 60 * 24) * 10) / 10;
+    }
+
+    return {
+      totalDisputes: disputes.length,
+      resolvedCount: resolved.length,
+      pendingCount: disputes.length - resolved.length,
+      byOutcome,
+      avgResolutionByReason,
+      evidenceSubmissionRate: disputes.length > 0
+        ? Math.round(evidenceSubmittedCount / disputes.length * 100)
+        : 0,
+    };
+  }
+
   async resolve(disputeId: string, outcome: string, notes?: string) {
     const dispute = await this.prisma.dispute.findUnique({ where: { id: disputeId } });
     if (!dispute) throw new Error('dispute_not_found');

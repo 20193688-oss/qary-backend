@@ -154,6 +154,54 @@ export class SavingsGoalService {
     };
   }
 
+  async getCompletionForecast(userId: string) {
+    const goals = await this.prisma.savingsGoal.findMany({ where: { userId } });
+    const activeGoals = goals.filter((g: any) => g.status === 'active');
+    const now = Date.now();
+
+    const forecasts = activeGoals.map((g: any) => {
+      const ageMs = now - new Date(g.createdAt).getTime();
+      const ageDays = Math.max(1, ageMs / (1000 * 60 * 60 * 24));
+      const remaining = g.targetAmount - g.currentAmount;
+      const dailyRate = Number(g.currentAmount) / ageDays;
+
+      let projectedCompletionDate: string | null = null;
+      let daysToCompletion: number | null = null;
+      let atRisk = false;
+
+      if (dailyRate > 0 && remaining > BigInt(0)) {
+        daysToCompletion = Math.ceil(Number(remaining) / dailyRate);
+        projectedCompletionDate = new Date(now + daysToCompletion * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        if (g.deadline && new Date(projectedCompletionDate) > g.deadline) {
+          atRisk = true;
+        }
+      } else if (remaining > BigInt(0)) {
+        atRisk = g.deadline ? true : false;
+      }
+
+      return {
+        goalId: g.id,
+        name: g.name,
+        currency: g.currency,
+        currentAmount: g.currentAmount,
+        targetAmount: g.targetAmount,
+        dailyContributionRate: Math.round(dailyRate),
+        projectedCompletionDate,
+        daysToCompletion,
+        deadline: g.deadline,
+        atRisk,
+      };
+    });
+
+    const atRiskCount = forecasts.filter(f => f.atRisk).length;
+
+    return {
+      totalActiveGoals: activeGoals.length,
+      atRiskCount,
+      forecasts,
+    };
+  }
+
   async archive(id: string, userId: string) {
     const goal = await this.prisma.savingsGoal.findUnique({ where: { id } });
     if (!goal) throw new Error('goal_not_found');
