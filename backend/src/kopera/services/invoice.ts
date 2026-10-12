@@ -182,6 +182,27 @@ export class InvoiceService {
     return { updated: count };
   }
 
+  async getInvoiceSummary(senderId: string) {
+    const invoices = await this.prisma.invoice.findMany({ where: { senderId } });
+    let totalBilled = BigInt(0);
+    let totalCollected = BigInt(0);
+    const byStatus: Record<string, number> = {};
+
+    for (const inv of invoices) {
+      totalBilled += inv.totalAmount;
+      if (inv.status === 'PAID') totalCollected += inv.totalAmount;
+      byStatus[inv.status] = (byStatus[inv.status] ?? 0) + 1;
+    }
+
+    return {
+      totalInvoices: invoices.length,
+      totalBilled,
+      totalCollected,
+      totalOutstanding: totalBilled - totalCollected,
+      byStatus,
+    };
+  }
+
   private getDefaultTaxRate(country: string): number {
     const rates: Record<string, number> = {
       PE: 0.18, // IGV

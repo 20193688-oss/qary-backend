@@ -84,6 +84,35 @@ export class DisputeService {
     });
   }
 
+  async getStats(userId?: string) {
+    const where: Record<string, unknown> = {};
+    if (userId) where.userId = userId;
+    const disputes = await this.prisma.dispute.findMany({ where });
+
+    const byStatus: Record<string, number> = {};
+    let totalAmount = BigInt(0);
+    let resolvedCount = 0;
+    let totalResolutionMs = 0;
+
+    for (const d of disputes) {
+      byStatus[d.status] = (byStatus[d.status] ?? 0) + 1;
+      totalAmount += d.amount;
+      if (d.resolvedAt) {
+        resolvedCount++;
+        totalResolutionMs += d.resolvedAt.getTime() - d.createdAt.getTime();
+      }
+    }
+
+    return {
+      totalDisputes: disputes.length,
+      totalAmount,
+      byStatus,
+      avgResolutionDays: resolvedCount > 0
+        ? Math.round(totalResolutionMs / resolvedCount / (1000 * 60 * 60 * 24) * 10) / 10
+        : null,
+    };
+  }
+
   async resolve(disputeId: string, outcome: string, notes?: string) {
     const dispute = await this.prisma.dispute.findUnique({ where: { id: disputeId } });
     if (!dispute) throw new Error('dispute_not_found');

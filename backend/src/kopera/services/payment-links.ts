@@ -73,6 +73,28 @@ export class PaymentLinkService {
     });
   }
 
+  async getAnalytics(userId: string) {
+    const links = await this.prisma.paymentLink.findMany({ where: { userId } });
+    let totalCollected = BigInt(0);
+    let totalTimesUsed = 0;
+    const byStatus: Record<string, number> = {};
+
+    for (const l of links) {
+      byStatus[l.status] = (byStatus[l.status] ?? 0) + 1;
+      totalTimesUsed += l.timesUsed;
+      if (l.timesUsed > 0) {
+        totalCollected += l.amount * BigInt(l.timesUsed);
+      }
+    }
+
+    return {
+      totalLinks: links.length,
+      totalCollected,
+      totalTimesUsed,
+      byStatus,
+    };
+  }
+
   async deactivate(id: string, userId: string) {
     const link = await this.prisma.paymentLink.findUnique({ where: { id } });
     if (!link) throw new Error('link_not_found');
