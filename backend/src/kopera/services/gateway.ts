@@ -31,6 +31,34 @@ export function calculateGatewayFee(amountCents: bigint, paymentMethod: string):
 export class GatewayPaymentService {
   constructor(private prisma: PrismaClient) {}
 
+  async getPaymentStats(userId: string) {
+    const userTxns = await this.prisma.transaction.findMany({ where: { userId } });
+    const txnIds = new Set(userTxns.map((t: any) => t.id));
+    const allPayments = await this.prisma.gatewayPayment.findMany({});
+    const payments = allPayments.filter((p: any) => txnIds.has(p.transactionId));
+
+    let totalVolume = BigInt(0);
+    let totalFees = BigInt(0);
+    const byMethod: Record<string, number> = {};
+    const byStatus: Record<string, number> = {};
+
+    for (const p of payments) {
+      totalVolume += p.amount;
+      totalFees += p.gatewayFee;
+      byMethod[p.paymentMethod] = (byMethod[p.paymentMethod] ?? 0) + 1;
+      byStatus[p.status] = (byStatus[p.status] ?? 0) + 1;
+    }
+
+    return {
+      totalPayments: payments.length,
+      totalVolume,
+      totalFees,
+      avgTransactionSize: payments.length > 0 ? totalVolume / BigInt(payments.length) : BigInt(0),
+      byMethod,
+      byStatus,
+    };
+  }
+
   async findByIdempotencyKey(key: string) {
     return this.prisma.gatewayPayment.findUnique({ where: { idempotencyKey: key } });
   }

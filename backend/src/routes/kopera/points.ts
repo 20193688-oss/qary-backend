@@ -15,6 +15,15 @@ export async function registerPointsRoutes(app: FastifyInstance, prisma: PrismaC
     return points.leaderboard(Math.min(Number(query.limit ?? 10), 50));
   });
 
+  app.get('/api/points/calculate', { preHandler: [app.requireAuth] }, async (req) => {
+    const query = req.query as { amount?: string; type?: string };
+    const amount = Number(query.amount ?? 0);
+    const type = query.type ?? 'PAYMENT';
+    const balance = await points.getBalance(req.auth!.userId);
+    const pointsToEarn = points.pointsForTransaction(Math.round(amount * 100), type, balance.tier);
+    return { pointsToEarn, currentTier: balance.tier, type };
+  });
+
   app.get('/api/points/history', { preHandler: [app.requireAuth] }, async (req) => {
     const query = req.query as { limit?: string; offset?: string; type?: string };
     return points.getHistory(req.auth!.userId, {

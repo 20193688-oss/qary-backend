@@ -53,6 +53,24 @@ export class EventService {
     return this.prisma.event.findUnique({ where: { id } });
   }
 
+  async countByType(userId?: string) {
+    const where: Record<string, unknown> = {};
+    if (userId) where.userId = userId;
+    const events = await this.prisma.event.findMany({ where });
+
+    const byEventType: Record<string, number> = {};
+    const bySeverity: Record<string, number> = {};
+    const byActor: Record<string, number> = {};
+
+    for (const e of events) {
+      byEventType[e.eventType] = (byEventType[e.eventType] ?? 0) + 1;
+      if (e.severity) bySeverity[e.severity] = (bySeverity[e.severity] ?? 0) + 1;
+      byActor[e.actor] = (byActor[e.actor] ?? 0) + 1;
+    }
+
+    return { totalEvents: events.length, byEventType, bySeverity, byActor };
+  }
+
   async listByRequest(requestId: string) {
     return this.prisma.event.findMany({
       where: { requestId },
