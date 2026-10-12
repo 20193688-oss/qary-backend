@@ -1,0 +1,104 @@
+import type { PrismaClient } from '@prisma/client';
+import { randomBytes } from 'node:crypto';
+
+const REFERRAL_BONUS_POINTS = 500;
+
+export class ReferralService {
+  constructor(private prisma: PrismaClient) {}
+
+  async getOrCreateCode(userId: string): Promise<string> {
+    const existing = await this.prisma.referral.findFirst({
+      where: { referrerId: userId },
+    });
+    if (existing) return existing.code;
+
+    const code = randomBytes(4).toString('hex').toUpperCase();
+    await this.prisma.referral.create({
+      data: {
+        referrerId: userId,
+        code,
+        status: 'active',
+        signupCount: 0,
+        rewardedCount: 0,
+        totalPointsEarned: 0,
+      },
+    });
+    return code;
+  }
+
+  async getByCode(code: string) {
+    return this.prisma.referral.findFirst({ where: { code: code.toUpperCase() } });
+  }
+
+  async getByUser(userId: string) {
+    return this.prisma.referral.findFirst({ where: { referrerId: userId } });
+  }
+
+  async recordSignup(code: string, referredUserId: string) {
+    const referral = await this.prisma.referral.findFirst({
+      where: { code: code.toUpperCase() },
+    });
+    if (!referral) throw new Error('invalid_referral_code');
+    if (referral.status !== 'active') throw new Error('referral_inactive');
+    if (referral.referrerId === referredUserId) throw new Error('cannot_refer_self');
+
+    const alreadyReferred = await this.prisma.referralSignup.findFirst({
+      where: { referredUserId },
+    });
+    if (alreadyReferred) throw new Error('already_referred');
+
+    await this.prisma.referralSignup.create({
+      data: {
+        referralId: referral.id,
+        referredUserId,
+        status: 'signed_up',
+      },
+    });
+
+    await this.prisma.referral.update({
+      where: { id: referral.id },
+      data: { signupCount: referral.signupCount + 1 },
+    });
+
+    return referral;
+  }
+
+  async rewardReferrer(referredUserId: string) {
+    const signup = await this.prisma.referralSignup.findFirst({
+      where: { referredUserId, status: 'signed_up' },
+    });
+    if (!signup) return null;
+
+    const referral = await this.prisma.referral.findUnique({
+      where: { id: signup.referralId },
+    });
+    if (!referral) return null;
+
+    await this.prisma.referralSignup.update({
+      where: { id: signup.id },
+      data: { status: 'rewarded', rewardedAt: new Date() },
+    });
+
+    await this.prisma.referral.update({
+      where: { id: referral.id },
+      data: {
+        rewardedCount: referral.rewardedCount + 1,
+        totalPointsEarned: referral.totalPointsEarned + REFERRAL_BONUS_POINTS,
+      },
+    });
+
+    return { referrerId: referral.referrerId, pointsAwarded: REFERRAL_BONUS_POINTS };
+  }
+
+  async listSignups(userId: string) {
+    const referral = await this.prisma.referral.findFirst({
+      where: { referrerId: userId },
+    });
+    if (!referral) return [];
+
+    return this.prisma.referralSignup.findMany({
+      where: { referralId: referral.id },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+}
