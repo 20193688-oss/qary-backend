@@ -394,6 +394,56 @@ export class WalletService {
     return { walletCount: userWallets.length, byWallet, dormantWallets };
   }
 
+  async getConsolidationReport(userId: string) {
+    const userWallets = await this.getWallets(userId);
+    const active = userWallets.filter((w: any) => w.status === 'ACTIVE');
+    const frozen = userWallets.filter((w: any) => w.status === 'FROZEN');
+    const closed = userWallets.filter((w: any) => w.status === 'CLOSED');
+
+    const lowBalanceThreshold = BigInt(100);
+    const lowBalanceWallets = active.filter((w: any) => w.balance > BigInt(0) && w.balance < lowBalanceThreshold);
+    const zeroBalanceWallets = active.filter((w: any) => w.balance === BigInt(0));
+    const byCurrency: Record<string, { count: number; totalBalance: bigint; walletIds: string[] }> = {};
+
+    for (const w of active) {
+      if (!byCurrency[w.currency]) byCurrency[w.currency] = { count: 0, totalBalance: BigInt(0), walletIds: [] };
+      byCurrency[w.currency].count++;
+      byCurrency[w.currency].totalBalance += w.balance;
+      byCurrency[w.currency].walletIds.push(w.id);
+    }
+
+    const recommendations: string[] = [];
+    if (zeroBalanceWallets.length > 0) {
+      recommendations.push(`${zeroBalanceWallets.length} wallet(s) with zero balance could be closed`);
+    }
+    if (lowBalanceWallets.length > 0) {
+      recommendations.push(`${lowBalanceWallets.length} wallet(s) with very low balance could be consolidated`);
+    }
+    if (frozen.length > 0) {
+      recommendations.push(`${frozen.length} frozen wallet(s) need attention`);
+    }
+
+    let totalBalance = BigInt(0);
+    let totalHold = BigInt(0);
+    for (const w of active) {
+      totalBalance += w.balance;
+      totalHold += w.holdBalance;
+    }
+
+    return {
+      totalWallets: userWallets.length,
+      activeCount: active.length,
+      frozenCount: frozen.length,
+      closedCount: closed.length,
+      zeroBalanceCount: zeroBalanceWallets.length,
+      lowBalanceCount: lowBalanceWallets.length,
+      totalBalance,
+      totalHold,
+      byCurrency,
+      recommendations,
+    };
+  }
+
   async setDefault(userId: string, currency: string) {
     const wallet = await this.getWallet(userId, currency);
     if (!wallet) throw new Error('wallet_not_found');

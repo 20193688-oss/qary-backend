@@ -117,6 +117,26 @@ export async function registerScheduledTransferRoutes(app: FastifyInstance, pris
     };
   });
 
+  app.get('/api/scheduled-transfers/cost-projection', { preHandler: [app.requireAuth] }, async (req) => {
+    const query = req.query as { periodDays?: string };
+    const periodDays = Math.min(Number(query.periodDays ?? 90), 365);
+    const result = await svc.getCostProjection(req.auth!.userId, periodDays);
+    const projectedByCurrency: Record<string, string> = {};
+    for (const [cur, amt] of Object.entries(result.projectedByCurrency)) {
+      projectedByCurrency[cur] = amt.toString();
+    }
+    return {
+      periodDays: result.periodDays,
+      activeTransfers: result.activeTransfers,
+      projectedByCurrency,
+      details: result.details.map((d: any) => ({
+        ...d,
+        amount: d.amount.toString(),
+        projectedCost: d.projectedCost.toString(),
+      })),
+    };
+  });
+
   app.get('/api/scheduled-transfers/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const st = await svc.getById(id);

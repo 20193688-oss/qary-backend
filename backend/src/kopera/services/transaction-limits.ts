@@ -147,6 +147,62 @@ export class TransactionLimitService {
     };
   }
 
+  async getLimitHealthCheck(userId: string) {
+    const limits = await this.prisma.transactionLimit.findMany({ where: { userId } });
+    const refreshed = limits.map((l: any) => this.refreshIfNeeded(l));
+
+    const recommendations: string[] = [];
+    const details = refreshed.map((l: any) => {
+      const utilization = l.maxAmount > BigInt(0)
+        ? Number((l.currentUsage * BigInt(10000)) / l.maxAmount) / 100
+        : 0;
+      const headroom = l.maxAmount - l.currentUsage;
+
+      let assessment: string;
+      if (utilization >= 95) {
+        assessment = 'critical';
+        recommendations.push(`${l.currency} ${l.limitType} limit nearly exhausted (${utilization}% used)`);
+      } else if (utilization >= 80) {
+        assessment = 'warning';
+        recommendations.push(`${l.currency} ${l.limitType} limit approaching threshold (${utilization}% used)`);
+      } else if (utilization <= 10 && l.maxAmount > BigInt(0)) {
+        assessment = 'underutilized';
+        recommendations.push(`${l.currency} ${l.limitType} limit may be too high (only ${utilization}% used)`);
+      } else {
+        assessment = 'healthy';
+      }
+
+      return {
+        id: l.id,
+        currency: l.currency,
+        limitType: l.limitType,
+        maxAmount: l.maxAmount,
+        currentUsage: l.currentUsage,
+        headroom: headroom > BigInt(0) ? headroom : BigInt(0),
+        utilization,
+        assessment,
+      };
+    });
+
+    const criticalCount = details.filter((d: any) => d.assessment === 'critical').length;
+    const warningCount = details.filter((d: any) => d.assessment === 'warning').length;
+    const healthyCount = details.filter((d: any) => d.assessment === 'healthy').length;
+    const underutilizedCount = details.filter((d: any) => d.assessment === 'underutilized').length;
+
+    const overallHealth = criticalCount > 0 ? 'critical' : warningCount > 0 ? 'warning' : 'healthy';
+
+    return {
+      totalLimits: details.length,
+      overallHealth,
+      criticalCount,
+      warningCount,
+      healthyCount,
+      underutilizedCount,
+      recommendations,
+      details,
+    };
+  }
+
   async removeLimit(userId: string, currency: string, limitType: string) {
     const limit = await this.prisma.transactionLimit.findFirst({
       where: { userId, currency: currency.toUpperCase(), limitType: limitType.toLowerCase() },
