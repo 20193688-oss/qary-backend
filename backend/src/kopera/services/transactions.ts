@@ -83,4 +83,16 @@ export class TransactionService {
 
     return { currency: currency.toUpperCase(), totalIn, totalOut, count };
   }
+
+  async searchTransactions(userId: string, query: string, opts?: { limit?: number }) {
+    const all = await this.prisma.transaction.findMany({ where: { userId } });
+    const q = query.toLowerCase();
+    const matched = all.filter((t: any) =>
+      (t.description && t.description.toLowerCase().includes(q)) ||
+      (t.reference && t.reference.toLowerCase().includes(q)) ||
+      (t.counterpartyName && t.counterpartyName.toLowerCase().includes(q))
+    );
+    const limit = Math.min(opts?.limit ?? 50, 100);
+    return matched.slice(0, limit);
+  }
 }

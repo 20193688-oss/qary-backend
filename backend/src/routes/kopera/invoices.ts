@@ -53,6 +53,17 @@ export async function registerInvoiceRoutes(app: FastifyInstance, prisma: Prisma
     return reply.code(201).send(serializeInvoice(invoice));
   });
 
+  app.get('/api/invoices/summary', { preHandler: [app.requireAuth] }, async (req) => {
+    const summary = await invoices.getInvoiceSummary(req.auth!.userId);
+    return {
+      totalInvoices: summary.totalInvoices,
+      totalBilled: summary.totalBilled.toString(),
+      totalCollected: summary.totalCollected.toString(),
+      totalOutstanding: summary.totalOutstanding.toString(),
+      byStatus: summary.byStatus,
+    };
+  });
+
   app.get('/api/invoices', { preHandler: [app.requireAuth] }, async (req) => {
     const query = req.query as { status?: string; limit?: string; offset?: string };
     const list = await invoices.listBySender(req.auth!.userId, {

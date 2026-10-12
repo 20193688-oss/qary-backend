@@ -44,6 +44,16 @@ export async function registerTransactionRoutes(app: FastifyInstance, prisma: Pr
     return { data: result.rows.map(serialize), total: result.total };
   });
 
+  app.get('/api/transaction-history/search', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const q = z.object({
+      q: z.string().min(1),
+      limit: z.coerce.number().int().min(1).max(100).optional(),
+    }).parse(req.query);
+
+    const results = await svc.searchTransactions(req.auth!.userId, q.q, { limit: q.limit });
+    return results.map(serialize);
+  });
+
   app.get('/api/transaction-history/export', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const q = z.object({
       currency: z.string().length(3).optional(),

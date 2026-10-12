@@ -90,6 +90,21 @@ export class TokenizedCardService {
     });
   }
 
+  async getCardStats(userId: string) {
+    const cards = await this.prisma.tokenizedCard.findMany({ where: { userId } });
+    const byNetwork: Record<string, number> = {};
+    let active = 0;
+    let frozen = 0;
+
+    for (const c of cards) {
+      byNetwork[c.network] = (byNetwork[c.network] ?? 0) + 1;
+      if ((c as any).frozen) frozen++;
+      else active++;
+    }
+
+    return { totalCards: cards.length, active, frozen, byNetwork };
+  }
+
   async checkExpiringCards(withinMonths: number = 2) {
     const now = new Date();
     const targetMonth = now.getMonth() + 1 + withinMonths;

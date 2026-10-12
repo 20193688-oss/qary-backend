@@ -61,6 +61,16 @@ export async function registerPaymentLinkRoutes(app: FastifyInstance, prisma: Pr
     return list.map(serialize);
   });
 
+  app.get('/api/payment-links/analytics', { preHandler: [app.requireAuth] }, async (req) => {
+    const analytics = await svc.getAnalytics(req.auth!.userId);
+    return {
+      totalLinks: analytics.totalLinks,
+      totalCollected: analytics.totalCollected.toString(),
+      totalTimesUsed: analytics.totalTimesUsed,
+      byStatus: analytics.byStatus,
+    };
+  });
+
   app.get('/api/payment-links/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const link = await svc.getById(id);
