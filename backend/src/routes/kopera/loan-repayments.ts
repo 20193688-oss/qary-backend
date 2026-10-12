@@ -73,6 +73,26 @@ export async function registerLoanRepaymentRoutes(app: FastifyInstance, prisma: 
     return reply.send(result);
   });
 
+  app.post('/api/repayments/:id/mark-overdue', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+
+    try {
+      const updated = await svc.markOverdue(id);
+
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'admin', eventType: 'loan.repayment_marked_overdue',
+        payload: { repaymentId: id, loanId: updated.loanId },
+        requestId: String(req.id), ip: req.ip,
+      });
+
+      return serialize(updated);
+    } catch (e: any) {
+      if (e.message === 'repayment_not_found') return reply.code(404).send({ error: e.message });
+      if (e.message === 'already_paid') return reply.code(400).send({ error: e.message });
+      throw e;
+    }
+  });
+
   app.post('/api/repayments/:id/pay', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const body = z.object({

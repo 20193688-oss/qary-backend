@@ -57,6 +57,24 @@ export class ScheduledTransferService {
     return this.prisma.scheduledTransfer.findUnique({ where: { id } });
   }
 
+  async update(id: string, userId: string, data: { amount?: bigint; frequency?: string; description?: string }) {
+    const st = await this.prisma.scheduledTransfer.findUnique({ where: { id } });
+    if (!st) throw new Error('scheduled_transfer_not_found');
+    if (st.userId !== userId) throw new Error('forbidden');
+    if (st.status === 'cancelled' || st.status === 'completed') throw new Error('transfer_not_editable');
+
+    const updateData: Record<string, unknown> = {};
+    if (data.amount !== undefined) updateData.amount = data.amount;
+    if (data.frequency !== undefined) {
+      const freq = data.frequency.toLowerCase();
+      if (freq !== 'once' && !INTERVAL_MS[freq]) throw new Error('invalid_frequency');
+      updateData.frequency = freq;
+    }
+    if (data.description !== undefined) updateData.description = data.description;
+
+    return this.prisma.scheduledTransfer.update({ where: { id }, data: updateData });
+  }
+
   async cancel(id: string, userId: string) {
     const st = await this.prisma.scheduledTransfer.findUnique({ where: { id } });
     if (!st) throw new Error('scheduled_transfer_not_found');

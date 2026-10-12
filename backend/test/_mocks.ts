@@ -26,6 +26,8 @@ const MODEL_DEFAULTS: Record<string, Record<string, unknown>> = {
     interestRate: 0.15,
     outstandingBalance: BigInt(0),
     missedPayments: 0,
+    rejectedReason: null,
+    rejectedBy: null,
   },
   loanRepayment: {
     paidAmount: BigInt(0),

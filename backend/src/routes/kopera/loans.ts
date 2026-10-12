@@ -70,6 +70,28 @@ export async function registerLoanRoutes(app: FastifyInstance, prisma: PrismaCli
     }
   });
 
+  app.post('/api/loans/:id/reject', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = z.object({
+      reason: z.string().min(1).max(500),
+    }).parse(req.body);
+
+    try {
+      const loan = await loans.reject(id, body.reason, req.auth!.userId);
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'admin', eventType: 'loan.rejected',
+        payload: { loanId: id, reason: body.reason },
+        requestId: String(req.id), ip: req.ip,
+      });
+      return reply.send(serializeLoan(loan));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      if (msg === 'loan_not_found') return reply.code(404).send({ error: msg });
+      if (msg === 'loan_not_pending') return reply.code(400).send({ error: msg });
+      throw err;
+    }
+  });
+
   app.post('/api/loans/:id/disburse', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     try {

@@ -70,6 +70,35 @@ export async function registerScheduledTransferRoutes(app: FastifyInstance, pris
     return serialize(st);
   });
 
+  app.patch('/api/scheduled-transfers/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = z.object({
+      amount: z.number().positive().optional(),
+      frequency: z.enum(['once', 'daily', 'weekly', 'biweekly', 'monthly']).optional(),
+      description: z.string().max(500).optional(),
+    }).parse(req.body);
+
+    try {
+      const st = await svc.update(id, req.auth!.userId, {
+        amount: body.amount !== undefined ? BigInt(Math.round(body.amount * 100)) : undefined,
+        frequency: body.frequency,
+        description: body.description,
+      });
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'user', eventType: 'scheduled_transfer.updated',
+        payload: { scheduledTransferId: id, ...body },
+        requestId: String(req.id), ip: req.ip,
+      });
+      return serialize(st);
+    } catch (err: any) {
+      if (err.message === 'scheduled_transfer_not_found') return reply.code(404).send({ error: err.message });
+      if (err.message === 'forbidden') return reply.code(403).send({ error: err.message });
+      if (err.message === 'transfer_not_editable') return reply.code(400).send({ error: err.message });
+      if (err.message === 'invalid_frequency') return reply.code(400).send({ error: err.message });
+      throw err;
+    }
+  });
+
   app.post('/api/scheduled-transfers/:id/cancel', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     try {
