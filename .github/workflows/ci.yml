@@ -82,7 +82,9 @@ jobs:
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '17' }
       - uses: android-actions/setup-android@v3
-        with: { log-accepted-android-sdk-licenses: false }
+        with:
+          log-accepted-android-sdk-licenses: false
+          packages: ''
 
       - name: Install mobile deps (flat layout)
         working-directory: mobile
@@ -123,7 +125,9 @@ jobs:
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '17' }
       - uses: android-actions/setup-android@v3
-        with: { log-accepted-android-sdk-licenses: false }
+        with:
+          log-accepted-android-sdk-licenses: false
+          packages: ''
 
       - name: Install mobile deps (flat layout)
         working-directory: mobile
