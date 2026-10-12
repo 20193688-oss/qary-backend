@@ -3,8 +3,40 @@ import type { PrismaClient } from '@prisma/client';
 
 type Row = Record<string, unknown> & { id?: string };
 
+const MODEL_DEFAULTS: Record<string, Record<string, unknown>> = {
+  wallet: {
+    balance: BigInt(0),
+    availableBalance: BigInt(0),
+    holdBalance: BigInt(0),
+    status: 'ACTIVE',
+    isDefault: false,
+  },
+  koperaPoints: {
+    balance: 0,
+    tier: 'BRONZE',
+    lifetimeEarned: 0,
+    lifetimeSpent: 0,
+  },
+  transaction: {
+    feeAmount: BigInt(0),
+    fxRate: null,
+  },
+  loan: {
+    status: 'APPLICATION',
+    interestRate: 0.15,
+    outstandingBalance: BigInt(0),
+  },
+};
+
 function matches(row: Row, where: Record<string, unknown>): boolean {
   for (const [k, v] of Object.entries(where)) {
+    if (v && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date)) {
+      const compound = v as Record<string, unknown>;
+      for (const [ck, cv] of Object.entries(compound)) {
+        if (row[ck] !== cv) return false;
+      }
+      continue;
+    }
     const rv = row[k];
     if (v === null) { if (rv != null) return false; }
     else if (rv !== v) return false;
@@ -101,7 +133,8 @@ export function createInMemoryPrisma(): PrismaClient {
         return arr().filter((r) => matches(r, where));
       },
       async create({ data }: { data: Row }) {
-        const row = { id: data.id ?? randomUUID(), createdAt: new Date(), updatedAt: new Date(), ...data };
+        const defaults = MODEL_DEFAULTS[name] ?? {};
+        const row = { id: data.id ?? randomUUID(), createdAt: new Date(), updatedAt: new Date(), ...defaults, ...data };
         arr().push(row);
         return row;
       },

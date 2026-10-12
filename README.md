@@ -1,108 +1,161 @@
-# QARY Super-App
+# Kopera — Fintech Backend
 
-Super-app de movilidad / delivery / servicios estilo Uber + Rappi + InDrive con pagos, voz, agentes IA, mapa en tiempo real, llamadas WebRTC, control de hardware (linterna, mic, location bg) y evidencias.
+Multi-currency fintech platform with wallets, FX, payments, invoicing, loans, KYC/KYB, and a loyalty points system. Built for Latin American markets (Peru-first) with support for SUNAT electronic invoicing (boletas, facturas, notas de crédito/débito).
 
-> Branch de desarrollo: `claude/super-app-scaffold-gMX6q`. PRs atómicos por fase (ver `AUDIT.md`).
+## Stack
 
-## Estructura
+- **Runtime**: Node 20 + TypeScript
+- **Framework**: Fastify
+- **ORM**: Prisma + PostgreSQL
+- **Cache/Sessions**: Redis (ioredis)
+- **Payments**: Stripe (gateway abstraction)
+- **Testing**: Vitest
+- **Package manager**: pnpm (monorepo workspaces)
+
+## Structure
 
 ```
 qary-backend/
-├── frontend/   # React + Vite + Tailwind + PWA
-├── backend/    # Node 20 + TS + Fastify + Prisma + Postgres + Redis + Socket.IO
-├── agents/     # Microservicio IA (intents, STT/TTS, safety)
-├── mobile/     # Expo + WebView v1
-├── infra/      # docker-compose, terraform mínimo
-├── scripts/    # simulate_drivers.js, simulate_calls.js, simulate_incident.js
-└── legacy/     # qary_superapp_v9.html (HTML SPA original como referencia)
+├── backend/          # Main API server
+│   ├── src/
+│   │   ├── routes/           # REST endpoints (auth, payments, webhooks)
+│   │   ├── routes/kopera/    # Fintech routes (wallets, fx, invoices, loans, kyc, points, gateway)
+│   │   ├── kopera/services/  # Business logic services
+│   │   └── lib/              # Shared utilities (audit, jwt, rate-limit)
+│   ├── prisma/               # Schema + migrations
+│   └── test/                 # Vitest test suite
+├── agents/           # AI agent microservice (intents, STT/TTS)
+├── frontend/         # React + Vite + Tailwind
+├── mobile/           # Expo + WebView
+└── infra/            # docker-compose, terraform
 ```
 
-## Quick start (local)
+## Quick Start
 
 ```bash
-# 1. dependencias
+# 1. Install dependencies
 pnpm install
 pnpm --filter backend exec prisma generate
 
-# 2. servicios (postgres, redis, minio, mailhog, coturn)
+# 2. Start services (postgres, redis)
 docker compose -f infra/docker-compose.yml up -d
 
-# 3. db
+# 3. Database setup
 pnpm --filter backend exec prisma migrate dev --name init
-pnpm --filter backend exec prisma db seed
 
-# 4. dev (paralelo)
-pnpm dev          # frontend + backend
-# o por separado
-pnpm --filter frontend dev   # http://localhost:5173
+# 4. Run dev server
 pnpm --filter backend dev    # http://localhost:3000
 
-# 5. mobile (Expo)
-cd mobile && pnpm start      # escanea el QR
-
-# 6. tests
+# 5. Run tests
 pnpm --filter backend exec vitest run
 ```
 
-## Probar pagos sandbox (PR 3)
+## API Endpoints
+
+### Auth
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/auth/register` | No | Register with email, receive OTP |
+| POST | `/api/auth/verify-otp` | No | Verify OTP, get access + refresh tokens |
+| POST | `/api/auth/refresh` | No | Refresh access token |
+| POST | `/api/auth/logout` | Yes | Revoke refresh token |
+
+### Wallets
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/wallets` | Yes | List all wallets with balances |
+| POST | `/api/wallets` | Yes | Create a wallet (auto-sets first as default) |
+| GET | `/api/wallets/:currency` | Yes | Get wallet balance by currency |
+| POST | `/api/wallets/deposit` | Yes | Deposit funds |
+| POST | `/api/wallets/withdraw` | Yes | Withdraw funds |
+| POST | `/api/wallets/transfer` | Yes | Transfer between users |
+| GET | `/api/transactions` | Yes | List transactions (paginated) |
+
+### FX (Foreign Exchange)
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/fx/rate/:pair` | No | Get exchange rate (e.g., `USD-PEN`) |
+| GET | `/api/fx/pairs` | No | List supported currency pairs |
+| POST | `/api/fx/convert` | Yes | Convert currency |
+| POST | `/api/fx/quote` | Yes | Get buy/sell quote (valid 30s) |
+
+### Invoicing (SUNAT-compatible)
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/invoices` | Yes | Create invoice (BOLETA, FACTURA, RECIBO, etc.) |
+| GET | `/api/invoices` | Yes | List invoices |
+| GET | `/api/invoices/:id` | Yes | Get invoice by ID |
+| POST | `/api/invoices/:id/send` | Yes | Mark invoice as sent |
+
+### Loans
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/loans/simulate` | Yes | Simulate loan (amortization schedule, TCEA) |
+| POST | `/api/loans/apply` | Yes | Apply for a loan |
+| GET | `/api/loans` | Yes | List user loans |
+| GET | `/api/loans/:id` | Yes | Get loan with repayment schedule |
+
+### KYC / KYB
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/kyc/start` | Yes | Start identity verification |
+| GET | `/api/kyc/status` | Yes | Get KYC status |
+| POST | `/api/kyb/register` | Yes | Register a business |
+| GET | `/api/kyb/status` | Yes | Get KYB status |
+
+### Points (Loyalty)
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/points` | Yes | Get balance, tier, progress to next tier |
+| GET | `/api/points/history` | Yes | Get points history |
+| POST | `/api/points/redeem` | Yes | Redeem points |
+
+### Payments
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/payments/intent` | Yes | Create Stripe payment intent |
+| GET | `/api/payments/:id` | Yes | Get payment status |
+| POST | `/api/webhooks/stripe` | No | Stripe webhook handler |
+
+## Key Design Decisions
+
+- **BigInt for money**: All monetary amounts stored as `BigInt` in cents/centimos to avoid floating-point errors.
+- **Double-entry ledger**: Every wallet operation creates a `LedgerEntry` with `balanceBefore`/`balanceAfter` for auditability.
+- **Compound wallet keys**: Wallets are unique per `(userId, currency)`, allowing multi-currency per user.
+- **FX rate fallback chain**: DB rates → hardcoded defaults → inverse calculation → USD cross rate.
+- **Tiers**: BRONZE → SILVER (1K) → GOLD (5K) → PLATINUM (20K) → DIAMOND (50K) based on lifetime points earned.
+- **Invoice series**: Boletas get `B001-NNNNNNNN`, facturas get `F001-NNNNNNNN` (SUNAT format).
+
+## Testing
 
 ```bash
-# Stripe CLI: forward webhooks a tu backend local
-stripe listen --forward-to localhost:3000/api/webhooks/stripe
-# Tarjeta de prueba: 4242 4242 4242 4242, exp 12/34, CVC 123
-node scripts/simulate_payments.js --orderId <id>
+# Run all tests
+pnpm --filter backend exec vitest run
+
+# Run specific test suite
+pnpm --filter backend exec vitest run test/kopera-wallets.test.ts
+
+# Watch mode
+pnpm --filter backend exec vitest
 ```
 
-Detalles completos en [`PR3.md`](./PR3.md), incluyendo cómo configurar secrets en GitHub para builds APK firmadas.
+58 tests across 10 test files covering auth, wallets, FX, invoices, loans, KYC/KYB, points, payments, and voice payments.
 
-## Demo end-to-end (próximas fases)
+## Configuration
 
-```bash
-# 5 conductores simulados moviéndose en el mapa
-node scripts/simulate_drivers.js --count 5
+Copy `.env.example` to `.env` and set the required values. Never commit `.env`.
 
-# llamada WebRTC user↔driver
-node scripts/simulate_calls.js --orderId <id>
+Required environment variables:
+- `DATABASE_URL` — PostgreSQL connection string
+- `REDIS_URL` — Redis connection string
+- `JWT_SECRET` — Secret for JWT signing
+- `STRIPE_SECRET_KEY` — Stripe API key
+- `STRIPE_WEBHOOK_SECRET` — Stripe webhook signing secret
 
-# incidente con foto + transcripción
-node scripts/simulate_incident.js --orderId <id>
-```
+## Security
 
-## Configuración
-
-Copia `.env.example` a `.env` y rellena keys (Stripe sandbox, Mapbox, Twilio sandbox, etc.). Nunca commitear `.env`.
-
-## Defaults asumidos
-
-- **Frontend**: React 18 + Vite + Tailwind + PWA
-- **Backend**: Fastify + TS + Prisma + Postgres + Redis
-- **Maps**: Mapbox GL (fallback Leaflet)
-- **LLM**: Claude API (`claude-haiku-4-5`)
-- **Mobile**: Expo + WebView v1, migración progresiva a RN nativo
-- **Hosting staging**: Vercel (frontend) + Railway/Fly (backend)
-
-## Estado de fases
-
-- [x] PR 1 — Auditoría + import legacy + scaffold base de docs
-- [x] PR 2 — Scaffold monorepo
-- [x] PR 3 — Auth + pagos (ver `PR3.md`)
-- [x] PR 4 — Mapa real-time + arreglos wrapper (ver `PR4.md`)
-- [ ] PR 4 — Mapa real-time
-- [ ] PR 5 — WebRTC
-- [ ] PR 6 — Voz + agentes
-- [ ] PR 7 — Recording + evidencias
-- [ ] PR 8 — Incidentes + receipts + audit
-- [ ] PR 9 — Hardware nativo
-- [ ] PR 10 — Tests + CI/CD
-- [ ] PR 11 — Builds (APK/Expo/PWA)
-- [ ] PR 12 — Seguridad final + entrega
-
-## Seguridad
-
-Ver `SECURITY.md` (PR 12). Reglas inmediatas:
-
-- Nunca commitear secrets: solo `.env.example`.
-- PAN/CVV jamás se guarda en el backend ni en localStorage; solo Stripe tokens.
-- Confirmación PIN/voz antes de cualquier `confirm_payment`.
-- Signed URLs (TTL ≤ 1h) para toda media.
-- Audit log con `request_id` por cada acción sensible.
+- Secrets stored only in `.env`, never committed.
+- PAN/CVV never stored; only Stripe tokens.
+- Rate limiting on auth endpoints.
+- Audit log with `request_id` for every sensitive action.
+- JWT access tokens (short-lived) + refresh tokens (revocable).
