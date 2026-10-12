@@ -53,6 +53,40 @@ export async function registerLoanRoutes(app: FastifyInstance, prisma: PrismaCli
     return list.map(serializeLoan);
   });
 
+  app.post('/api/loans/:id/approve', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      const loan = await loans.approve(id, req.auth!.userId);
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'user', eventType: 'loan.approved',
+        payload: { loanId: id }, requestId: String(req.id), ip: req.ip,
+      });
+      return reply.send(serializeLoan(loan));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      if (msg === 'loan_not_found') return reply.code(404).send({ error: msg });
+      if (msg === 'loan_not_pending') return reply.code(400).send({ error: msg });
+      throw err;
+    }
+  });
+
+  app.post('/api/loans/:id/disburse', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      const loan = await loans.disburse(id);
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'user', eventType: 'loan.disbursed',
+        payload: { loanId: id }, requestId: String(req.id), ip: req.ip,
+      });
+      return reply.send(serializeLoan(loan));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      if (msg === 'loan_not_found') return reply.code(404).send({ error: msg });
+      if (msg === 'loan_not_approved') return reply.code(400).send({ error: msg });
+      throw err;
+    }
+  });
+
   app.get('/api/loans/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const loan = await loans.getById(id);
