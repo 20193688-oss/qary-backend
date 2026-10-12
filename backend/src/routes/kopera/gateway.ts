@@ -120,6 +120,18 @@ export async function registerGatewayRoutes(app: FastifyInstance, prisma: Prisma
     };
   });
 
+  app.get('/api/gateway/pending-settlements', { preHandler: [app.requireAuth] }, async (req) => {
+    const result = await gateway.getPendingSettlements(req.auth!.userId);
+    return {
+      totalPending: result.totalPending.toString(),
+      count: result.count,
+      items: result.items.map((i: any) => ({
+        ...i,
+        amount: i.amount.toString(),
+      })),
+    };
+  });
+
   app.get('/api/gateway/payments/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const gp = await gateway.findById(id);

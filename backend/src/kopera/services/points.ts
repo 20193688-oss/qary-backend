@@ -126,6 +126,30 @@ export class PointsService {
     return Math.floor((amountCents / 100) * rate * multiplier);
   }
 
+  async getEarningSummary(userId: string) {
+    const pts = await this.prisma.koperaPoints.findUnique({ where: { userId } });
+    if (!pts) {
+      return { totalEarned: 0, totalRedeemed: 0, balance: 0, tier: 'BRONZE', byReason: {} };
+    }
+    const history = await this.prisma.pointsHistory.findMany({
+      where: { pointsId: pts.id },
+    });
+    const byReason: Record<string, { earned: number; redeemed: number; count: number }> = {};
+    for (const h of history) {
+      if (!byReason[h.reason]) byReason[h.reason] = { earned: 0, redeemed: 0, count: 0 };
+      byReason[h.reason].count++;
+      if (h.type === 'EARN') byReason[h.reason].earned += h.amount;
+      else byReason[h.reason].redeemed += Math.abs(h.amount);
+    }
+    return {
+      totalEarned: pts.lifetimeEarned,
+      totalRedeemed: pts.lifetimeSpent,
+      balance: pts.balance,
+      tier: pts.tier,
+      byReason,
+    };
+  }
+
   private calculateTier(lifetimeEarned: number): string {
     if (lifetimeEarned >= TIER_THRESHOLDS.DIAMOND) return 'DIAMOND';
     if (lifetimeEarned >= TIER_THRESHOLDS.PLATINUM) return 'PLATINUM';

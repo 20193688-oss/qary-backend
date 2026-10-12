@@ -95,6 +95,38 @@ export class BusinessProfileService {
     };
   }
 
+  async getProfileCompleteness(userId: string) {
+    const profile = await this.prisma.businessProfile.findUnique({ where: { userId } });
+    if (!profile) throw new Error('profile_not_found');
+
+    const fields = [
+      { name: 'taxId', filled: !!profile.taxId },
+      { name: 'taxIdType', filled: !!profile.taxIdType },
+      { name: 'taxIdCountry', filled: !!profile.taxIdCountry },
+      { name: 'legalName', filled: !!profile.legalName },
+      { name: 'tradeName', filled: !!profile.tradeName },
+      { name: 'incorporationDate', filled: !!profile.incorporationDate },
+      { name: 'economicActivity', filled: !!profile.economicActivity },
+      { name: 'ciiu', filled: !!profile.ciiu },
+      { name: 'fiscalAddress', filled: !!profile.fiscalAddress },
+      { name: 'legalRepName', filled: !!profile.legalRepName },
+      { name: 'legalRepDocType', filled: !!profile.legalRepDocType },
+      { name: 'legalRepDocNumber', filled: !!profile.legalRepDocNumber },
+    ];
+
+    const filledCount = fields.filter(f => f.filled).length;
+    const completenessPercent = Math.round((filledCount / fields.length) * 100);
+
+    return {
+      completenessPercent,
+      filledFields: filledCount,
+      totalFields: fields.length,
+      missingFields: fields.filter(f => !f.filled).map(f => f.name),
+      fields,
+      status: profile.status,
+    };
+  }
+
   async reject(userId: string, reason: string) {
     const profile = await this.prisma.businessProfile.findUnique({ where: { userId } });
     if (!profile) throw new Error('profile_not_found');

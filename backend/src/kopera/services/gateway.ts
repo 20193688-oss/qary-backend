@@ -205,6 +205,30 @@ export class GatewayPaymentService {
     });
   }
 
+  async getPendingSettlements(userId: string) {
+    const userTxns = await this.prisma.transaction.findMany({ where: { userId } });
+    const txnIds = new Set(userTxns.map((t: any) => t.id));
+    const allPayments = await this.prisma.gatewayPayment.findMany({});
+    const captured = allPayments.filter((p: any) => txnIds.has(p.transactionId) && p.status === 'CAPTURED');
+
+    let totalPending = BigInt(0);
+    const items = captured.map((p: any) => {
+      totalPending += p.amount;
+      const ageMs = Date.now() - new Date(p.createdAt).getTime();
+      return {
+        id: p.id,
+        transactionId: p.transactionId,
+        amount: p.amount,
+        currency: p.currency,
+        paymentMethod: p.paymentMethod,
+        capturedAt: p.createdAt,
+        ageHours: Math.floor(ageMs / (1000 * 60 * 60)),
+      };
+    }).sort((a: any, b: any) => b.ageHours - a.ageHours);
+
+    return { totalPending, count: items.length, items };
+  }
+
   async refund(id: string, refundAmount?: bigint, reason?: string) {
     const gp = await this.prisma.gatewayPayment.findUnique({
       where: { id },
