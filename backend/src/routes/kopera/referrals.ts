@@ -40,6 +40,38 @@ export async function registerReferralRoutes(app: FastifyInstance, prisma: Prism
     }));
   });
 
+  app.get('/api/referrals/validate/:code', async (req) => {
+    const { code } = req.params as { code: string };
+    return svc.validateCode(code);
+  });
+
+  app.post('/api/referrals/deactivate', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    try {
+      const referral = await svc.deactivate(req.auth!.userId);
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'user', eventType: 'referral.deactivated',
+        payload: { code: referral.code },
+        requestId: String(req.id), ip: req.ip,
+      });
+      return serialize(referral);
+    } catch (err: any) {
+      if (err.message === 'referral_not_found') return reply.code(404).send({ error: err.message });
+      if (err.message === 'already_inactive') return reply.code(400).send({ error: err.message });
+      throw err;
+    }
+  });
+
+  app.post('/api/referrals/activate', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    try {
+      const referral = await svc.activate(req.auth!.userId);
+      return serialize(referral);
+    } catch (err: any) {
+      if (err.message === 'referral_not_found') return reply.code(404).send({ error: err.message });
+      if (err.message === 'already_active') return reply.code(400).send({ error: err.message });
+      throw err;
+    }
+  });
+
   app.post('/api/referrals/apply', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const body = z.object({
       code: z.string().min(1),

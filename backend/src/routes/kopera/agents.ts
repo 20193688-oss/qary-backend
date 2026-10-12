@@ -135,6 +135,27 @@ export async function registerAgentRoutes(app: FastifyInstance, prisma: PrismaCl
     return executions.map(serializeExecution);
   });
 
+  app.get('/api/agents/metrics', { preHandler: [app.requireAuth] }, async (req) => {
+    const query = req.query as { agentId?: string };
+    const where: Record<string, unknown> = {};
+    if (query.agentId) where.agentId = query.agentId;
+
+    const all = await prisma.agentExecution.findMany({ where });
+    const succeeded = all.filter((e: any) => e.status === 'completed');
+    const failed = all.filter((e: any) => e.status === 'failed');
+    const durations = succeeded.filter((e: any) => e.durationMs != null).map((e: any) => e.durationMs as number);
+    const avgDuration = durations.length > 0 ? Math.round(durations.reduce((a: number, b: number) => a + b, 0) / durations.length) : null;
+
+    return {
+      total: all.length,
+      succeeded: succeeded.length,
+      failed: failed.length,
+      running: all.filter((e: any) => e.status === 'running').length,
+      successRate: all.length > 0 ? Math.round(succeeded.length / all.length * 10000) / 100 : 0,
+      avgDurationMs: avgDuration,
+    };
+  });
+
   // Get single execution by ID
   app.get('/api/agents/executions/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
