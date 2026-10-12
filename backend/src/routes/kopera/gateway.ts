@@ -5,11 +5,13 @@ import { randomUUID } from 'node:crypto';
 import { audit } from '../../lib/audit.js';
 import { AgentOrchestrator } from '../../kopera/agents/orchestrator.js';
 import { GatewayPaymentService } from '../../kopera/services/gateway.js';
+import { PaymentLinkService } from '../../kopera/services/payment-links.js';
 import '../../kopera/agents/definitions.js';
 
 export async function registerGatewayRoutes(app: FastifyInstance, prisma: PrismaClient) {
   const orchestrator = new AgentOrchestrator(prisma);
   const gateway = new GatewayPaymentService(prisma);
+  const linkSvc = new PaymentLinkService(prisma);
 
   app.post('/api/gateway/payments', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const body = z.object({
@@ -202,17 +204,54 @@ export async function registerGatewayRoutes(app: FastifyInstance, prisma: Prisma
       expiresInMinutes: z.number().int().positive().default(60),
     }).parse(req.body);
 
-    const linkId = randomUUID().replace(/-/g, '').slice(0, 16);
+    const amountCents = BigInt(Math.round(body.amount * 100));
+    const expiresAt = new Date(Date.now() + body.expiresInMinutes * 60 * 1000);
+
+    const link = await linkSvc.create({
+      userId: req.auth!.userId,
+      amount: amountCents,
+      currency: body.currency,
+      description: body.description,
+      expiresAt,
+    });
+
     const baseUrl = process.env.APP_BASE_URL ?? 'https://pay.kopera.io';
 
-    return reply.code(201).send({
-      linkId,
-      url: `${baseUrl}/pay/${linkId}`,
-      amount: body.amount,
-      currency: body.currency.toUpperCase(),
-      description: body.description,
-      expiresAt: new Date(Date.now() + body.expiresInMinutes * 60 * 1000).toISOString(),
+    await audit(prisma, {
+      userId: req.auth!.userId, actor: 'user', eventType: 'gateway.payment_link_created',
+      payload: { linkId: link.id, amount: body.amount, currency: body.currency },
+      requestId: String(req.id), ip: req.ip,
     });
+
+    return reply.code(201).send({
+      id: link.id,
+      code: link.code,
+      url: `${baseUrl}/pay/${link.code}`,
+      amount: link.amount.toString(),
+      currency: link.currency,
+      description: link.description,
+      status: link.status,
+      expiresAt: link.expiresAt?.toISOString() ?? null,
+    });
+  });
+
+  // Webhook delivery confirmation
+  app.post('/api/gateway/payments/:id/webhook-delivered', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      const gp = await gateway.markWebhookDelivered(id);
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'system', eventType: 'gateway.webhook_delivered',
+        payload: { gatewayPaymentId: id },
+        requestId: String(req.id), ip: req.ip,
+      });
+      return serializeGatewayPayment(gp);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      if (msg === 'not_found') return reply.code(404).send({ error: msg });
+      if (msg === 'already_delivered') return reply.code(400).send({ error: msg });
+      throw err;
+    }
   });
 }
 
@@ -227,9 +266,11 @@ function serializeGatewayPayment(gp: any) {
     cardNetwork: gp.cardNetwork,
     cardLast4: gp.cardLast4,
     threeDSecureStatus: gp.threeDSecureStatus,
+    gatewayFee: gp.gatewayFee.toString(),
     antifraudScore: gp.antifraudScore,
     antifraudDecision: gp.antifraudDecision,
     idempotencyKey: gp.idempotencyKey,
+    webhookDelivered: gp.webhookDelivered,
     settlementAmount: gp.settlementAmount?.toString() ?? null,
     settlementCurrency: gp.settlementCurrency ?? null,
     settledAt: gp.settledAt ?? null,
