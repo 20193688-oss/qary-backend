@@ -229,6 +229,51 @@ export class GatewayPaymentService {
     return { totalPending, count: items.length, items };
   }
 
+  async getFeeAnalysis(userId: string) {
+    const userTxns = await this.prisma.transaction.findMany({ where: { userId } });
+    const txnIds = new Set(userTxns.map((t: any) => t.id));
+    const allPayments = await this.prisma.gatewayPayment.findMany({});
+    const payments = allPayments.filter((p: any) => txnIds.has(p.transactionId));
+
+    const byMethod: Record<string, { count: number; totalAmount: bigint; totalFees: bigint; effectiveRate: number }> = {};
+    let totalFees = BigInt(0);
+    let totalVolume = BigInt(0);
+
+    for (const p of payments) {
+      const method = p.paymentMethod;
+      if (!byMethod[method]) byMethod[method] = { count: 0, totalAmount: BigInt(0), totalFees: BigInt(0), effectiveRate: 0 };
+      byMethod[method].count++;
+      byMethod[method].totalAmount += p.amount;
+      byMethod[method].totalFees += p.gatewayFee;
+      totalFees += p.gatewayFee;
+      totalVolume += p.amount;
+    }
+
+    for (const data of Object.values(byMethod)) {
+      data.effectiveRate = data.totalAmount > BigInt(0)
+        ? Math.round(Number(data.totalFees * BigInt(10000) / data.totalAmount)) / 100
+        : 0;
+    }
+
+    const methods = Object.entries(byMethod).sort((a, b) => Number(a[1].totalFees - b[1].totalFees));
+    const cheapestMethod = methods.length > 0 ? methods[0][0] : null;
+    const mostExpensiveMethod = methods.length > 0 ? methods[methods.length - 1][0] : null;
+
+    const overallEffectiveRate = totalVolume > BigInt(0)
+      ? Math.round(Number(totalFees * BigInt(10000) / totalVolume)) / 100
+      : 0;
+
+    return {
+      totalPayments: payments.length,
+      totalVolume,
+      totalFees,
+      overallEffectiveRate,
+      cheapestMethod,
+      mostExpensiveMethod,
+      byMethod,
+    };
+  }
+
   async refund(id: string, refundAmount?: bigint, reason?: string) {
     const gp = await this.prisma.gatewayPayment.findUnique({
       where: { id },

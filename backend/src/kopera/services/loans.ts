@@ -209,6 +209,99 @@ export class LoanService {
     };
   }
 
+  async getAmortizationHealth(userId: string) {
+    const loans = await this.prisma.loan.findMany({ where: { userId } });
+    const activeStatuses = new Set(['APPROVED', 'DISBURSED']);
+    const activeLoans = loans.filter((l: any) => activeStatuses.has(l.status));
+
+    if (activeLoans.length === 0) {
+      return {
+        activeLoans: 0,
+        healthScore: 100,
+        totalExpectedPaid: BigInt(0),
+        totalActualPaid: BigInt(0),
+        paymentAdherence: 100,
+        overdueInstallments: 0,
+        loanDetails: [] as { loanId: string; currency: string; principalAmount: bigint; expectedPaid: bigint; actualPaid: bigint; adherencePercent: number; overdueCount: number; status: string }[],
+      };
+    }
+
+    const loanIds = new Set(activeLoans.map((l: any) => l.id));
+    const allRepayments = await this.prisma.loanRepayment.findMany({});
+    const repayments = allRepayments.filter((r: any) => loanIds.has(r.loanId));
+
+    const now = new Date();
+    let totalExpectedPaid = BigInt(0);
+    let totalActualPaid = BigInt(0);
+    let totalOverdue = 0;
+    let totalDue = 0;
+    let totalPaidOnTime = 0;
+
+    const repaymentsByLoan: Record<string, any[]> = {};
+    for (const r of repayments) {
+      if (!repaymentsByLoan[r.loanId]) repaymentsByLoan[r.loanId] = [];
+      repaymentsByLoan[r.loanId].push(r);
+    }
+
+    const loanDetails: { loanId: string; currency: string; principalAmount: bigint; expectedPaid: bigint; actualPaid: bigint; adherencePercent: number; overdueCount: number; status: string }[] = [];
+
+    for (const loan of activeLoans) {
+      const loanRepayments = repaymentsByLoan[loan.id] ?? [];
+      let expectedPaid = BigInt(0);
+      let actualPaid = BigInt(0);
+      let overdueCount = 0;
+
+      for (const r of loanRepayments) {
+        if (r.dueDate <= now) {
+          totalDue++;
+          expectedPaid += r.amount;
+          if (r.status === 'PAID') {
+            actualPaid += r.paidAmount ?? r.amount;
+            totalPaidOnTime++;
+          } else {
+            overdueCount++;
+            totalOverdue++;
+            actualPaid += r.paidAmount ?? BigInt(0);
+          }
+        }
+      }
+
+      totalExpectedPaid += expectedPaid;
+      totalActualPaid += actualPaid;
+
+      const adherencePercent = expectedPaid > BigInt(0)
+        ? Math.round(Number(actualPaid * BigInt(10000) / expectedPaid)) / 100
+        : 100;
+
+      loanDetails.push({
+        loanId: loan.id,
+        currency: loan.currency,
+        principalAmount: loan.principalAmount,
+        expectedPaid,
+        actualPaid,
+        adherencePercent,
+        overdueCount,
+        status: overdueCount > 0 ? 'behind' : 'on_track',
+      });
+    }
+
+    const paymentAdherence = totalDue > 0
+      ? Math.round(totalPaidOnTime / totalDue * 10000) / 100
+      : 100;
+
+    const healthScore = Math.max(0, 100 - totalOverdue * 20);
+
+    return {
+      activeLoans: activeLoans.length,
+      healthScore,
+      totalExpectedPaid,
+      totalActualPaid,
+      paymentAdherence,
+      overdueInstallments: totalOverdue,
+      loanDetails,
+    };
+  }
+
   async simulate(principalAmount: number, currency: string, termMonths: number, interestRate?: number) {
     const rate = interestRate ?? this.getDefaultRate(currency);
     const { monthlyPayment, totalInterest, tcea } = this.calculateAmortization(

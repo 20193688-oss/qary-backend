@@ -120,6 +120,28 @@ export async function registerGatewayRoutes(app: FastifyInstance, prisma: Prisma
     };
   });
 
+  app.get('/api/gateway/fee-analysis', { preHandler: [app.requireAuth] }, async (req) => {
+    const result = await gateway.getFeeAnalysis(req.auth!.userId);
+    const byMethod: Record<string, any> = {};
+    for (const [method, data] of Object.entries(result.byMethod)) {
+      byMethod[method] = {
+        count: data.count,
+        totalAmount: data.totalAmount.toString(),
+        totalFees: data.totalFees.toString(),
+        effectiveRate: data.effectiveRate,
+      };
+    }
+    return {
+      totalPayments: result.totalPayments,
+      totalVolume: result.totalVolume.toString(),
+      totalFees: result.totalFees.toString(),
+      overallEffectiveRate: result.overallEffectiveRate,
+      cheapestMethod: result.cheapestMethod,
+      mostExpensiveMethod: result.mostExpensiveMethod,
+      byMethod,
+    };
+  });
+
   app.get('/api/gateway/pending-settlements', { preHandler: [app.requireAuth] }, async (req) => {
     const result = await gateway.getPendingSettlements(req.auth!.userId);
     return {

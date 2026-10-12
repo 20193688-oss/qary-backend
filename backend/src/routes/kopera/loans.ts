@@ -81,6 +81,24 @@ export async function registerLoanRoutes(app: FastifyInstance, prisma: PrismaCli
     };
   });
 
+  app.get('/api/loans/amortization-health', { preHandler: [app.requireAuth] }, async (req) => {
+    const result = await loans.getAmortizationHealth(req.auth!.userId);
+    return {
+      activeLoans: result.activeLoans,
+      healthScore: result.healthScore,
+      totalExpectedPaid: result.totalExpectedPaid.toString(),
+      totalActualPaid: result.totalActualPaid.toString(),
+      paymentAdherence: result.paymentAdherence,
+      overdueInstallments: result.overdueInstallments,
+      loanDetails: result.loanDetails.map((d) => ({
+        ...d,
+        principalAmount: d.principalAmount.toString(),
+        expectedPaid: d.expectedPaid.toString(),
+        actualPaid: d.actualPaid.toString(),
+      })),
+    };
+  });
+
   app.get('/api/loans', { preHandler: [app.requireAuth] }, async (req) => {
     const list = await loans.listByUser(req.auth!.userId);
     return list.map(serializeLoan);
