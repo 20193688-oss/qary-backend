@@ -187,6 +187,51 @@ export class LoanRepaymentService {
     };
   }
 
+  async getDelinquencyReport(loanId: string) {
+    const loan = await this.prisma.loan.findUnique({ where: { id: loanId } });
+    if (!loan) throw new Error('loan_not_found');
+
+    const repayments = await this.prisma.loanRepayment.findMany({
+      where: { loanId },
+      orderBy: { installment: 'asc' },
+    });
+
+    let overdueCount = 0;
+    let overdueAmount = BigInt(0);
+    let consecutiveOverdue = 0;
+    let maxConsecutiveOverdue = 0;
+    let currentStreak = 0;
+    const overdueInstallments: Array<{ installment: number; dueDate: Date; amount: bigint; paidAmount: bigint }> = [];
+
+    for (const r of repayments) {
+      if (r.status === 'OVERDUE') {
+        overdueCount++;
+        overdueAmount += r.amount - r.paidAmount;
+        currentStreak++;
+        if (currentStreak > maxConsecutiveOverdue) maxConsecutiveOverdue = currentStreak;
+        overdueInstallments.push({ installment: r.installment, dueDate: r.dueDate, amount: r.amount, paidAmount: r.paidAmount });
+      } else {
+        currentStreak = 0;
+      }
+    }
+    consecutiveOverdue = currentStreak;
+
+    const delinquencyRate = repayments.length > 0 ? Math.round((overdueCount / repayments.length) * 10000) / 100 : 0;
+    const severity = consecutiveOverdue >= 3 ? 'critical' : overdueCount > 0 ? 'warning' : 'ok';
+
+    return {
+      loanId,
+      totalInstallments: repayments.length,
+      overdueCount,
+      overdueAmount,
+      consecutiveOverdue,
+      maxConsecutiveOverdue,
+      delinquencyRate,
+      severity,
+      overdueInstallments,
+    };
+  }
+
   async getScheduleSummary(loanId: string) {
     const repayments = await this.prisma.loanRepayment.findMany({
       where: { loanId },
