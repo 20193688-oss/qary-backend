@@ -30,6 +30,19 @@ export async function registerWalletRoutes(app: FastifyInstance, prisma: PrismaC
     return balance;
   });
 
+  app.patch('/api/wallets/:currency', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { currency } = req.params as { currency: string };
+    const body = z.object({ label: z.string().min(1).max(50) }).parse(req.body);
+    try {
+      const wallet = await wallets.renameWallet(req.auth!.userId, currency, body.label);
+      return serializeWallet(wallet);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      if (msg === 'wallet_not_found') return reply.code(404).send({ error: msg });
+      throw err;
+    }
+  });
+
   app.post('/api/wallets', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const body = z.object({
       currency: z.string().length(3),

@@ -50,6 +50,28 @@ export async function registerLoanRepaymentRoutes(app: FastifyInstance, prisma: 
     };
   });
 
+  app.get('/api/loans/:loanId/early-payoff', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { loanId } = req.params as { loanId: string };
+
+    const loan = await prisma.loan.findUnique({ where: { id: loanId } });
+    if (!loan) return reply.code(404).send({ error: 'loan_not_found' });
+    if (loan.userId !== req.auth!.userId) return reply.code(403).send({ error: 'forbidden' });
+
+    try {
+      const result = await svc.calculateEarlyPayoff(loanId);
+      return {
+        loanId: result.loanId,
+        payoffAmount: result.payoffAmount.toString(),
+        savedInterest: result.savedInterest.toString(),
+        remainingInstallments: result.remainingInstallments,
+        originalTermMonths: result.originalTermMonths,
+      };
+    } catch (e: any) {
+      if (e.message === 'loan_not_active') return reply.code(400).send({ error: e.message });
+      throw e;
+    }
+  });
+
   app.get('/api/repayments/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const repayment = await svc.getById(id);

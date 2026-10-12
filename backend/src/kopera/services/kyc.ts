@@ -102,6 +102,29 @@ export class KycService {
     });
   }
 
+  async checkExpiry(userId: string) {
+    const profile = await this.prisma.kycProfile.findUnique({ where: { userId } });
+    if (!profile) throw new Error('kyc_not_found');
+
+    const expiryDays = 365;
+    const verifiedDate = profile.verifiedAt;
+    if (!verifiedDate || profile.status !== 'APPROVED') {
+      return { expired: false, status: profile.status, verifiedAt: null, expiresAt: null, daysRemaining: null };
+    }
+
+    const expiresAt = new Date(verifiedDate.getTime() + expiryDays * 24 * 60 * 60 * 1000);
+    const now = new Date();
+    const daysRemaining = Math.ceil((expiresAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
+
+    return {
+      expired: daysRemaining <= 0,
+      status: profile.status,
+      verifiedAt: verifiedDate,
+      expiresAt,
+      daysRemaining: Math.max(0, daysRemaining),
+    };
+  }
+
   async setRiskScore(userId: string, riskScore: number) {
     const profile = await this.prisma.kycProfile.findUnique({ where: { userId } });
     if (!profile) throw new Error('kyc_not_found');

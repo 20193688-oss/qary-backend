@@ -96,6 +96,21 @@ export async function registerUserProfileRoutes(app: FastifyInstance, prisma: Pr
     return { success: true };
   });
 
+  app.post('/api/profile/deactivate', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    try {
+      await svc.deactivateAccount(req.auth!.userId);
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'user', eventType: 'profile.deactivated',
+        payload: {}, requestId: String(req.id), ip: req.ip,
+      });
+      return { success: true };
+    } catch (e: any) {
+      if (e.message === 'user_not_found') return reply.code(404).send({ error: e.message });
+      if (e.message === 'already_deactivated') return reply.code(400).send({ error: e.message });
+      throw e;
+    }
+  });
+
   app.post('/api/profile/upgrade-business', { preHandler: [app.requireAuth] }, async (req, reply) => {
     try {
       const user = await svc.upgradeToBusinessAccount(req.auth!.userId);

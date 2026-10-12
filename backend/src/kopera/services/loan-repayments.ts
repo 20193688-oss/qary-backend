@@ -113,6 +113,37 @@ export class LoanRepaymentService {
     return { processed: results.length, results };
   }
 
+  async calculateEarlyPayoff(loanId: string) {
+    const loan = await this.prisma.loan.findUnique({ where: { id: loanId } });
+    if (!loan) throw new Error('loan_not_found');
+    if (loan.status !== 'DISBURSED') throw new Error('loan_not_active');
+
+    const repayments = await this.prisma.loanRepayment.findMany({
+      where: { loanId },
+      orderBy: { installment: 'asc' },
+    });
+
+    let remainingPrincipal = BigInt(0);
+    let savedInterest = BigInt(0);
+    let remainingInstallments = 0;
+
+    for (const r of repayments) {
+      if (r.status !== 'PAID') {
+        remainingPrincipal += r.principal;
+        savedInterest += r.interest;
+        remainingInstallments++;
+      }
+    }
+
+    return {
+      loanId,
+      payoffAmount: remainingPrincipal,
+      savedInterest,
+      remainingInstallments,
+      originalTermMonths: loan.termMonths,
+    };
+  }
+
   async getScheduleSummary(loanId: string) {
     const repayments = await this.prisma.loanRepayment.findMany({
       where: { loanId },

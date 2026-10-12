@@ -65,6 +65,17 @@ export async function registerKycRoutes(app: FastifyInstance, prisma: PrismaClie
     };
   });
 
+  app.get('/api/kyc/expiry', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    try {
+      const result = await kyc.checkExpiry(req.auth!.userId);
+      return result;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      if (msg === 'kyc_not_found') return reply.code(404).send({ error: msg });
+      throw err;
+    }
+  });
+
   app.get('/api/kyc/all', { preHandler: [app.requireAuth] }, async (req) => {
     const query = req.query as { limit?: string; offset?: string; status?: string };
     const list = await kyc.listAll({

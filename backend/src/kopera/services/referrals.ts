@@ -119,6 +119,24 @@ export class ReferralService {
     });
   }
 
+  async getConversionStats(userId: string) {
+    const referral = await this.prisma.referral.findFirst({ where: { referrerId: userId } });
+    if (!referral) return { hasCode: false, code: null, signupCount: 0, rewardedCount: 0, conversionRate: 0, totalPointsEarned: 0 };
+
+    const conversionRate = referral.signupCount > 0
+      ? Math.round(referral.rewardedCount / referral.signupCount * 10000) / 100
+      : 0;
+
+    return {
+      hasCode: true,
+      code: referral.code,
+      signupCount: referral.signupCount,
+      rewardedCount: referral.rewardedCount,
+      conversionRate,
+      totalPointsEarned: referral.totalPointsEarned,
+    };
+  }
+
   async listAll(opts?: { status?: string; limit?: number; offset?: number }) {
     const where: Record<string, unknown> = {};
     if (opts?.status) where.status = opts.status;
