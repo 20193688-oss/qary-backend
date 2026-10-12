@@ -1,6 +1,33 @@
 import type { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 
+const FEE_RATES: Record<string, number> = {
+  CARD: 0.029,
+  APPLE_PAY: 0.029,
+  GOOGLE_PAY: 0.029,
+  BANK_TRANSFER: 0.005,
+  ACH: 0.005,
+  SEPA: 0.005,
+  WALLET: 0.01,
+  QR_CODE: 0.01,
+  PIX: 0.008,
+  SPEI: 0.008,
+  UPI: 0.008,
+  STABLECOIN: 0.003,
+};
+const FLAT_FEE_CENTS: Record<string, number> = {
+  CARD: 30,
+  APPLE_PAY: 30,
+  GOOGLE_PAY: 30,
+};
+
+export function calculateGatewayFee(amountCents: bigint, paymentMethod: string): bigint {
+  const rate = FEE_RATES[paymentMethod] ?? 0.029;
+  const flat = FLAT_FEE_CENTS[paymentMethod] ?? 0;
+  const percentageFee = Math.ceil(Number(amountCents) * rate);
+  return BigInt(percentageFee + flat);
+}
+
 export class GatewayPaymentService {
   constructor(private prisma: PrismaClient) {}
 
@@ -58,6 +85,8 @@ export class GatewayPaymentService {
       },
     });
 
+    const gatewayFee = calculateGatewayFee(data.amount, data.paymentMethod);
+
     const gatewayPayment = await this.prisma.gatewayPayment.create({
       data: {
         transactionId: transaction.id,
@@ -66,6 +95,7 @@ export class GatewayPaymentService {
         paymentMethod: data.paymentMethod as any,
         amount: data.amount,
         currency: data.currency,
+        gatewayFee,
         antifraudScore: data.antifraudScore,
         antifraudDecision: data.antifraudDecision,
         antifraudDetails: data.antifraudDetails,
@@ -133,6 +163,17 @@ export class GatewayPaymentService {
         settlementCurrency: settlementCurrency ?? gp.currency,
         settledAt: new Date(),
       },
+    });
+  }
+
+  async markWebhookDelivered(id: string) {
+    const gp = await this.prisma.gatewayPayment.findUnique({ where: { id } });
+    if (!gp) throw new Error('not_found');
+    if (gp.webhookDelivered) throw new Error('already_delivered');
+
+    return this.prisma.gatewayPayment.update({
+      where: { id },
+      data: { webhookDelivered: true },
     });
   }
 
