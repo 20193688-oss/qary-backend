@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { PrismaClient } from '@prisma/client';
 import { PaymentLinkService } from '../../kopera/services/payment-links.js';
+import { WalletService } from '../../kopera/services/wallet.js';
 import { audit } from '../../lib/audit.js';
 
 function serialize(l: any) {
@@ -22,6 +23,7 @@ function serialize(l: any) {
 
 export async function registerPaymentLinkRoutes(app: FastifyInstance, prisma: PrismaClient) {
   const svc = new PaymentLinkService(prisma);
+  const walletSvc = new WalletService(prisma);
 
   app.post('/api/payment-links', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const body = z.object({
@@ -72,6 +74,41 @@ export async function registerPaymentLinkRoutes(app: FastifyInstance, prisma: Pr
       description: link.description,
       status: link.status,
     };
+  });
+
+  app.post('/api/payment-links/pay/:code', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { code } = req.params as { code: string };
+
+    const link = await svc.getByCode(code);
+    if (!link) return reply.code(404).send({ error: 'link_not_found' });
+    if (link.status !== 'active') return reply.code(400).send({ error: 'link_not_active' });
+    if (link.userId === req.auth!.userId) return reply.code(400).send({ error: 'cannot_pay_own_link' });
+
+    try {
+      const result = await walletSvc.transfer(
+        req.auth!.userId, link.userId, link.currency,
+        link.amount, `Payment via link ${code}`,
+      );
+
+      await svc.markUsed(link.id);
+
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'user', eventType: 'payment_link.paid',
+        payload: { linkId: link.id, code, amount: link.amount.toString(), currency: link.currency },
+        requestId: String(req.id), ip: req.ip,
+      });
+
+      return reply.send({
+        paid: true,
+        transactionId: result.transaction.id,
+        amount: link.amount.toString(),
+        currency: link.currency,
+      });
+    } catch (err: any) {
+      if (err.message === 'insufficient_funds') return reply.code(400).send({ error: err.message });
+      if (err.message.includes('not_found')) return reply.code(404).send({ error: err.message });
+      throw err;
+    }
   });
 
   app.post('/api/payment-links/:id/deactivate', { preHandler: [app.requireAuth] }, async (req, reply) => {

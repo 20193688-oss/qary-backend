@@ -43,8 +43,8 @@ describe('kopera transactions', () => {
       headers: { authorization: `Bearer ${ctx.accessToken}` },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json().length).toBeGreaterThanOrEqual(1);
-    expect(res.json()[0].type).toBe('DEPOSIT');
+    expect(res.json().data.length).toBeGreaterThanOrEqual(1);
+    expect(res.json().data[0].type).toBe('DEPOSIT');
   });
 
   it('filters by type', async () => {
@@ -53,7 +53,7 @@ describe('kopera transactions', () => {
       headers: { authorization: `Bearer ${ctx.accessToken}` },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json().every((t: any) => t.type === 'DEPOSIT')).toBe(true);
+    expect(res.json().data.every((t: any) => t.type === 'DEPOSIT')).toBe(true);
   });
 
   it('gets transaction by id', async () => {
@@ -61,7 +61,7 @@ describe('kopera transactions', () => {
       method: 'GET', url: '/api/transaction-history',
       headers: { authorization: `Bearer ${ctx.accessToken}` },
     });
-    const id = list.json()[0].id;
+    const id = list.json().data[0].id;
 
     const res = await ctx.app.inject({
       method: 'GET', url: `/api/transaction-history/${id}`,
@@ -77,7 +77,7 @@ describe('kopera transactions', () => {
       method: 'GET', url: '/api/transaction-history',
       headers: { authorization: `Bearer ${ctx.accessToken}` },
     });
-    const ref = list.json()[0].reference;
+    const ref = list.json().data[0].reference;
 
     const res = await ctx.app.inject({
       method: 'GET', url: `/api/transaction-history/reference/${encodeURIComponent(ref)}`,
