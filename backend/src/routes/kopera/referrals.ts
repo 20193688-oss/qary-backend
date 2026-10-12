@@ -18,6 +18,25 @@ function serialize(r: any) {
 export async function registerReferralRoutes(app: FastifyInstance, prisma: PrismaClient) {
   const svc = new ReferralService(prisma);
 
+  app.get('/api/referrals/all', { preHandler: [app.requireAuth] }, async (req) => {
+    const query = req.query as { limit?: string; offset?: string; status?: string };
+    const list = await svc.listAll({
+      status: query.status,
+      limit: Math.min(Number(query.limit ?? 20), 100),
+      offset: Number(query.offset ?? 0),
+    });
+    return list.map((r: any) => ({
+      id: r.id,
+      referrerId: r.referrerId,
+      code: r.code,
+      status: r.status,
+      signupCount: r.signupCount,
+      rewardedCount: r.rewardedCount,
+      totalPointsEarned: r.totalPointsEarned,
+      createdAt: r.createdAt,
+    }));
+  });
+
   app.get('/api/referrals/my-code', { preHandler: [app.requireAuth] }, async (req) => {
     const code = await svc.getOrCreateCode(req.auth!.userId);
     return { code };

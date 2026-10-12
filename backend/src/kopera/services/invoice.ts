@@ -90,6 +90,31 @@ export class InvoiceService {
     });
   }
 
+  async update(invoiceId: string, senderId: string, data: {
+    notes?: string;
+    receiverTaxId?: string;
+    receiverName?: string;
+    dueDate?: Date | null;
+    lineItems?: unknown[];
+  }) {
+    const inv = await this.prisma.invoice.findUnique({ where: { id: invoiceId } });
+    if (!inv) throw new Error('invoice_not_found');
+    if (inv.senderId !== senderId) throw new Error('forbidden');
+    if (inv.status !== 'ISSUED') throw new Error('invoice_not_editable');
+
+    const updateData: Record<string, unknown> = {};
+    if (data.notes !== undefined) updateData.notes = data.notes;
+    if (data.receiverTaxId !== undefined) updateData.receiverTaxId = data.receiverTaxId;
+    if (data.receiverName !== undefined) updateData.receiverName = data.receiverName;
+    if (data.dueDate !== undefined) updateData.dueDate = data.dueDate;
+    if (data.lineItems !== undefined) updateData.lineItems = data.lineItems as object[];
+
+    return this.prisma.invoice.update({
+      where: { id: invoiceId },
+      data: updateData,
+    });
+  }
+
   async markAsPaid(invoiceId: string, senderId: string) {
     const inv = await this.prisma.invoice.findUnique({ where: { id: invoiceId } });
     if (!inv) throw new Error('invoice_not_found');

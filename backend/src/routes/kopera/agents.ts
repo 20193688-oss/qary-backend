@@ -246,6 +246,7 @@ function serializeExecution(e: any) {
     id: e.id,
     agentId: e.agentId,
     status: e.status,
+    output: e.output,
     durationMs: e.durationMs,
     errorMsg: e.errorMsg,
     triggeredBy: e.triggeredBy,

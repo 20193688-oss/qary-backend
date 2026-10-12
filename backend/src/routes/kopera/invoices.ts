@@ -73,6 +73,39 @@ export async function registerInvoiceRoutes(app: FastifyInstance, prisma: Prisma
     return serializeInvoice(invoice);
   });
 
+  app.patch('/api/invoices/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = z.object({
+      notes: z.string().optional(),
+      receiverTaxId: z.string().optional(),
+      receiverName: z.string().optional(),
+      dueDate: z.string().datetime().nullable().optional(),
+      lineItems: z.array(z.object({
+        description: z.string(),
+        quantity: z.number().positive(),
+        unitPrice: z.number().positive(),
+        total: z.number().positive(),
+      })).optional(),
+    }).parse(req.body);
+
+    try {
+      const updated = await invoices.update(id, req.auth!.userId, {
+        notes: body.notes,
+        receiverTaxId: body.receiverTaxId,
+        receiverName: body.receiverName,
+        dueDate: body.dueDate === null ? null : body.dueDate ? new Date(body.dueDate) : undefined,
+        lineItems: body.lineItems,
+      });
+      return reply.send(serializeInvoice(updated));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      if (msg === 'invoice_not_found') return reply.code(404).send({ error: msg });
+      if (msg === 'forbidden') return reply.code(403).send({ error: msg });
+      if (msg === 'invoice_not_editable') return reply.code(400).send({ error: msg });
+      throw err;
+    }
+  });
+
   app.post('/api/invoices/:id/send', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const invoice = await invoices.getById(id);
@@ -178,6 +211,9 @@ function serializeInvoice(inv: any) {
     senderName: inv.senderName,
     receiverTaxId: inv.receiverTaxId,
     receiverName: inv.receiverName,
+    lineItems: inv.lineItems,
+    notes: inv.notes,
+    dueDate: inv.dueDate ?? null,
     xmlHash: inv.xmlHash,
     sentAt: inv.sentAt,
     createdAt: inv.createdAt,
