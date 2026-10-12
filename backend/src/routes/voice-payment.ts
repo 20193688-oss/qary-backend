@@ -11,7 +11,7 @@ interface Deps {
 }
 
 const VoiceConfirmBody = z.object({
-  orderId: z.string().min(1),
+  transactionId: z.string().min(1),
   userId: z.string().min(1),
   confirmPin: z.string().regex(/^\d{4}$/),
 });
@@ -55,61 +55,68 @@ export async function registerVoicePaymentRoutes(app: FastifyInstance, deps: Dep
     if (!ok) {
       await audit(prisma, {
         userId: body.userId, actor: 'user', eventType: 'voice.pin_invalid',
-        payload: { orderId: body.orderId }, requestId: String(req.id), ip: req.ip,
+        payload: { transactionId: body.transactionId }, requestId: String(req.id), ip: req.ip,
       });
       return reply.code(401).send({ error: 'invalid_pin' });
     }
 
-    const payment = await prisma.payment.findUnique({
-      where: { orderId: body.orderId }, include: { order: true },
+    const transaction = await prisma.transaction.findUnique({
+      where: { id: body.transactionId },
+      include: { gatewayPayment: true },
     });
-    if (!payment) return reply.code(404).send({ error: 'payment_not_found' });
-    if (payment.order.userId !== body.userId)
+    if (!transaction) return reply.code(404).send({ error: 'transaction_not_found' });
+    if (transaction.userId !== body.userId)
       return reply.code(403).send({ error: 'forbidden' });
-    if (payment.status === 'SUCCEEDED')
+    if (!transaction.gatewayPayment) return reply.code(404).send({ error: 'no_gateway_payment' });
+    if (transaction.gatewayPayment.status === 'CAPTURED')
       return reply.code(409).send({ error: 'already_captured' });
 
-    // Marcar verificado y capturar
-    const updated = await prisma.payment.update({
-      where: { id: payment.id },
-      data: { voicePinVerified: true, voiceVerifiedAt: new Date() },
-    });
+    const processorRef = transaction.gatewayPayment.processorRef;
+    if (!processorRef) return reply.code(400).send({ error: 'no_processor_ref' });
 
     let captured;
     try {
-      captured = await stripe.paymentIntents.capture(payment.stripeIntentId);
+      captured = await stripe.paymentIntents.capture(processorRef);
     } catch (e) {
       await audit(prisma, {
         userId: body.userId, actor: 'user', eventType: 'voice.capture_failed',
-        payload: { orderId: body.orderId, err: (e as Error).message },
+        payload: { transactionId: body.transactionId, err: (e as Error).message },
         requestId: String(req.id), ip: req.ip,
       });
       return reply.code(502).send({ error: 'stripe_capture_failed' });
     }
 
     const succeeded = (captured as { status?: string }).status === 'succeeded';
-    const final = await prisma.payment.update({
-      where: { id: updated.id },
+
+    await prisma.gatewayPayment.update({
+      where: { transactionId: transaction.id },
       data: succeeded
-        ? { status: 'SUCCEEDED', capturedAt: new Date() }
-        : { status: 'FAILED' },
+        ? { status: 'CAPTURED', settledAt: new Date() }
+        : { status: 'FAILED', errorMessage: 'capture_failed' },
+    });
+
+    const updatedTx = await prisma.transaction.update({
+      where: { id: transaction.id },
+      data: succeeded
+        ? { status: 'COMPLETED', processedAt: new Date() }
+        : { status: 'FAILED', failedReason: 'capture_failed' },
     });
 
     await audit(prisma, {
       userId: body.userId, actor: 'user',
       eventType: succeeded ? 'voice.payment_captured' : 'voice.payment_failed',
-      payload: { orderId: body.orderId, paymentId: final.id, intentStatus: (captured as { status?: string }).status },
+      payload: { transactionId: updatedTx.id, intentStatus: (captured as { status?: string }).status },
       requestId: String(req.id), ip: req.ip,
     });
 
     return reply.send({
       ok: succeeded,
-      paymentId: final.id,
-      status: final.status,
+      transactionId: updatedTx.id,
+      status: updatedTx.status,
       voicePinVerified: true,
-      receiptUrl: succeeded ? `/api/receipts/${final.id}` : null,
+      receiptUrl: succeeded ? `/api/receipts/${transaction.gatewayPayment!.id}` : null,
       ttsConfirmation: succeeded
-        ? `Pago de ${(final.amountCents / 100).toFixed(2)} ${final.currency} confirmado.`
+        ? `Pago de ${(Number(updatedTx.amount) / 100).toFixed(2)} ${updatedTx.currency} confirmado.`
         : 'No se pudo capturar el pago.',
     });
   });

@@ -17,6 +17,15 @@ import { registerPaymentsRoutes } from './routes/payments.js';
 import { registerWebhookRoutes } from './routes/webhooks.js';
 import { registerReceiptsRoutes } from './routes/receipts.js';
 import { registerVoicePaymentRoutes } from './routes/voice-payment.js';
+// Kopera fintech routes
+import { registerWalletRoutes } from './routes/kopera/wallets.js';
+import { registerFxRoutes } from './routes/kopera/fx.js';
+import { registerInvoiceRoutes } from './routes/kopera/invoices.js';
+import { registerLoanRoutes } from './routes/kopera/loans.js';
+import { registerPointsRoutes } from './routes/kopera/points.js';
+import { registerAgentRoutes } from './routes/kopera/agents.js';
+import { registerKycRoutes } from './routes/kopera/kyc.js';
+import { registerGatewayRoutes } from './routes/kopera/gateway.js';
 
 export interface AppDeps {
   prisma: PrismaClient;
@@ -35,7 +44,6 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     disableRequestLogging: isTest,
   });
 
-  // Captura rawBody siempre — necesario para verificar firma Stripe.
   app.addContentTypeParser(
     'application/json',
     { parseAs: 'buffer' },
@@ -58,6 +66,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   });
   await authPlugin(app);
 
+  // Legacy routes (ride-sharing)
   await registerHealthRoutes(app);
   await registerAuthRoutes(app, deps);
   await registerOrdersRoutes(app);
@@ -67,6 +76,16 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await registerWebhookRoutes(app, deps);
   await registerReceiptsRoutes(app, deps);
   await registerVoicePaymentRoutes(app, deps);
+
+  // Kopera fintech routes
+  await registerWalletRoutes(app, deps.prisma);
+  await registerFxRoutes(app, deps.prisma);
+  await registerInvoiceRoutes(app, deps.prisma);
+  await registerLoanRoutes(app, deps.prisma);
+  await registerPointsRoutes(app, deps.prisma);
+  await registerAgentRoutes(app, deps.prisma);
+  await registerKycRoutes(app, deps.prisma);
+  await registerGatewayRoutes(app, deps.prisma);
 
   return app;
 }

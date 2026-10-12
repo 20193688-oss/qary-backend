@@ -36,7 +36,6 @@ export async function registerWebhookRoutes(app: FastifyInstance, deps: Deps) {
       return reply.code(400).send({ error: 'invalid_signature' });
     }
 
-    // Idempotencia por event.id
     const seen = await prisma.event.findFirst({
       where: { eventType: 'webhook.stripe', payload: { path: ['id'], equals: event.id } },
     });
@@ -50,30 +49,30 @@ export async function registerWebhookRoutes(app: FastifyInstance, deps: Deps) {
 
     if (event.type === 'payment_intent.succeeded') {
       const obj = event.data.object as { id: string };
-      await prisma.payment
-        .update({
-          where: { stripeIntentId: obj.id },
-          data: { status: 'SUCCEEDED', capturedAt: new Date() },
+      await prisma.gatewayPayment
+        .updateMany({
+          where: { processorRef: obj.id },
+          data: { status: 'CAPTURED', settledAt: new Date() },
         })
         .catch(() => {});
     } else if (event.type === 'payment_intent.payment_failed') {
       const obj = event.data.object as { id: string; last_payment_error?: { code?: string; message?: string } };
-      await prisma.payment
-        .update({
-          where: { stripeIntentId: obj.id },
+      await prisma.gatewayPayment
+        .updateMany({
+          where: { processorRef: obj.id },
           data: {
             status: 'FAILED',
-            failureCode: obj.last_payment_error?.code,
-            failureMessage: obj.last_payment_error?.message,
+            errorCode: obj.last_payment_error?.code,
+            errorMessage: obj.last_payment_error?.message,
           },
         })
         .catch(() => {});
     } else if (event.type === 'charge.refunded') {
       const obj = event.data.object as { payment_intent?: string };
       if (obj.payment_intent) {
-        await prisma.payment
-          .update({
-            where: { stripeIntentId: obj.payment_intent },
+        await prisma.gatewayPayment
+          .updateMany({
+            where: { processorRef: obj.payment_intent },
             data: { status: 'REFUNDED' },
           })
           .catch(() => {});
