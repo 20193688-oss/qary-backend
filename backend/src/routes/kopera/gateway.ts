@@ -6,12 +6,16 @@ import { audit } from '../../lib/audit.js';
 import { AgentOrchestrator } from '../../kopera/agents/orchestrator.js';
 import { GatewayPaymentService } from '../../kopera/services/gateway.js';
 import { PaymentLinkService } from '../../kopera/services/payment-links.js';
+import { TransactionLimitService } from '../../kopera/services/transaction-limits.js';
+import { DisputeService } from '../../kopera/services/disputes.js';
 import '../../kopera/agents/definitions.js';
 
 export async function registerGatewayRoutes(app: FastifyInstance, prisma: PrismaClient) {
   const orchestrator = new AgentOrchestrator(prisma);
   const gateway = new GatewayPaymentService(prisma);
   const linkSvc = new PaymentLinkService(prisma);
+  const limitSvc = new TransactionLimitService(prisma);
+  const disputeSvc = new DisputeService(prisma);
 
   app.post('/api/gateway/payments', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const body = z.object({
@@ -62,6 +66,18 @@ export async function registerGatewayRoutes(app: FastifyInstance, prisma: Prisma
     }
 
     const amountCents = BigInt(Math.round(body.amount * 100));
+
+    const limitCheck = await limitSvc.checkAndIncrement(
+      req.auth!.userId,
+      body.currency.toUpperCase(),
+      amountCents,
+    );
+    if (!limitCheck.allowed) {
+      return reply.code(429).send({
+        error: 'transaction_limit_exceeded',
+        reason: limitCheck.reason,
+      });
+    }
 
     const { gatewayPayment } = await gateway.createPayment({
       userId: req.auth!.userId,
@@ -192,6 +208,59 @@ export async function registerGatewayRoutes(app: FastifyInstance, prisma: Prisma
       const msg = err instanceof Error ? err.message : 'unknown';
       if (msg === 'not_found') return reply.code(404).send({ error: msg });
       if (msg === 'cannot_refund_status') return reply.code(400).send({ error: msg });
+      throw err;
+    }
+  });
+
+  app.post('/api/gateway/payments/:id/dispute', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = z.object({
+      reason: z.string().min(1).max(1000),
+      amount: z.number().positive().optional(),
+    }).parse(req.body);
+
+    try {
+      const gp = await gateway.findById(id);
+      if (!gp) return reply.code(404).send({ error: 'not_found' });
+      if (gp.transaction.userId !== req.auth!.userId) return reply.code(403).send({ error: 'forbidden' });
+
+      const disputeAmount = body.amount
+        ? BigInt(Math.round(body.amount * 100))
+        : gp.amount;
+
+      const dispute = await disputeSvc.create({
+        userId: req.auth!.userId,
+        gatewayPaymentId: id,
+        reason: body.reason,
+        amount: disputeAmount,
+        currency: gp.currency,
+      });
+
+      await prisma.gatewayPayment.update({
+        where: { id },
+        data: { status: 'DISPUTED' },
+      });
+
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'user', eventType: 'gateway.dispute_created',
+        payload: { gatewayPaymentId: id, disputeId: dispute.id, reason: body.reason },
+        requestId: String(req.id), ip: req.ip,
+      });
+
+      return reply.code(201).send({
+        id: dispute.id,
+        gatewayPaymentId: id,
+        reason: dispute.reason,
+        amount: dispute.amount.toString(),
+        currency: dispute.currency,
+        status: dispute.status,
+        evidenceDeadline: dispute.evidenceDeadline,
+        createdAt: dispute.createdAt,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      if (msg === 'payment_not_found') return reply.code(404).send({ error: msg });
+      if (msg === 'dispute_already_exists') return reply.code(409).send({ error: msg });
       throw err;
     }
   });
