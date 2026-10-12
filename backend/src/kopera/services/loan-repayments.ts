@@ -57,6 +57,62 @@ export class LoanRepaymentService {
     });
   }
 
+  async markOverdue(id: string) {
+    const repayment = await this.prisma.loanRepayment.findUnique({ where: { id } });
+    if (!repayment) throw new Error('repayment_not_found');
+    if (repayment.status === 'PAID') throw new Error('already_paid');
+
+    return this.prisma.loanRepayment.update({
+      where: { id },
+      data: { status: 'OVERDUE' },
+    });
+  }
+
+  async processDueRepayments() {
+    const now = new Date();
+    const due = await this.prisma.loanRepayment.findMany({
+      where: { status: 'PENDING', dueDate: { lte: now } },
+    });
+
+    const results: Array<{ repaymentId: string; success: boolean; reason?: string }> = [];
+
+    for (const rep of due) {
+      const loan = await this.prisma.loan.findUnique({ where: { id: rep.loanId } });
+      if (!loan) {
+        results.push({ repaymentId: rep.id, success: false, reason: 'loan_not_found' });
+        continue;
+      }
+
+      const wallet = await this.prisma.wallet.findFirst({
+        where: { userId: loan.userId, currency: loan.currency, status: 'ACTIVE' },
+      });
+
+      if (!wallet || wallet.balance < rep.amount) {
+        await this.prisma.loanRepayment.update({
+          where: { id: rep.id },
+          data: { status: 'OVERDUE' },
+        });
+        const currentMissed = (loan as any).missedPayments ?? 0;
+        await this.prisma.loan.update({
+          where: { id: loan.id },
+          data: { missedPayments: currentMissed + 1 },
+        });
+        results.push({ repaymentId: rep.id, success: false, reason: 'insufficient_funds' });
+        continue;
+      }
+
+      await this.prisma.wallet.update({
+        where: { id: wallet.id },
+        data: { balance: wallet.balance - rep.amount },
+      });
+
+      await this.makePayment(rep.id, rep.amount);
+      results.push({ repaymentId: rep.id, success: true });
+    }
+
+    return { processed: results.length, results };
+  }
+
   async getScheduleSummary(loanId: string) {
     const repayments = await this.prisma.loanRepayment.findMany({
       where: { loanId },

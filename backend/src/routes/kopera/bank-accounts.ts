@@ -94,6 +94,50 @@ export async function registerBankAccountRoutes(app: FastifyInstance, prisma: Pr
     }
   });
 
+  app.post('/api/bank-accounts/:id/initiate-verification', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      const acct = await svc.initiateVerification(id, req.auth!.userId);
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'user', eventType: 'bank_account.verification_initiated',
+        payload: { bankAccountId: id },
+        requestId: String(req.id), ip: req.ip,
+      });
+      const meta = acct.metadata as Record<string, unknown>;
+      return { message: 'micro_deposits_sent', microDeposit1: meta.microDeposit1, microDeposit2: meta.microDeposit2 };
+    } catch (err: any) {
+      if (err.message === 'account_not_found') return reply.code(404).send({ error: err.message });
+      if (err.message === 'forbidden') return reply.code(403).send({ error: err.message });
+      if (err.message === 'already_verified') return reply.code(400).send({ error: err.message });
+      throw err;
+    }
+  });
+
+  app.post('/api/bank-accounts/:id/confirm-verification', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = z.object({
+      amount1: z.number().int().positive(),
+      amount2: z.number().int().positive(),
+    }).parse(req.body);
+
+    try {
+      const acct = await svc.confirmVerification(id, req.auth!.userId, body.amount1, body.amount2);
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'user', eventType: 'bank_account.verified',
+        payload: { bankAccountId: id },
+        requestId: String(req.id), ip: req.ip,
+      });
+      return serialize(acct);
+    } catch (err: any) {
+      if (err.message === 'account_not_found') return reply.code(404).send({ error: err.message });
+      if (err.message === 'forbidden') return reply.code(403).send({ error: err.message });
+      if (err.message === 'already_verified') return reply.code(400).send({ error: err.message });
+      if (err.message === 'verification_not_initiated') return reply.code(400).send({ error: err.message });
+      if (err.message === 'amounts_mismatch') return reply.code(400).send({ error: err.message });
+      throw err;
+    }
+  });
+
   app.delete('/api/bank-accounts/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     try {
