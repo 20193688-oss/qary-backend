@@ -147,6 +147,75 @@ export class NotificationService {
     };
   }
 
+  async getEngagementReport(userId: string) {
+    const all = await this.prisma.notification.findMany({ where: { userId } });
+    const byType: Record<string, { sent: number; read: number; avgReadTimeMs: number; totalReadTimeMs: number }> = {};
+    const byChannel: Record<string, { sent: number; read: number; delivered: number }> = {};
+    const hourBuckets: Record<number, number> = {};
+
+    for (const n of all) {
+      const type = n.type;
+      if (!byType[type]) byType[type] = { sent: 0, read: 0, avgReadTimeMs: 0, totalReadTimeMs: 0 };
+      byType[type].sent++;
+
+      const ch = n.channel;
+      if (!byChannel[ch]) byChannel[ch] = { sent: 0, read: 0, delivered: 0 };
+      byChannel[ch].sent++;
+      if (n.deliveredAt) byChannel[ch].delivered++;
+
+      if (n.readAt) {
+        byType[type].read++;
+        byChannel[ch].read++;
+        if (n.sentAt) {
+          byType[type].totalReadTimeMs += new Date(n.readAt).getTime() - new Date(n.sentAt).getTime();
+        }
+        const hour = new Date(n.readAt).getUTCHours();
+        hourBuckets[hour] = (hourBuckets[hour] ?? 0) + 1;
+      }
+    }
+
+    for (const data of Object.values(byType)) {
+      data.avgReadTimeMs = data.read > 0 ? Math.round(data.totalReadTimeMs / data.read) : 0;
+    }
+
+    const typeEngagement: Record<string, { sent: number; read: number; readRate: number; avgReadTimeMs: number }> = {};
+    for (const [type, data] of Object.entries(byType)) {
+      typeEngagement[type] = {
+        sent: data.sent,
+        read: data.read,
+        readRate: data.sent > 0 ? Math.round((data.read / data.sent) * 10000) / 100 : 0,
+        avgReadTimeMs: data.avgReadTimeMs,
+      };
+    }
+
+    const channelEngagement: Record<string, { sent: number; read: number; delivered: number; readRate: number }> = {};
+    for (const [ch, data] of Object.entries(byChannel)) {
+      channelEngagement[ch] = {
+        sent: data.sent,
+        read: data.read,
+        delivered: data.delivered,
+        readRate: data.sent > 0 ? Math.round((data.read / data.sent) * 10000) / 100 : 0,
+      };
+    }
+
+    const peakHours = Object.entries(hourBuckets)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([hour, count]) => ({ hour: Number(hour), readCount: count }));
+
+    const totalRead = all.filter(n => n.readAt).length;
+    const overallReadRate = all.length > 0 ? Math.round((totalRead / all.length) * 10000) / 100 : 0;
+
+    return {
+      totalNotifications: all.length,
+      totalRead,
+      overallReadRate,
+      byType: typeEngagement,
+      byChannel: channelEngagement,
+      peakEngagementHours: peakHours,
+    };
+  }
+
   async deleteAllRead(userId: string) {
     return this.prisma.notification.deleteMany({
       where: { userId, readAt: { not: null } },

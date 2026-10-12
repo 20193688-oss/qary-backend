@@ -251,6 +251,63 @@ export class SubscriptionService {
     };
   }
 
+  async getCostOptimization(userId: string) {
+    const allSubs = await this.prisma.subscription.findMany({ where: { userId } });
+    const active = allSubs.filter((s: any) => s.status === 'active');
+    const paused = allSubs.filter((s: any) => s.status === 'paused');
+    const pastDue = allSubs.filter((s: any) => s.status === 'past_due');
+
+    let monthlySpend = BigInt(0);
+    const monthlyMultiplier: Record<string, number> = { daily: 30, weekly: 4, monthly: 1, yearly: 1 };
+    const yearlyDivisor: Record<string, number> = { yearly: 12 };
+
+    for (const s of active) {
+      const interval = s.interval as string;
+      const intervalCount = s.intervalCount ?? 1;
+      const mult = monthlyMultiplier[interval] ?? 1;
+      const div = yearlyDivisor[interval] ?? 1;
+      monthlySpend += (s.amount * BigInt(mult)) / (BigInt(intervalCount) * BigInt(div));
+    }
+
+    let pausedMonthlySavings = BigInt(0);
+    for (const s of paused) {
+      const interval = s.interval as string;
+      const intervalCount = s.intervalCount ?? 1;
+      const mult = monthlyMultiplier[interval] ?? 1;
+      const div = yearlyDivisor[interval] ?? 1;
+      pausedMonthlySavings += (s.amount * BigInt(mult)) / (BigInt(intervalCount) * BigInt(div));
+    }
+
+    let pastDueAmount = BigInt(0);
+    for (const s of pastDue) {
+      pastDueAmount += s.amount;
+    }
+
+    const planCounts: Record<string, number> = {};
+    for (const s of active) {
+      planCounts[s.planName] = (planCounts[s.planName] ?? 0) + 1;
+    }
+    const duplicatePlans = Object.entries(planCounts)
+      .filter(([, count]) => count > 1)
+      .map(([plan, count]) => ({ plan, count }));
+
+    const recommendations: string[] = [];
+    if (paused.length > 0) recommendations.push(`${paused.length} paused subscription(s) could be cancelled to save costs`);
+    if (pastDue.length > 0) recommendations.push(`${pastDue.length} past-due subscription(s) need attention`);
+    if (duplicatePlans.length > 0) recommendations.push(`${duplicatePlans.length} duplicate plan(s) detected — consider consolidating`);
+
+    return {
+      activeSubscriptions: active.length,
+      monthlySpend,
+      pausedCount: paused.length,
+      pausedMonthlySavings,
+      pastDueCount: pastDue.length,
+      pastDueAmount,
+      duplicatePlans,
+      recommendations,
+    };
+  }
+
   async processDueBillings() {
     const now = new Date();
     const due = await this.prisma.subscription.findMany({

@@ -202,6 +202,83 @@ export class SavingsGoalService {
     };
   }
 
+  async getSavingsHealth(userId: string) {
+    const goals = await this.prisma.savingsGoal.findMany({ where: { userId } });
+    const now = Date.now();
+    const activeGoals = goals.filter((g: any) => g.status === 'active');
+
+    let onTrackCount = 0;
+    let behindCount = 0;
+    let aheadCount = 0;
+    let noDeadlineCount = 0;
+    let totalSaved = BigInt(0);
+    let totalTarget = BigInt(0);
+
+    const goalStatuses: Array<{
+      goalId: string; name: string; currency: string; status: string;
+      progressPercent: number; trackingStatus: string;
+    }> = [];
+
+    for (const g of activeGoals) {
+      totalSaved += g.currentAmount;
+      totalTarget += g.targetAmount;
+
+      const progressPercent = g.targetAmount > BigInt(0)
+        ? Math.min(100, Math.round(Number(g.currentAmount * BigInt(10000) / g.targetAmount)) / 100)
+        : 0;
+
+      let trackingStatus = 'no_deadline';
+
+      if (g.deadline) {
+        const totalDurationMs = g.deadline.getTime() - new Date(g.createdAt).getTime();
+        const elapsedMs = now - new Date(g.createdAt).getTime();
+        const timeProgressPercent = totalDurationMs > 0 ? (elapsedMs / totalDurationMs) * 100 : 100;
+
+        if (progressPercent >= timeProgressPercent + 10) {
+          trackingStatus = 'ahead';
+          aheadCount++;
+        } else if (progressPercent < timeProgressPercent - 10) {
+          trackingStatus = 'behind';
+          behindCount++;
+        } else {
+          trackingStatus = 'on_track';
+          onTrackCount++;
+        }
+      } else {
+        noDeadlineCount++;
+      }
+
+      goalStatuses.push({
+        goalId: g.id, name: g.name, currency: g.currency,
+        status: g.status, progressPercent, trackingStatus,
+      });
+    }
+
+    const completedCount = goals.filter((g: any) => g.status === 'completed').length;
+    const healthScore = activeGoals.length > 0
+      ? Math.round(((onTrackCount + aheadCount + noDeadlineCount) / activeGoals.length) * 100)
+      : (completedCount > 0 ? 100 : 0);
+
+    const overallProgress = totalTarget > BigInt(0)
+      ? Math.min(100, Math.round(Number(totalSaved * BigInt(10000) / totalTarget)) / 100)
+      : 0;
+
+    return {
+      totalGoals: goals.length,
+      activeGoals: activeGoals.length,
+      completedGoals: completedCount,
+      healthScore,
+      overallProgress,
+      onTrackCount,
+      behindCount,
+      aheadCount,
+      noDeadlineCount,
+      totalSaved,
+      totalTarget,
+      goals: goalStatuses,
+    };
+  }
+
   async archive(id: string, userId: string) {
     const goal = await this.prisma.savingsGoal.findUnique({ where: { id } });
     if (!goal) throw new Error('goal_not_found');
