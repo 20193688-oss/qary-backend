@@ -78,7 +78,25 @@ export class InvoiceService {
     });
   }
 
-  async markAsPaid(invoiceId: string) {
+  async listByReceiver(receiverId: string, opts?: { status?: string; limit?: number; offset?: number }) {
+    return this.prisma.invoice.findMany({
+      where: {
+        receiverId,
+        ...(opts?.status ? { status: opts.status as any } : {}),
+      },
+      take: opts?.limit ?? 20,
+      skip: opts?.offset ?? 0,
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async markAsPaid(invoiceId: string, senderId: string) {
+    const inv = await this.prisma.invoice.findUnique({ where: { id: invoiceId } });
+    if (!inv) throw new Error('invoice_not_found');
+    if (inv.senderId !== senderId) throw new Error('forbidden');
+    if (inv.status === 'PAID') throw new Error('already_paid');
+    if (inv.status === 'CANCELLED' || inv.status === 'VOIDED') throw new Error('invalid_status');
+
     return this.prisma.invoice.update({
       where: { id: invoiceId },
       data: { status: 'PAID' },
@@ -90,6 +108,53 @@ export class InvoiceService {
       where: { id: invoiceId },
       data: { status: 'SENT', sentAt: new Date() },
     });
+  }
+
+  async voidInvoice(invoiceId: string, senderId: string) {
+    const inv = await this.prisma.invoice.findUnique({ where: { id: invoiceId } });
+    if (!inv) throw new Error('invoice_not_found');
+    if (inv.senderId !== senderId) throw new Error('forbidden');
+    if (inv.status === 'VOIDED') throw new Error('already_voided');
+    if (inv.status === 'CANCELLED') throw new Error('invalid_status');
+
+    return this.prisma.invoice.update({
+      where: { id: invoiceId },
+      data: { status: 'VOIDED' },
+    });
+  }
+
+  async cancelInvoice(invoiceId: string, senderId: string) {
+    const inv = await this.prisma.invoice.findUnique({ where: { id: invoiceId } });
+    if (!inv) throw new Error('invoice_not_found');
+    if (inv.senderId !== senderId) throw new Error('forbidden');
+    if (inv.status === 'CANCELLED') throw new Error('already_cancelled');
+    if (inv.status === 'VOIDED' || inv.status === 'PAID') throw new Error('invalid_status');
+
+    return this.prisma.invoice.update({
+      where: { id: invoiceId },
+      data: { status: 'CANCELLED' },
+    });
+  }
+
+  async checkOverdue(senderId: string) {
+    const now = new Date();
+    const overdue = await this.prisma.invoice.findMany({
+      where: {
+        senderId,
+        status: { in: ['ISSUED', 'SENT'] },
+        dueDate: { lt: now },
+      },
+    });
+
+    let count = 0;
+    for (const inv of overdue) {
+      await this.prisma.invoice.update({
+        where: { id: inv.id },
+        data: { status: 'OVERDUE' },
+      });
+      count++;
+    }
+    return { updated: count };
   }
 
   private getDefaultTaxRate(country: string): number {
