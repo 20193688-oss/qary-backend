@@ -125,6 +125,80 @@ export class UserSessionService {
     };
   }
 
+  async getRiskAssessment(userId: string) {
+    const all = await this.prisma.userSession.findMany({ where: { userId } });
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    const recentSessions = all.filter((s: any) => new Date(s.createdAt) >= sevenDaysAgo);
+    const uniqueIps = new Set<string>();
+    const uniqueDevices = new Set<string>();
+    const recentIps = new Set<string>();
+    const ipByDevice: Record<string, Set<string>> = {};
+
+    for (const s of all) {
+      if (s.ip) uniqueIps.add(s.ip);
+      if (s.deviceId) uniqueDevices.add(s.deviceId);
+    }
+
+    for (const s of recentSessions) {
+      if (s.ip) recentIps.add(s.ip);
+      if (s.deviceId) {
+        if (!ipByDevice[s.deviceId]) ipByDevice[s.deviceId] = new Set();
+        if (s.ip) ipByDevice[s.deviceId].add(s.ip);
+      }
+    }
+
+    const activeSessions = all.filter((s: any) => !s.revokedAt && (!s.expiresAt || s.expiresAt > now)).length;
+
+    const riskFactors: string[] = [];
+    let riskScore = 0;
+
+    if (recentIps.size > 5) {
+      riskFactors.push(`${recentIps.size} different IPs in last 7 days`);
+      riskScore += 20;
+    }
+    if (recentSessions.length > 10) {
+      riskFactors.push(`${recentSessions.length} sessions created in last 7 days`);
+      riskScore += 15;
+    }
+    if (activeSessions > 5) {
+      riskFactors.push(`${activeSessions} concurrent active sessions`);
+      riskScore += 15;
+    }
+
+    for (const [deviceId, ips] of Object.entries(ipByDevice)) {
+      if (ips.size > 3) {
+        riskFactors.push(`Device ${deviceId.slice(0, 8)}... used from ${ips.size} IPs recently`);
+        riskScore += 10;
+      }
+    }
+
+    riskScore = Math.min(riskScore, 100);
+    let riskLevel: string;
+    if (riskScore >= 60) riskLevel = 'high';
+    else if (riskScore >= 30) riskLevel = 'medium';
+    else riskLevel = 'low';
+
+    const recommendations: string[] = [];
+    if (activeSessions > 3) recommendations.push('Review and revoke unused sessions');
+    if (riskScore >= 30) recommendations.push('Enable MFA if not already active');
+    if (recentIps.size > 3) recommendations.push('Verify all login locations are recognized');
+
+    return {
+      riskScore,
+      riskLevel,
+      activeSessions,
+      totalSessions: all.length,
+      uniqueIps: uniqueIps.size,
+      uniqueDevices: uniqueDevices.size,
+      recentSessionCount: recentSessions.length,
+      recentUniqueIps: recentIps.size,
+      riskFactors,
+      recommendations,
+    };
+  }
+
   async cleanupExpired() {
     const now = new Date();
     const expired = await this.prisma.userSession.findMany({

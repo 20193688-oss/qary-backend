@@ -232,6 +232,75 @@ export class FxService {
     return { totalConversions: txns.length, totalVolume, byPair: pairSummary, bestRate, worstRate };
   }
 
+  async getConversionOptimizer(userId: string) {
+    const txns = await this.prisma.transaction.findMany({
+      where: { userId, type: 'FX_CONVERSION', status: 'COMPLETED' },
+    });
+
+    if (txns.length === 0) {
+      return { totalConversions: 0, totalVolume: BigInt(0), pairAnalysis: [], recommendations: [] };
+    }
+
+    const byPair: Record<string, { rates: number[]; volumes: bigint[]; timestamps: Date[]; totalVolume: bigint }> = {};
+
+    for (const t of txns) {
+      const src = (t as any).fxSourceCurrency ?? t.currency;
+      const tgt = (t as any).fxTargetCurrency ?? '';
+      const pair = `${src}/${tgt}`;
+      const rate = (t as any).fxRate ?? 0;
+      const volume = (t as any).fxSourceAmount ?? BigInt(0);
+
+      if (!byPair[pair]) byPair[pair] = { rates: [], volumes: [], timestamps: [], totalVolume: BigInt(0) };
+      if (rate > 0) byPair[pair].rates.push(rate);
+      byPair[pair].volumes.push(volume);
+      byPair[pair].timestamps.push(t.processedAt ?? t.createdAt);
+      byPair[pair].totalVolume += volume;
+    }
+
+    const recommendations: string[] = [];
+    let totalVolume = BigInt(0);
+
+    const pairAnalysis = Object.entries(byPair).map(([pair, data]) => {
+      totalVolume += data.totalVolume;
+      const avgRate = data.rates.length > 0
+        ? Math.round((data.rates.reduce((s, r) => s + r, 0) / data.rates.length) * 1e6) / 1e6
+        : 0;
+      const minRate = data.rates.length > 0 ? Math.min(...data.rates) : 0;
+      const maxRate = data.rates.length > 0 ? Math.max(...data.rates) : 0;
+      const volatility = avgRate > 0
+        ? Math.round(((maxRate - minRate) / avgRate) * 10000) / 100
+        : 0;
+
+      if (volatility > 5) {
+        recommendations.push(`${pair} shows high rate volatility (${volatility}%) — consider timing conversions carefully`);
+      }
+      if (data.rates.length >= 3) {
+        const recent = data.rates.slice(-3);
+        const recentAvg = recent.reduce((s, r) => s + r, 0) / recent.length;
+        if (recentAvg < avgRate * 0.98) {
+          recommendations.push(`${pair} rates have been declining — consider delaying non-urgent conversions`);
+        }
+      }
+
+      return {
+        pair,
+        conversions: data.rates.length,
+        avgRate,
+        minRate,
+        maxRate,
+        volatility,
+        totalVolume: data.totalVolume,
+      };
+    });
+
+    return {
+      totalConversions: txns.length,
+      totalVolume,
+      pairAnalysis,
+      recommendations,
+    };
+  }
+
   async storeRate(baseCurrency: string, quoteCurrency: string, bid: number, ask: number, source: string) {
     const mid = (bid + ask) / 2;
     const spread = ask - bid;

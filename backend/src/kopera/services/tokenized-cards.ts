@@ -198,6 +198,63 @@ export class TokenizedCardService {
     };
   }
 
+  async getSecurityPosture(userId: string) {
+    const cards = await this.prisma.tokenizedCard.findMany({ where: { userId } });
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+
+    let expiredCount = 0;
+    let frozenCount = 0;
+    let activeCount = 0;
+    const byNetwork: Record<string, number> = {};
+    const issues: string[] = [];
+
+    for (const c of cards) {
+      byNetwork[c.network] = (byNetwork[c.network] ?? 0) + 1;
+
+      const isExpired = c.expiryYear < currentYear || (c.expiryYear === currentYear && c.expiryMonth < currentMonth);
+      if (isExpired) {
+        expiredCount++;
+      } else if ((c as any).frozen) {
+        frozenCount++;
+      } else {
+        activeCount++;
+      }
+    }
+
+    if (expiredCount > 0) issues.push(`${expiredCount} expired card(s) should be removed`);
+    if (!cards.some((c: any) => c.isDefault) && cards.length > 0) issues.push('No default card set');
+    if (Object.keys(byNetwork).length === 1 && cards.length > 1) issues.push('All cards on one network — consider diversifying');
+
+    const fingerprintCount = cards.filter((c: any) => c.fingerprint).length;
+    const duplicateCheck = new Set(cards.filter((c: any) => c.fingerprint).map((c: any) => c.fingerprint));
+    if (fingerprintCount > duplicateCheck.size) issues.push('Possible duplicate cards detected');
+
+    let securityScore = 100;
+    securityScore -= expiredCount * 15;
+    securityScore -= issues.length * 10;
+    if (!cards.some((c: any) => c.isDefault) && cards.length > 0) securityScore -= 5;
+    securityScore = Math.max(0, securityScore);
+
+    let grade: string;
+    if (securityScore >= 90) grade = 'EXCELLENT';
+    else if (securityScore >= 70) grade = 'GOOD';
+    else if (securityScore >= 50) grade = 'FAIR';
+    else grade = 'POOR';
+
+    return {
+      totalCards: cards.length,
+      activeCount,
+      frozenCount,
+      expiredCount,
+      securityScore,
+      grade,
+      byNetwork,
+      issues,
+    };
+  }
+
   async removeCard(id: string, userId: string) {
     const card = await this.prisma.tokenizedCard.findUnique({ where: { id } });
     if (!card) throw new Error('card_not_found');
