@@ -72,6 +72,30 @@ export async function registerLoanRepaymentRoutes(app: FastifyInstance, prisma: 
     }
   });
 
+  app.get('/api/loans/:loanId/repayments/payment-history', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { loanId } = req.params as { loanId: string };
+
+    const loan = await prisma.loan.findUnique({ where: { id: loanId } });
+    if (!loan) return reply.code(404).send({ error: 'loan_not_found' });
+    if (loan.userId !== req.auth!.userId) return reply.code(403).send({ error: 'forbidden' });
+
+    const result = await svc.getPaymentHistory(loanId);
+    return {
+      loanId: result.loanId,
+      totalInstallments: result.totalInstallments,
+      totalOwed: result.totalOwed.toString(),
+      totalPaid: result.totalPaid.toString(),
+      remaining: result.remaining.toString(),
+      onTimePayments: result.onTimePayments,
+      latePayments: result.latePayments,
+      payments: result.payments.map(p => ({
+        ...p,
+        amount: p.amount.toString(),
+        paidAmount: p.paidAmount.toString(),
+      })),
+    };
+  });
+
   app.get('/api/repayments/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const repayment = await svc.getById(id);
