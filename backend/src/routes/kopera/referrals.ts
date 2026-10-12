@@ -52,6 +52,10 @@ export async function registerReferralRoutes(app: FastifyInstance, prisma: Prism
     return svc.getConversionStats(req.auth!.userId);
   });
 
+  app.get('/api/referrals/reward-timeline', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getRewardTimeline(req.auth!.userId);
+  });
+
   app.get('/api/referrals/signups', { preHandler: [app.requireAuth] }, async (req) => {
     const signups = await svc.listSignups(req.auth!.userId);
     return signups.map((s: any) => ({

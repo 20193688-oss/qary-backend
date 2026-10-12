@@ -99,6 +99,35 @@ export class AntExpenseService {
     });
   }
 
+  async getSavingsImpactReport(userId: string) {
+    const all = await this.prisma.antExpense.findMany({ where: { userId } });
+    const active = all.filter((e: any) => e.isActive);
+    const dismissed = all.filter((e: any) => !e.isActive);
+
+    const byCurrency: Record<string, { monthlyTotal: bigint; potentialSavings: bigint; count: number }> = {};
+    let highestImpact: { merchantName: string; category: string; currency: string; savingsIfCut: bigint } | null = null;
+
+    for (const e of active) {
+      if (!byCurrency[e.currency]) byCurrency[e.currency] = { monthlyTotal: BigInt(0), potentialSavings: BigInt(0), count: 0 };
+      byCurrency[e.currency].monthlyTotal += e.monthlyTotal;
+      byCurrency[e.currency].count++;
+      if (e.savingsIfCut) {
+        byCurrency[e.currency].potentialSavings += e.savingsIfCut;
+        if (!highestImpact || e.savingsIfCut > highestImpact.savingsIfCut) {
+          highestImpact = { merchantName: e.merchantName, category: e.category, currency: e.currency, savingsIfCut: e.savingsIfCut };
+        }
+      }
+    }
+
+    return {
+      totalTracked: all.length,
+      activeCount: active.length,
+      dismissedCount: dismissed.length,
+      byCurrency,
+      highestImpact,
+    };
+  }
+
   async dismiss(id: string, userId: string) {
     const expense = await this.prisma.antExpense.findUnique({ where: { id } });
     if (!expense) throw new Error('expense_not_found');
