@@ -290,6 +290,19 @@ export async function registerWalletRoutes(app: FastifyInstance, prisma: PrismaC
     };
   });
 
+  app.get('/api/transactions/velocity-report', { preHandler: [app.requireAuth] }, async (req) => {
+    const query = req.query as { currency?: string };
+    const result = await txnSvc.getVelocityReport(req.auth!.userId, query.currency);
+    return {
+      totalTransactions: result.totalTransactions,
+      dailyAverage: result.dailyAverage,
+      weeklyAverage: result.weeklyAverage,
+      peakDay: result.peakDay ? { ...result.peakDay, volume: result.peakDay.volume.toString() } : null,
+      largestTransaction: result.largestTransaction ? { ...result.largestTransaction, amount: result.largestTransaction.amount.toString() } : null,
+      trendComparison: result.trendComparison,
+    };
+  });
+
   app.get('/api/transactions/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const txn = await txnSvc.getTransaction(id, req.auth!.userId);

@@ -150,6 +150,65 @@ export class LoanService {
       }));
   }
 
+  async getRiskAssessment(userId: string) {
+    const loans = await this.prisma.loan.findMany({ where: { userId } });
+    const activeStatuses = new Set(['APPROVED', 'DISBURSED']);
+    const activeLoans = loans.filter((l: any) => activeStatuses.has(l.status));
+
+    let totalPrincipal = BigInt(0);
+    let totalOutstanding = BigInt(0);
+    let totalInterestPaid = BigInt(0);
+    let totalInterestRemaining = BigInt(0);
+
+    for (const l of activeLoans) {
+      totalPrincipal += l.principalAmount;
+      if (l.outstandingBalance) totalOutstanding += l.outstandingBalance;
+      const totalInt = l.totalInterest ?? BigInt(0);
+      const outBal = l.outstandingBalance ?? BigInt(0);
+      const principal = l.principalAmount;
+      if (outBal <= principal) {
+        totalInterestPaid += totalInt;
+      } else {
+        const interestPortion = outBal - principal;
+        totalInterestRemaining += interestPortion > totalInt ? totalInt : interestPortion;
+        totalInterestPaid += totalInt - (interestPortion > totalInt ? totalInt : interestPortion);
+      }
+    }
+
+    const loanIds = new Set(activeLoans.map((l: any) => l.id));
+    let overdueCount = 0;
+    let onTimeCount = 0;
+    let totalRepayments = 0;
+
+    if (loanIds.size > 0) {
+      const allRepayments = await this.prisma.loanRepayment.findMany({});
+      const relevant = allRepayments.filter((r: any) => loanIds.has(r.loanId));
+      totalRepayments = relevant.length;
+      for (const r of relevant) {
+        if (r.status === 'OVERDUE') overdueCount++;
+        else if (r.status === 'PAID') onTimeCount++;
+      }
+    }
+
+    const onTimePercent = totalRepayments > 0
+      ? Math.round(onTimeCount / totalRepayments * 10000) / 100
+      : 100;
+    const debtToPrincipalRatio = totalPrincipal > BigInt(0)
+      ? Math.round(Number(totalOutstanding * BigInt(10000) / totalPrincipal)) / 100
+      : 0;
+
+    return {
+      activeLoans: activeLoans.length,
+      totalPrincipal,
+      totalOutstanding,
+      debtToPrincipalRatio,
+      overdueInstallments: overdueCount,
+      onTimePercent,
+      totalInterestPaid,
+      totalInterestRemaining,
+    };
+  }
+
   async simulate(principalAmount: number, currency: string, termMonths: number, interestRate?: number) {
     const rate = interestRate ?? this.getDefaultRate(currency);
     const { monthlyPayment, totalInterest, tcea } = this.calculateAmortization(

@@ -124,6 +124,74 @@ export class TransactionService {
     return { totalTransactions: txns.length, byType };
   }
 
+  async getVelocityReport(userId: string, currency?: string) {
+    const where: Record<string, unknown> = { userId, status: 'COMPLETED' };
+    if (currency) where.currency = currency.toUpperCase();
+    const txns = await this.prisma.transaction.findMany({ where });
+
+    if (txns.length === 0) {
+      return {
+        totalTransactions: 0,
+        dailyAverage: 0,
+        weeklyAverage: 0,
+        peakDay: null,
+        largestTransaction: null,
+        trendComparison: null,
+      };
+    }
+
+    const byDay: Record<string, { count: number; volume: bigint }> = {};
+    let largestTxn: { id: string; amount: bigint; type: string; createdAt: Date } | null = null;
+
+    for (const t of txns) {
+      const day = new Date(t.createdAt).toISOString().slice(0, 10);
+      if (!byDay[day]) byDay[day] = { count: 0, volume: BigInt(0) };
+      byDay[day].count++;
+      byDay[day].volume += t.amount;
+      if (!largestTxn || t.amount > largestTxn.amount) {
+        largestTxn = { id: t.id, amount: t.amount, type: t.type, createdAt: t.createdAt };
+      }
+    }
+
+    const dayKeys = Object.keys(byDay).sort();
+    const totalDays = Math.max(1, dayKeys.length);
+    const dailyAverage = Math.round(txns.length / totalDays * 10) / 10;
+    const weeklyAverage = Math.round(dailyAverage * 7 * 10) / 10;
+
+    let peakDay: { date: string; count: number; volume: bigint } | null = null;
+    for (const [date, data] of Object.entries(byDay)) {
+      if (!peakDay || data.count > peakDay.count) {
+        peakDay = { date, count: data.count, volume: data.volume };
+      }
+    }
+
+    const now = Date.now();
+    const fourteenDaysAgo = now - 14 * 24 * 60 * 60 * 1000;
+    const twentyEightDaysAgo = now - 28 * 24 * 60 * 60 * 1000;
+    const recentCount = txns.filter((t: any) => new Date(t.createdAt).getTime() >= fourteenDaysAgo).length;
+    const priorCount = txns.filter((t: any) => {
+      const ts = new Date(t.createdAt).getTime();
+      return ts >= twentyEightDaysAgo && ts < fourteenDaysAgo;
+    }).length;
+
+    const trendComparison = {
+      last14Days: recentCount,
+      prior14Days: priorCount,
+      changePercent: priorCount > 0
+        ? Math.round((recentCount - priorCount) / priorCount * 10000) / 100
+        : null,
+    };
+
+    return {
+      totalTransactions: txns.length,
+      dailyAverage,
+      weeklyAverage,
+      peakDay: peakDay ? { ...peakDay, volume: peakDay.volume } : null,
+      largestTransaction: largestTxn ? { ...largestTxn, amount: largestTxn.amount } : null,
+      trendComparison,
+    };
+  }
+
   async searchTransactions(userId: string, query: string, opts?: { limit?: number }) {
     const all = await this.prisma.transaction.findMany({ where: { userId } });
     const q = query.toLowerCase();
