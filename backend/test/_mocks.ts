@@ -72,6 +72,27 @@ const MODEL_DEFAULTS: Record<string, Record<string, unknown>> = {
     deadline: null,
     completedAt: null,
   },
+  paymentLink: {
+    description: null,
+    status: 'active',
+    singleUse: true,
+    timesUsed: 0,
+    lastUsedAt: null,
+    expiresAt: null,
+  },
+  transactionLimit: {
+    currentUsage: BigInt(0),
+  },
+  referral: {
+    status: 'active',
+    signupCount: 0,
+    rewardedCount: 0,
+    totalPointsEarned: 0,
+  },
+  referralSignup: {
+    status: 'signed_up',
+    rewardedAt: null,
+  },
 };
 
 function matches(row: Row, where: Record<string, unknown>): boolean {
@@ -117,6 +138,10 @@ export function createInMemoryPrisma(): PrismaClient {
     beneficiary: [],
     scheduledTransfer: [],
     savingsGoal: [],
+    paymentLink: [],
+    transactionLimit: [],
+    referral: [],
+    referralSignup: [],
     antExpense: [],
     userSession: [],
     // legacy
@@ -295,6 +320,10 @@ export function createInMemoryPrisma(): PrismaClient {
     beneficiary: model('beneficiary'),
     scheduledTransfer: model('scheduledTransfer'),
     savingsGoal: model('savingsGoal'),
+    paymentLink: model('paymentLink'),
+    transactionLimit: model('transactionLimit'),
+    referral: model('referral'),
+    referralSignup: model('referralSignup'),
     antExpense: model('antExpense'),
     userSession: model('userSession'),
     // legacy

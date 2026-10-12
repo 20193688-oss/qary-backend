@@ -827,6 +827,77 @@ model SavingsGoal {
   @@index([userId, status])
 }
 
+// ─── PAYMENT LINKS ─────────────────────────────────────────────
+
+model PaymentLink {
+  id          String    @id @default(cuid())
+  userId      String
+  code        String    @unique
+  amount      BigInt
+  currency    String
+  description String?
+  status      String    @default("active") // active, used, expired, deactivated
+  singleUse   Boolean   @default(true)
+  timesUsed   Int       @default(0)
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId, status])
+  @@index([code])
+}
+
+// ─── TRANSACTION LIMITS ────────────────────────────────────────
+
+model TransactionLimit {
+  id           String   @id @default(cuid())
+  userId       String
+  currency     String
+  limitType    String   // daily, monthly
+  maxAmount    BigInt
+  currentUsage BigInt   @default(0)
+  periodStart  DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userId, currency, limitType])
+  @@index([userId])
+}
+
+// ─── REFERRALS ─────────────────────────────────────────────────
+
+model Referral {
+  id               String   @id @default(cuid())
+  referrerId       String
+  code             String   @unique
+  status           String   @default("active") // active, inactive
+  signupCount      Int      @default(0)
+  rewardedCount    Int      @default(0)
+  totalPointsEarned Int     @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  signups ReferralSignup[]
+
+  @@index([referrerId])
+  @@index([code])
+}
+
+model ReferralSignup {
+  id             String    @id @default(cuid())
+  referralId     String
+  referredUserId String
+  status         String    @default("signed_up") // signed_up, rewarded
+  rewardedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  referral Referral @relation(fields: [referralId], references: [id])
+
+  @@index([referralId])
+  @@index([referredUserId])
+}
+
 // ─── ANT EXPENSES (GASTOS HORMIGA) ─────────────────────────────
 
 model AntExpense {
