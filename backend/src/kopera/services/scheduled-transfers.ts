@@ -161,6 +161,31 @@ export class ScheduledTransferService {
     };
   }
 
+  async getExecutionHistory(userId: string) {
+    const all = await this.prisma.scheduledTransfer.findMany({ where: { userId } });
+    let totalExecutions = 0;
+    const totalAmountByCurrency: Record<string, bigint> = {};
+    const transfers = all.map((s: any) => {
+      totalExecutions += s.executionCount;
+      const totalMoved = s.amount * BigInt(s.executionCount);
+      totalAmountByCurrency[s.currency] = (totalAmountByCurrency[s.currency] ?? BigInt(0)) + totalMoved;
+      return {
+        id: s.id,
+        toUserId: s.toUserId,
+        currency: s.currency,
+        amountPerExecution: s.amount,
+        frequency: s.frequency,
+        status: s.status,
+        executionCount: s.executionCount,
+        totalMoved,
+        lastExecutionDate: s.lastExecutionDate,
+        createdAt: s.createdAt,
+      };
+    });
+
+    return { totalExecutions, totalAmountByCurrency, transfers };
+  }
+
   async processDueTransfers() {
     const now = new Date();
     const due = await this.prisma.scheduledTransfer.findMany({

@@ -136,6 +136,26 @@ export class FxService {
     };
   }
 
+  async getConversionHistory(userId: string) {
+    const txns = await this.prisma.transaction.findMany({
+      where: { userId, type: 'FX_CONVERSION', status: 'COMPLETED' },
+    });
+
+    const byPair: Record<string, { count: number; totalSourceAmount: bigint; totalTargetAmount: bigint }> = {};
+
+    for (const t of txns) {
+      const src = (t as any).fxSourceCurrency ?? t.currency;
+      const tgt = (t as any).fxTargetCurrency ?? '';
+      const pair = `${src}/${tgt}`;
+      if (!byPair[pair]) byPair[pair] = { count: 0, totalSourceAmount: BigInt(0), totalTargetAmount: BigInt(0) };
+      byPair[pair].count++;
+      byPair[pair].totalSourceAmount += (t as any).fxSourceAmount ?? BigInt(0);
+      byPair[pair].totalTargetAmount += (t as any).fxTargetAmount ?? BigInt(0);
+    }
+
+    return { totalConversions: txns.length, byPair };
+  }
+
   async getSupportedPairs() {
     const pairs: string[] = [];
     for (const [base, quotes] of Object.entries(DEFAULT_RATES)) {

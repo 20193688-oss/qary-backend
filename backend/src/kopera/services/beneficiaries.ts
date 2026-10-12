@@ -74,6 +74,21 @@ export class BeneficiaryService {
     );
   }
 
+  async getBeneficiaryOverview(userId: string) {
+    const all = await this.prisma.beneficiary.findMany({ where: { userId } });
+    const byCurrency: Record<string, number> = {};
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    let addedLast30Days = 0;
+
+    for (const b of all) {
+      const cur = (b as any).currency ?? 'UNSET';
+      byCurrency[cur] = (byCurrency[cur] ?? 0) + 1;
+      if (new Date(b.createdAt) >= thirtyDaysAgo) addedLast30Days++;
+    }
+
+    return { totalBeneficiaries: all.length, byCurrency, addedLast30Days };
+  }
+
   async remove(beneficiaryId: string, userId: string) {
     const b = await this.prisma.beneficiary.findUnique({ where: { id: beneficiaryId } });
     if (!b) throw new Error('beneficiary_not_found');

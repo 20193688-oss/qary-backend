@@ -105,6 +105,48 @@ export class NotificationService {
     return { total: all.length, readCount, unreadCount, deliveredCount, failedCount, byType, byChannel };
   }
 
+  async getDeliveryReport(userId: string) {
+    const all = await this.prisma.notification.findMany({ where: { userId } });
+    const byChannel: Record<string, { total: number; delivered: number; failed: number; read: number }> = {};
+    const failReasons: Record<string, number> = {};
+    let totalReadTimeMs = 0;
+    let readWithTimeCount = 0;
+
+    for (const n of all) {
+      if (!byChannel[n.channel]) byChannel[n.channel] = { total: 0, delivered: 0, failed: 0, read: 0 };
+      byChannel[n.channel].total++;
+      if (n.deliveredAt) byChannel[n.channel].delivered++;
+      if (n.failedAt) {
+        byChannel[n.channel].failed++;
+        if ((n as any).failReason) {
+          failReasons[(n as any).failReason] = (failReasons[(n as any).failReason] ?? 0) + 1;
+        }
+      }
+      if (n.readAt) {
+        byChannel[n.channel].read++;
+        if (n.sentAt) {
+          totalReadTimeMs += new Date(n.readAt).getTime() - new Date(n.sentAt).getTime();
+          readWithTimeCount++;
+        }
+      }
+    }
+
+    const total = all.length;
+    const delivered = all.filter(n => n.deliveredAt).length;
+    const failed = all.filter(n => n.failedAt).length;
+    const read = all.filter(n => n.readAt).length;
+
+    return {
+      total,
+      deliveryRate: total > 0 ? Math.round((delivered / total) * 100) : 0,
+      failureRate: total > 0 ? Math.round((failed / total) * 100) : 0,
+      readRate: delivered > 0 ? Math.round((read / delivered) * 100) : 0,
+      avgReadTimeMs: readWithTimeCount > 0 ? Math.round(totalReadTimeMs / readWithTimeCount) : null,
+      byChannel,
+      topFailReasons: failReasons,
+    };
+  }
+
   async deleteAllRead(userId: string) {
     return this.prisma.notification.deleteMany({
       where: { userId, readAt: { not: null } },

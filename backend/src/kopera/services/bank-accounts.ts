@@ -123,6 +123,30 @@ export class BankAccountService {
     });
   }
 
+  async getVerificationOverview(userId: string) {
+    const accounts = await this.prisma.bankAccount.findMany({ where: { userId } });
+    const byRail: Record<string, number> = {};
+    const byCountry: Record<string, number> = {};
+    let verified = 0;
+    let unverified = 0;
+
+    for (const a of accounts) {
+      byRail[a.rail] = (byRail[a.rail] ?? 0) + 1;
+      byCountry[a.country] = (byCountry[a.country] ?? 0) + 1;
+      if (a.isVerified) verified++;
+      else unverified++;
+    }
+
+    return {
+      totalAccounts: accounts.length,
+      verified,
+      unverified,
+      verificationRate: accounts.length > 0 ? Math.round((verified / accounts.length) * 100) : 0,
+      byRail,
+      byCountry,
+    };
+  }
+
   async removeAccount(id: string, userId: string) {
     const acct = await this.prisma.bankAccount.findUnique({ where: { id } });
     if (!acct) throw new Error('account_not_found');
