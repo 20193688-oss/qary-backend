@@ -294,6 +294,16 @@ export class WalletService {
     });
   }
 
+  async renameWallet(userId: string, currency: string, label: string) {
+    const wallet = await this.getWallet(userId, currency);
+    if (!wallet) throw new Error('wallet_not_found');
+
+    return this.prisma.wallet.update({
+      where: { id: wallet.id },
+      data: { label } as any,
+    });
+  }
+
   async setDefault(userId: string, currency: string) {
     const wallet = await this.getWallet(userId, currency);
     if (!wallet) throw new Error('wallet_not_found');

@@ -53,6 +53,17 @@ export class UserProfileService {
     });
   }
 
+  async deactivateAccount(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new Error('user_not_found');
+    if (user.status === 'DEACTIVATED') throw new Error('already_deactivated');
+
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { status: 'DEACTIVATED' },
+    });
+  }
+
   async upgradeToBusinessAccount(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new Error('user_not_found');

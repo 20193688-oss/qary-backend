@@ -48,6 +48,10 @@ export async function registerReferralRoutes(app: FastifyInstance, prisma: Prism
     return serialize(referral);
   });
 
+  app.get('/api/referrals/conversion', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getConversionStats(req.auth!.userId);
+  });
+
   app.get('/api/referrals/signups', { preHandler: [app.requireAuth] }, async (req) => {
     const signups = await svc.listSignups(req.auth!.userId);
     return signups.map((s: any) => ({
