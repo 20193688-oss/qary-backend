@@ -79,6 +79,16 @@ export async function registerSubscriptionRoutes(app: FastifyInstance, prisma: P
     };
   });
 
+  app.get('/api/subscriptions/cost-optimization', { preHandler: [app.requireAuth] }, async (req) => {
+    const result = await subscriptions.getCostOptimization(req.auth!.userId);
+    return {
+      ...result,
+      monthlySpend: result.monthlySpend.toString(),
+      pausedMonthlySavings: result.pausedMonthlySavings.toString(),
+      pastDueAmount: result.pastDueAmount.toString(),
+    };
+  });
+
   app.get('/api/subscriptions/churn-analysis', { preHandler: [app.requireAuth] }, async (req) => {
     const result = await subscriptions.getChurnAnalysis(req.auth!.userId);
     return {

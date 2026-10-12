@@ -86,6 +86,19 @@ export async function registerPaymentLinkRoutes(app: FastifyInstance, prisma: Pr
     };
   });
 
+  app.get('/api/payment-links/revenue-breakdown', { preHandler: [app.requireAuth] }, async (req) => {
+    const result = await svc.getRevenueBreakdown(req.auth!.userId);
+    return {
+      totalLinks: result.totalLinks,
+      totalRevenue: result.totalRevenue.toString(),
+      byCurrency: result.byCurrency,
+      singleUse: { count: result.singleUse.count, revenue: result.singleUse.revenue.toString() },
+      multiUse: { count: result.multiUse.count, revenue: result.multiUse.revenue.toString() },
+      activeRevenue: result.activeRevenue.toString(),
+      expiredRevenue: result.expiredRevenue.toString(),
+    };
+  });
+
   app.get('/api/payment-links/expiring', { preHandler: [app.requireAuth] }, async (req) => {
     const query = req.query as { days?: string };
     const withinDays = Math.min(Number(query.days ?? 7), 90);

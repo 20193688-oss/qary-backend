@@ -149,6 +149,55 @@ export class PaymentLinkService {
     };
   }
 
+  async getRevenueBreakdown(userId: string) {
+    const links = await this.prisma.paymentLink.findMany({ where: { userId } });
+
+    const byCurrency: Record<string, { links: number; revenue: bigint; timesUsed: number }> = {};
+    let singleUseRevenue = BigInt(0);
+    let multiUseRevenue = BigInt(0);
+    let singleUseCount = 0;
+    let multiUseCount = 0;
+    let totalRevenue = BigInt(0);
+    let activeRevenue = BigInt(0);
+    let expiredRevenue = BigInt(0);
+
+    for (const l of links) {
+      const rev = l.amount * BigInt(l.timesUsed);
+      totalRevenue += rev;
+
+      if (!byCurrency[l.currency]) byCurrency[l.currency] = { links: 0, revenue: BigInt(0), timesUsed: 0 };
+      byCurrency[l.currency].links++;
+      byCurrency[l.currency].revenue += rev;
+      byCurrency[l.currency].timesUsed += l.timesUsed;
+
+      if (l.singleUse) {
+        singleUseCount++;
+        singleUseRevenue += rev;
+      } else {
+        multiUseCount++;
+        multiUseRevenue += rev;
+      }
+
+      if (l.status === 'active') activeRevenue += rev;
+      else if (l.status === 'expired') expiredRevenue += rev;
+    }
+
+    const currencyBreakdown: Record<string, { links: number; revenue: string; timesUsed: number }> = {};
+    for (const [cur, data] of Object.entries(byCurrency)) {
+      currencyBreakdown[cur] = { links: data.links, revenue: data.revenue.toString(), timesUsed: data.timesUsed };
+    }
+
+    return {
+      totalLinks: links.length,
+      totalRevenue,
+      byCurrency: currencyBreakdown,
+      singleUse: { count: singleUseCount, revenue: singleUseRevenue },
+      multiUse: { count: multiUseCount, revenue: multiUseRevenue },
+      activeRevenue,
+      expiredRevenue,
+    };
+  }
+
   async deactivate(id: string, userId: string) {
     const link = await this.prisma.paymentLink.findUnique({ where: { id } });
     if (!link) throw new Error('link_not_found');

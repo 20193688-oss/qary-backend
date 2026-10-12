@@ -172,6 +172,57 @@ export class DisputeService {
     };
   }
 
+  async getRiskAssessment(userId: string) {
+    const disputes = await this.prisma.dispute.findMany({ where: { userId } });
+
+    let totalAmount = BigInt(0);
+    let escalatedCount = 0;
+    let highValueCount = 0;
+    let recentCount = 0;
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const byStatus: Record<string, number> = {};
+
+    for (const d of disputes) {
+      totalAmount += d.amount;
+      byStatus[d.status] = (byStatus[d.status] ?? 0) + 1;
+      if (d.status === 'EVIDENCE_NEEDED' || d.status === 'UNDER_REVIEW') escalatedCount++;
+      if (d.amount > BigInt(100000)) highValueCount++;
+      if (d.createdAt > thirtyDaysAgo) recentCount++;
+    }
+
+    const escalationRate = disputes.length > 0
+      ? Math.round((escalatedCount / disputes.length) * 10000) / 100
+      : 0;
+
+    let riskScore = 0;
+    if (disputes.length > 5) riskScore += 20;
+    else if (disputes.length > 2) riskScore += 10;
+    if (recentCount > 3) riskScore += 25;
+    else if (recentCount > 1) riskScore += 10;
+    if (escalationRate > 50) riskScore += 20;
+    else if (escalationRate > 25) riskScore += 10;
+    if (highValueCount > 2) riskScore += 20;
+    else if (highValueCount > 0) riskScore += 10;
+    const lostCount = byStatus['LOST'] ?? 0;
+    if (lostCount > 2) riskScore += 15;
+    else if (lostCount > 0) riskScore += 5;
+
+    riskScore = Math.min(100, riskScore);
+    const riskLevel = riskScore >= 60 ? 'high' : riskScore >= 30 ? 'medium' : 'low';
+
+    return {
+      totalDisputes: disputes.length,
+      totalAmount,
+      recentDisputes: recentCount,
+      escalatedCount,
+      escalationRate,
+      highValueCount,
+      riskScore,
+      riskLevel,
+      byStatus,
+    };
+  }
+
   async resolve(disputeId: string, outcome: string, notes?: string) {
     const dispute = await this.prisma.dispute.findUnique({ where: { id: disputeId } });
     if (!dispute) throw new Error('dispute_not_found');
