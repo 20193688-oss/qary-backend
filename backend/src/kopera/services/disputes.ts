@@ -73,6 +73,17 @@ export class DisputeService {
     });
   }
 
+  async listAll(opts?: { status?: string; limit?: number; offset?: number }) {
+    const where: Record<string, unknown> = {};
+    if (opts?.status) where.status = opts.status;
+    return this.prisma.dispute.findMany({
+      where,
+      take: Math.min(opts?.limit ?? 20, 100),
+      skip: opts?.offset ?? 0,
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   async resolve(disputeId: string, outcome: string, notes?: string) {
     const dispute = await this.prisma.dispute.findUnique({ where: { id: disputeId } });
     if (!dispute) throw new Error('dispute_not_found');

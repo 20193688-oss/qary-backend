@@ -254,6 +254,18 @@ export class WalletService {
     });
   }
 
+  async close(userId: string, currency: string) {
+    const wallet = await this.getWallet(userId, currency);
+    if (!wallet) throw new Error('wallet_not_found');
+    if (wallet.status === 'CLOSED') throw new Error('already_closed');
+    if (wallet.balance > BigInt(0)) throw new Error('balance_not_zero');
+
+    return this.prisma.wallet.update({
+      where: { id: wallet.id },
+      data: { status: 'CLOSED' },
+    });
+  }
+
   async hold(userId: string, currency: string, amount: bigint) {
     const wallet = await this.getWallet(userId, currency);
     if (!wallet) throw new Error('wallet_not_found');

@@ -47,9 +47,13 @@ export class PaymentLinkService {
     return this.prisma.paymentLink.findUnique({ where: { id } });
   }
 
-  async listByUser(userId: string) {
+  async listByUser(userId: string, opts?: { status?: string; limit?: number; offset?: number }) {
+    const where: Record<string, unknown> = { userId };
+    if (opts?.status) where.status = opts.status;
     return this.prisma.paymentLink.findMany({
-      where: { userId },
+      where,
+      take: Math.min(opts?.limit ?? 20, 100),
+      skip: opts?.offset ?? 0,
       orderBy: { createdAt: 'desc' },
     });
   }

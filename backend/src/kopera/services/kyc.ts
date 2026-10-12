@@ -45,6 +45,17 @@ export class KycService {
     return this.prisma.kycProfile.findUnique({ where: { userId } });
   }
 
+  async listAll(opts?: { status?: string; limit?: number; offset?: number }) {
+    const where: Record<string, unknown> = {};
+    if (opts?.status) where.status = opts.status;
+    return this.prisma.kycProfile.findMany({
+      where,
+      take: Math.min(opts?.limit ?? 20, 100),
+      skip: opts?.offset ?? 0,
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   async approve(userId: string, reviewedBy: string) {
     const profile = await this.prisma.kycProfile.findUnique({ where: { userId } });
     if (!profile) throw new Error('kyc_not_found');

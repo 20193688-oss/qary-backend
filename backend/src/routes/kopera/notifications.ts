@@ -50,6 +50,14 @@ export async function registerNotificationRoutes(app: FastifyInstance, prisma: P
     return { count };
   });
 
+  app.get('/api/notifications/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const n = await notifications.getById(id);
+    if (!n) return reply.code(404).send({ error: 'not_found' });
+    if (n.userId !== req.auth!.userId) return reply.code(403).send({ error: 'forbidden' });
+    return serializeNotification(n);
+  });
+
   app.post('/api/notifications/:id/read', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     try {
