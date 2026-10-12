@@ -1,0 +1,122 @@
+import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import type { PrismaClient } from '@prisma/client';
+import { SavingsGoalService } from '../../kopera/services/savings-goals.js';
+import { audit } from '../../lib/audit.js';
+
+function serialize(g: any) {
+  return {
+    id: g.id,
+    name: g.name,
+    targetAmount: g.targetAmount.toString(),
+    currentAmount: g.currentAmount.toString(),
+    currency: g.currency,
+    status: g.status,
+    progress: g.targetAmount > 0
+      ? Math.min(100, Math.round(Number(g.currentAmount * BigInt(10000) / g.targetAmount)) / 100)
+      : 0,
+    deadline: g.deadline,
+    completedAt: g.completedAt,
+    createdAt: g.createdAt,
+  };
+}
+
+export async function registerSavingsGoalRoutes(app: FastifyInstance, prisma: PrismaClient) {
+  const svc = new SavingsGoalService(prisma);
+
+  app.post('/api/savings-goals', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const body = z.object({
+      name: z.string().min(1).max(200),
+      targetAmount: z.number().positive(),
+      currency: z.string().length(3),
+      deadline: z.string().datetime().optional(),
+    }).parse(req.body);
+
+    const targetCents = BigInt(Math.round(body.targetAmount * 100));
+    const goal = await svc.create({
+      userId: req.auth!.userId,
+      name: body.name,
+      targetAmount: targetCents,
+      currency: body.currency,
+      deadline: body.deadline ? new Date(body.deadline) : undefined,
+    });
+    await audit(prisma, {
+      userId: req.auth!.userId, actor: 'user', eventType: 'savings_goal.created',
+      payload: { name: body.name, targetAmount: body.targetAmount, currency: body.currency },
+      requestId: String(req.id), ip: req.ip,
+    });
+    return reply.code(201).send(serialize(goal));
+  });
+
+  app.get('/api/savings-goals', { preHandler: [app.requireAuth] }, async (req) => {
+    const list = await svc.listByUser(req.auth!.userId);
+    return list.map(serialize);
+  });
+
+  app.get('/api/savings-goals/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const goal = await svc.getById(id);
+    if (!goal || goal.userId !== req.auth!.userId) return reply.code(404).send({ error: 'not_found' });
+    return serialize(goal);
+  });
+
+  app.post('/api/savings-goals/:id/contribute', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = z.object({ amount: z.number().positive() }).parse(req.body);
+    const amountCents = BigInt(Math.round(body.amount * 100));
+
+    try {
+      const goal = await svc.contribute(id, req.auth!.userId, amountCents);
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'user', eventType: 'savings_goal.contribution',
+        payload: { goalId: id, amount: body.amount },
+        requestId: String(req.id), ip: req.ip,
+      });
+      return serialize(goal);
+    } catch (err: any) {
+      if (err.message === 'goal_not_found') return reply.code(404).send({ error: err.message });
+      if (err.message === 'forbidden') return reply.code(403).send({ error: err.message });
+      if (err.message === 'goal_not_active') return reply.code(400).send({ error: err.message });
+      throw err;
+    }
+  });
+
+  app.post('/api/savings-goals/:id/withdraw', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = z.object({ amount: z.number().positive() }).parse(req.body);
+    const amountCents = BigInt(Math.round(body.amount * 100));
+
+    try {
+      const goal = await svc.withdraw(id, req.auth!.userId, amountCents);
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'user', eventType: 'savings_goal.withdrawal',
+        payload: { goalId: id, amount: body.amount },
+        requestId: String(req.id), ip: req.ip,
+      });
+      return serialize(goal);
+    } catch (err: any) {
+      if (err.message === 'goal_not_found') return reply.code(404).send({ error: err.message });
+      if (err.message === 'forbidden') return reply.code(403).send({ error: err.message });
+      if (err.message === 'insufficient_savings') return reply.code(400).send({ error: err.message });
+      throw err;
+    }
+  });
+
+  app.post('/api/savings-goals/:id/archive', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      const goal = await svc.archive(id, req.auth!.userId);
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'user', eventType: 'savings_goal.archived',
+        payload: { goalId: id },
+        requestId: String(req.id), ip: req.ip,
+      });
+      return serialize(goal);
+    } catch (err: any) {
+      if (err.message === 'goal_not_found') return reply.code(404).send({ error: err.message });
+      if (err.message === 'forbidden') return reply.code(403).send({ error: err.message });
+      if (err.message === 'already_archived') return reply.code(400).send({ error: err.message });
+      throw err;
+    }
+  });
+}

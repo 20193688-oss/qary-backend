@@ -139,6 +139,35 @@ pnpm --filter backend exec vitest run
 | POST | `/api/subscriptions/:id/pause` | Yes | Pause a subscription |
 | POST | `/api/subscriptions/:id/resume` | Yes | Resume a paused subscription |
 
+### Beneficiaries
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/beneficiaries` | Yes | Add a saved transfer recipient |
+| GET | `/api/beneficiaries` | Yes | List all beneficiaries |
+| GET | `/api/beneficiaries/:id` | Yes | Get beneficiary by ID |
+| PUT | `/api/beneficiaries/:id` | Yes | Update beneficiary nickname/currency |
+| DELETE | `/api/beneficiaries/:id` | Yes | Remove a beneficiary |
+
+### Scheduled Transfers
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/scheduled-transfers` | Yes | Schedule a one-time or recurring transfer |
+| GET | `/api/scheduled-transfers` | Yes | List scheduled transfers |
+| GET | `/api/scheduled-transfers/:id` | Yes | Get scheduled transfer details |
+| POST | `/api/scheduled-transfers/:id/cancel` | Yes | Cancel a scheduled transfer |
+| POST | `/api/scheduled-transfers/:id/pause` | Yes | Pause a recurring transfer |
+| POST | `/api/scheduled-transfers/:id/resume` | Yes | Resume a paused transfer |
+
+### Savings Goals
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/savings-goals` | Yes | Create a savings goal with target amount |
+| GET | `/api/savings-goals` | Yes | List all savings goals |
+| GET | `/api/savings-goals/:id` | Yes | Get savings goal with progress |
+| POST | `/api/savings-goals/:id/contribute` | Yes | Add funds toward a goal |
+| POST | `/api/savings-goals/:id/withdraw` | Yes | Withdraw funds from a goal |
+| POST | `/api/savings-goals/:id/archive` | Yes | Archive a goal |
+
 ### Payments
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -157,6 +186,9 @@ pnpm --filter backend exec vitest run
 - **Auto-earn points**: Wallet deposits and transfers automatically earn loyalty points based on tier multiplier.
 - **Dispute lifecycle**: OPENED → EVIDENCE_NEEDED → UNDER_REVIEW → WON/LOST/ACCEPTED with 30-day evidence deadline.
 - **Subscription billing**: Supports daily/weekly/monthly/yearly intervals with pause/resume/cancel lifecycle.
+- **Beneficiaries**: Saved recipients with duplicate prevention and compound unique `(userId, recipientUserId)`.
+- **Scheduled transfers**: One-time or recurring (daily/weekly/biweekly/monthly) with pause/resume/cancel lifecycle.
+- **Savings goals**: Target-based saving with progress tracking, contributions, withdrawals, and auto-completion.
 
 ## Testing
 
@@ -171,7 +203,7 @@ pnpm --filter backend exec vitest run test/kopera-wallets.test.ts
 pnpm --filter backend exec vitest
 ```
 
-89 tests across 15 test files covering auth, wallets, FX, invoices, loans (+ admin), KYC/KYB, points (+ auto-earn), payments, voice payments, notifications, disputes, and subscriptions.
+114 tests across 18 test files covering auth, wallets, FX, invoices, loans (+ admin), KYC/KYB, points (+ auto-earn), payments, voice payments, notifications, disputes, subscriptions, beneficiaries, scheduled transfers, and savings goals.
 
 ## Configuration
 
