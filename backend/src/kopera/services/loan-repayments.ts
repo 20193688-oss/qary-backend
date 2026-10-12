@@ -232,6 +232,78 @@ export class LoanRepaymentService {
     };
   }
 
+  async getAmortizationAnalysis(loanId: string) {
+    const loan = await this.prisma.loan.findUnique({ where: { id: loanId } });
+    if (!loan) throw new Error('loan_not_found');
+
+    const repayments = await this.prisma.loanRepayment.findMany({
+      where: { loanId },
+      orderBy: { installment: 'asc' },
+    });
+
+    let totalPrincipal = BigInt(0);
+    let totalInterest = BigInt(0);
+    let cumulativePrincipal = BigInt(0);
+    let cumulativeInterest = BigInt(0);
+    let principalPaidSoFar = BigInt(0);
+    let interestPaidSoFar = BigInt(0);
+
+    const schedule: Array<{
+      installment: number;
+      principal: bigint;
+      interest: bigint;
+      total: bigint;
+      cumulativePrincipal: bigint;
+      cumulativeInterest: bigint;
+      status: string;
+    }> = [];
+
+    for (const r of repayments) {
+      totalPrincipal += r.principal;
+      totalInterest += r.interest;
+      cumulativePrincipal += r.principal;
+      cumulativeInterest += r.interest;
+
+      if (r.status === 'PAID') {
+        principalPaidSoFar += r.principal;
+        interestPaidSoFar += r.interest;
+      }
+
+      schedule.push({
+        installment: r.installment,
+        principal: r.principal,
+        interest: r.interest,
+        total: r.amount,
+        cumulativePrincipal,
+        cumulativeInterest,
+        status: r.status,
+      });
+    }
+
+    const interestToTotalRatio = totalPrincipal > BigInt(0)
+      ? Math.round(Number(totalInterest) / Number(totalPrincipal + totalInterest) * 10000) / 100
+      : 0;
+
+    const progressPercent = totalPrincipal > BigInt(0)
+      ? Math.round(Number(principalPaidSoFar) / Number(totalPrincipal) * 10000) / 100
+      : 0;
+
+    return {
+      loanId,
+      totalInstallments: repayments.length,
+      totalPrincipal,
+      totalInterest,
+      totalCost: totalPrincipal + totalInterest,
+      principalPaidSoFar,
+      interestPaidSoFar,
+      principalRemaining: totalPrincipal - principalPaidSoFar,
+      interestRemaining: totalInterest - interestPaidSoFar,
+      interestToTotalRatio,
+      progressPercent,
+      schedule,
+    };
+  }
+
   async getScheduleSummary(loanId: string) {
     const repayments = await this.prisma.loanRepayment.findMany({
       where: { loanId },

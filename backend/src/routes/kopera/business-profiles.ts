@@ -114,6 +114,15 @@ export async function registerBusinessProfileRoutes(app: FastifyInstance, prisma
     }
   });
 
+  app.get('/api/business-profile/due-diligence', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    try {
+      return await svc.getDueDiligenceReport(req.auth!.userId);
+    } catch (e: any) {
+      if (e.message === 'profile_not_found') return reply.code(404).send({ error: e.message });
+      throw e;
+    }
+  });
+
   app.get('/api/business-profile/verification-status', { preHandler: [app.requireAuth] }, async (req, reply) => {
     try {
       const status = await svc.getVerificationStatus(req.auth!.userId);

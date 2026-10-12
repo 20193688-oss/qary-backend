@@ -122,6 +122,52 @@ export class LedgerService {
     };
   }
 
+  async getAnomalyDetection(walletId: string) {
+    const entries = await this.prisma.ledgerEntry.findMany({
+      where: { walletId },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (entries.length === 0) {
+      return { walletId, entryCount: 0, anomalies: [], riskScore: 0, riskLevel: 'low' as const };
+    }
+
+    const amounts = entries.map((e) => {
+      const val = e.amount < BigInt(0) ? -e.amount : e.amount;
+      return Number(val);
+    });
+    const avg = amounts.reduce((s, a) => s + a, 0) / amounts.length;
+    const stdDev = Math.sqrt(amounts.reduce((s, a) => s + (a - avg) ** 2, 0) / amounts.length);
+    const threshold = avg + 3 * stdDev;
+
+    const anomalies: Array<{ entryId: string; type: string; detail: string }> = [];
+
+    for (const e of entries) {
+      const absAmount = Number(e.amount < BigInt(0) ? -e.amount : e.amount);
+      if (absAmount > threshold && threshold > 0) {
+        anomalies.push({ entryId: e.id, type: 'large_amount', detail: `Amount ${absAmount} exceeds 3σ threshold ${Math.round(threshold)}` });
+      }
+    }
+
+    for (let i = 1; i < entries.length; i++) {
+      const gap = new Date(entries[i].createdAt).getTime() - new Date(entries[i - 1].createdAt).getTime();
+      if (gap < 1000 && gap >= 0) {
+        anomalies.push({ entryId: entries[i].id, type: 'rapid_sequence', detail: `Only ${gap}ms after previous entry` });
+      }
+    }
+
+    for (const e of entries) {
+      if (e.balanceAfter < BigInt(0)) {
+        anomalies.push({ entryId: e.id, type: 'negative_balance', detail: 'Balance went negative' });
+      }
+    }
+
+    let riskScore = Math.min(anomalies.length * 15, 100);
+    const riskLevel = riskScore >= 60 ? 'high' : riskScore >= 30 ? 'medium' : 'low';
+
+    return { walletId, entryCount: entries.length, anomalies, riskScore, riskLevel };
+  }
+
   async getStatement(walletId: string, from: string, to: string) {
     const entries = await this.prisma.ledgerEntry.findMany({
       where: {
