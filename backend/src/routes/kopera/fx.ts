@@ -42,6 +42,19 @@ export async function registerFxRoutes(app: FastifyInstance, prisma: PrismaClien
     return rate;
   });
 
+  app.get('/api/fx/conversion-history', { preHandler: [app.requireAuth] }, async (req) => {
+    const result = await fx.getConversionHistory(req.auth!.userId);
+    const byPair: Record<string, { count: number; totalSourceAmount: string; totalTargetAmount: string }> = {};
+    for (const [pair, data] of Object.entries(result.byPair)) {
+      byPair[pair] = {
+        count: data.count,
+        totalSourceAmount: data.totalSourceAmount.toString(),
+        totalTargetAmount: data.totalTargetAmount.toString(),
+      };
+    }
+    return { totalConversions: result.totalConversions, byPair };
+  });
+
   app.get('/api/fx/pairs', async () => {
     return fx.getSupportedPairs();
   });
