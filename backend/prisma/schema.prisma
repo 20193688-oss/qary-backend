@@ -1,4 +1,5 @@
-// QARY Super-App — DB schema (PR 2 baseline; extended in later PRs)
+// KOPERA Fintech — Prisma schema
+// Double-entry ledger, multi-currency wallet, payment gateway, KYC/KYB, loans, agents
 
 generator client {
   provider = "prisma-client-js"
@@ -9,176 +10,786 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ─── ENUMS ──────────────────────────────────────────────────────
+
 enum UserRole {
   USER
-  DRIVER
-  WORKER
+  BUSINESS
   ADMIN
+  COMPLIANCE
+  AGENT
 }
 
-enum OrderStatus {
+enum AccountType {
+  PERSONAL
+  BUSINESS
+}
+
+enum KycStatus {
   PENDING
-  ACCEPTED
-  IN_PROGRESS
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum DocumentType {
+  DNI
+  PASSPORT
+  RUC
+  RFC
+  NIT
+  CIF
+  RUT
+  CNPJ
+  CPF
+  DRIVERS_LICENSE
+  UTILITY_BILL
+  BANK_STATEMENT
+}
+
+enum WalletStatus {
+  ACTIVE
+  FROZEN
+  CLOSED
+}
+
+enum TransactionStatus {
+  PENDING
+  PROCESSING
   COMPLETED
+  FAILED
+  REVERSED
   CANCELLED
 }
 
-enum PaymentStatus {
+enum TransactionType {
+  DEPOSIT
+  WITHDRAWAL
+  TRANSFER
+  PAYMENT
+  REFUND
+  FX_CONVERSION
+  LOAN_DISBURSEMENT
+  LOAN_REPAYMENT
+  FEE
+  INTEREST
+  REWARD
+}
+
+enum PaymentMethod {
+  CARD
+  BANK_TRANSFER
+  WALLET
+  QR_CODE
+  APPLE_PAY
+  GOOGLE_PAY
+  PIX
+  SPEI
+  SEPA
+  ACH
+  UPI
+  STABLECOIN
+}
+
+enum PaymentGatewayStatus {
+  CREATED
   REQUIRES_ACTION
-  SUCCEEDED
+  PROCESSING
+  CAPTURED
+  SETTLED
   FAILED
   REFUNDED
+  DISPUTED
+  CANCELLED
 }
 
-enum IncidentType {
-  SAFETY
-  PAYMENT
-  SERVICE
-  OTHER
+enum CardNetwork {
+  VISA
+  MASTERCARD
+  AMEX
+  DINERS
+  UNIONPAY
+  DISCOVER
+  JCB
 }
 
-enum MediaKind {
-  IMAGE
-  VIDEO
-  AUDIO
-  TRANSCRIPT
+enum BankRail {
+  CCI
+  CLABE
+  CBU
+  CVU
+  PIX
+  IBAN
+  SWIFT
+  ACH
+  SORT_CODE
+  BSB
+  IFSC
+  SPEI
+  SEPA
+  UPI
+  FASTER_PAYMENTS
+  FEDNOW
+  RTP
+  WIRE
+  INTERAC
 }
+
+enum LoanStatus {
+  APPLICATION
+  UNDERWRITING
+  APPROVED
+  DISBURSED
+  ACTIVE
+  DELINQUENT
+  DEFAULTED
+  PAID_OFF
+  CANCELLED
+}
+
+enum DisputeStatus {
+  OPENED
+  EVIDENCE_NEEDED
+  UNDER_REVIEW
+  WON
+  LOST
+  ACCEPTED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  SENT
+  PAID
+  OVERDUE
+  CANCELLED
+  VOIDED
+}
+
+enum InvoiceType {
+  BOLETA
+  FACTURA
+  NOTA_CREDITO
+  NOTA_DEBITO
+  RECIBO
+}
+
+enum AgentCategory {
+  CORE
+  PAYMENTS
+  IDENTITY
+  CREDIT
+  COMPLIANCE
+  EXPERIENCE
+  INFRASTRUCTURE
+  MARKET
+  CORPORATE
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+  EMERGENCY
+}
+
+enum NotificationType {
+  EMAIL
+  SMS
+  PUSH
+  WHATSAPP
+  IN_APP
+}
+
+// ─── USERS & IDENTITY ───────────────────────────────────────────
 
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  phone         String?   @unique
+  id            String      @id @default(cuid())
+  email         String      @unique
+  phone         String?     @unique
   name          String?
-  role          UserRole  @default(USER)
+  role          UserRole    @default(USER)
+  accountType   AccountType @default(PERSONAL)
   passwordHash  String?
-  pinHash       String?   // bcrypt para confirmación PIN/voz
-  emailVerified Boolean   @default(false)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  driver        Driver?
-  ordersAsUser  Order[]   @relation("OrdersUser")
-  incidents     Incident[]
+  pinHash       String?
+  mfaSecret     String?
+  mfaEnabled    Boolean     @default(false)
+  emailVerified Boolean     @default(false)
+  phoneVerified Boolean     @default(false)
+  locale        String      @default("es-PE")
+  timezone      String      @default("America/Lima")
+  country       String      @default("PE")
+  preferredCurrency String  @default("PEN")
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  kyc           KycProfile?
+  business      BusinessProfile?
+  wallets       Wallet[]
+  cards         TokenizedCard[]
+  bankAccounts  BankAccount[]
+  loans         Loan[]
+  transactions  Transaction[]   @relation("UserTransactions")
+  notifications Notification[]
+  sessions      UserSession[]
   events        Event[]
   refreshTokens RefreshToken[]
+  invoicesSent  Invoice[]       @relation("InvoiceSender")
+  invoicesRecvd Invoice[]       @relation("InvoiceReceiver")
+  disputes      Dispute[]
+  koperaPoints  KoperaPoints?
+
+  @@index([country, role])
 }
 
 model RefreshToken {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash  String   @unique // sha256(rawToken) — el raw nunca se persiste
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
   expiresAt  DateTime
   revokedAt  DateTime?
-  replacedBy String?  // para rotación
+  replacedBy String?
   userAgent  String?
   ip         String?
-  createdAt  DateTime @default(now())
+  createdAt  DateTime  @default(now())
 
   @@index([userId, revokedAt])
 }
 
-model Driver {
-  id           String   @id @default(cuid())
-  userId       String   @unique
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  vehiclePlate String
-  vehicleModel String
-  online       Boolean  @default(false)
-  lastLat      Float?
-  lastLng      Float?
-  lastSeenAt   DateTime?
-  ordersAsDriver Order[] @relation("OrdersDriver")
+model UserSession {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId    String
+  deviceName  String?
+  ip          String
+  userAgent   String?
+  lastActiveAt DateTime @default(now())
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
 }
 
-model Order {
-  id         String      @id @default(cuid())
-  userId     String
-  user       User        @relation("OrdersUser", fields: [userId], references: [id])
-  driverId   String?
-  driver     Driver?     @relation("OrdersDriver", fields: [driverId], references: [id])
-  status     OrderStatus @default(PENDING)
-  pickup     Json
-  dropoff    Json
-  amountCents Int
-  currency   String      @default("USD")
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
-  payment    Payment?
-  incidents  Incident[]
-  media      MediaAsset[]
-  receipt    Receipt?
+// ─── KYC / KYB ──────────────────────────────────────────────────
+
+model KycProfile {
+  id               String       @id @default(cuid())
+  userId           String       @unique
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status           KycStatus    @default(PENDING)
+  documentType     DocumentType?
+  documentNumber   String?
+  documentCountry  String?
+  firstName        String?
+  lastName         String?
+  dateOfBirth      DateTime?
+  nationality      String?
+  address          Json?
+  livenessScore    Float?
+  livenessImageUrl String?
+  documentFrontUrl String?
+  documentBackUrl  String?
+  selfieUrl        String?
+  verifiedAt       DateTime?
+  rejectedReason   String?
+  pepCheck         Boolean      @default(false)
+  sanctionsCheck   Boolean      @default(false)
+  riskScore        Float?
+  reviewedBy       String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([status])
+  @@index([documentNumber, documentCountry])
 }
 
-model Payment {
-  id               String        @id @default(cuid())
-  orderId          String        @unique
-  order            Order         @relation(fields: [orderId], references: [id])
-  stripeIntentId   String        @unique
-  status           PaymentStatus @default(REQUIRES_ACTION)
-  amountCents      Int
-  currency         String        @default("USD")
-  voicePinVerified Boolean       @default(false)
-  voiceVerifiedAt  DateTime?
-  capturedAt       DateTime?
-  failureCode      String?
-  failureMessage   String?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+model BusinessProfile {
+  id                String    @id @default(cuid())
+  userId            String    @unique
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taxId             String
+  taxIdType         String    // RUC, RFC, NIT, CIF, RUT, CNPJ
+  taxIdCountry      String
+  legalName         String?
+  tradeName         String?
+  incorporationDate DateTime?
+  economicActivity  String?
+  ciiu              String?
+  fiscalAddress     Json?
+  legalRepName      String?
+  legalRepDocType   String?
+  legalRepDocNumber String?
+  status            KycStatus @default(PENDING)
+  habidomStatus     String?   // Habido/No Habido
+  coactivaDebt      Boolean   @default(false)
+  riskScore         Float?
+  reputationScore   Float?
+  complianceScore   Float?
+  lastScreeningAt   DateTime?
+  verifiedAt        DateTime?
+  rejectedReason    String?
+  screeningReport   Json?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([taxId, taxIdCountry])
+  @@index([status])
+}
+
+// ─── WALLETS & LEDGER ───────────────────────────────────────────
+
+model Wallet {
+  id              String       @id @default(cuid())
+  userId          String
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currency        String       // ISO 4217: PEN, USD, EUR, BRL, MXN...
+  balance         BigInt       @default(0) // in smallest unit (cents/centimos)
+  availableBalance BigInt      @default(0)
+  holdBalance     BigInt       @default(0)
+  status          WalletStatus @default(ACTIVE)
+  isDefault       Boolean      @default(false)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  ledgerEntries   LedgerEntry[]
+
+  @@unique([userId, currency])
+  @@index([status])
+}
+
+model LedgerEntry {
+  id              String          @id @default(cuid())
+  walletId        String
+  wallet          Wallet          @relation(fields: [walletId], references: [id])
+  transactionId   String
+  transaction     Transaction     @relation(fields: [transactionId], references: [id])
+  amount          BigInt          // positive = debit, negative = credit
+  balanceBefore   BigInt
+  balanceAfter    BigInt
+  entryType       String          // DEBIT or CREDIT
+  description     String?
+  createdAt       DateTime        @default(now())
+
+  @@index([walletId, createdAt])
+  @@index([transactionId])
+}
+
+model Transaction {
+  id                String            @id @default(cuid())
+  userId            String
+  user              User              @relation("UserTransactions", fields: [userId], references: [id])
+  type              TransactionType
+  status            TransactionStatus @default(PENDING)
+  amount            BigInt
+  currency          String
+  feeAmount         BigInt            @default(0)
+  feeCurrency       String?
+  fxRate            Float?
+  fxSourceCurrency  String?
+  fxTargetCurrency  String?
+  fxSourceAmount    BigInt?
+  fxTargetAmount    BigInt?
+  description       String?
+  reference         String?           @unique
+  externalRef       String?
+  metadata          Json?
+  senderWalletId    String?
+  receiverWalletId  String?
+  counterpartyName  String?
+  counterpartyBank  String?
+  counterpartyAcct  String?
+  paymentMethodUsed PaymentMethod?
+  bankRail          BankRail?
+  processedAt       DateTime?
+  failedReason      String?
+  reversalOf        String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  ledgerEntries     LedgerEntry[]
+  gatewayPayment    GatewayPayment?
+  invoice           Invoice?          @relation("TransactionInvoice")
+
+  @@index([userId, createdAt])
+  @@index([type, status])
+  @@index([reference])
+}
+
+// ─── PAYMENT GATEWAY ────────────────────────────────────────────
+
+model GatewayPayment {
+  id                  String               @id @default(cuid())
+  transactionId       String               @unique
+  transaction         Transaction          @relation(fields: [transactionId], references: [id])
+  merchantId          String?
+  status              PaymentGatewayStatus @default(CREATED)
+  paymentMethod       PaymentMethod
+  amount              BigInt
+  currency            String
+  cardNetwork         CardNetwork?
+  cardLast4           String?
+  cardTokenId         String?
+  threeDSecureStatus  String?
+  processorRef        String?
+  processorResponse   Json?
+  gatewayFee          BigInt               @default(0)
+  settlementAmount    BigInt?
+  settlementCurrency  String?
+  settledAt           DateTime?
+  antifraudScore      Float?
+  antifraudDecision   String?              // APPROVE, REVIEW, DECLINE
+  antifraudDetails    Json?
+  idempotencyKey      String?              @unique
+  webhookDelivered    Boolean              @default(false)
+  errorCode           String?
+  errorMessage        String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  dispute             Dispute?
+
+  @@index([merchantId, status])
+  @@index([status, createdAt])
+}
+
+model TokenizedCard {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vaultToken    String      @unique // PCI-compliant token reference
+  last4         String
+  network       CardNetwork
+  expiryMonth   Int
+  expiryYear    Int
+  holderName    String?
+  isDefault     Boolean     @default(false)
+  country       String?
+  bankName      String?
+  fingerprint   String?     // for dedup
+  createdAt     DateTime    @default(now())
+
+  @@index([userId])
+}
+
+model BankAccount {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bankName        String
+  bankCode        String?
+  accountNumber   String   // encrypted
+  accountType     String?  // savings, checking
+  rail            BankRail
+  country         String
+  currency        String
+  holderName      String
+  isVerified      Boolean  @default(false)
+  isDefault       Boolean  @default(false)
+  metadata        Json?
+  createdAt       DateTime @default(now())
+
+  @@index([userId])
+  @@index([rail, country])
+}
+
+// ─── DISPUTES ───────────────────────────────────────────────────
+
+model Dispute {
+  id                String        @id @default(cuid())
+  gatewayPaymentId  String        @unique
+  gatewayPayment    GatewayPayment @relation(fields: [gatewayPaymentId], references: [id])
+  userId            String
+  user              User          @relation(fields: [userId], references: [id])
+  status            DisputeStatus @default(OPENED)
+  reason            String
+  amount            BigInt
+  currency          String
+  evidenceSubmitted Json?
+  evidenceDeadline  DateTime?
+  resolvedAt        DateTime?
+  outcome           String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 
   @@index([status])
 }
 
-model Incident {
-  id          String       @id @default(cuid())
-  orderId     String?
-  order       Order?       @relation(fields: [orderId], references: [id])
-  userId      String
-  user        User         @relation(fields: [userId], references: [id])
-  type        IncidentType
+// ─── INVOICING ──────────────────────────────────────────────────
+
+model Invoice {
+  id                String        @id @default(cuid())
+  transactionId     String?       @unique
+  transaction       Transaction?  @relation("TransactionInvoice", fields: [transactionId], references: [id])
+  senderId          String
+  sender            User          @relation("InvoiceSender", fields: [senderId], references: [id])
+  receiverId        String?
+  receiver          User?         @relation("InvoiceReceiver", fields: [receiverId], references: [id])
+  type              InvoiceType
+  status            InvoiceStatus @default(DRAFT)
+  series            String?
+  number            String?
+  issueDate         DateTime      @default(now())
+  dueDate           DateTime?
+  currency          String
+  subtotal          BigInt
+  taxAmount         BigInt        @default(0)
+  taxRate           Float?
+  totalAmount       BigInt
+  senderTaxId       String?
+  senderName        String?
+  receiverTaxId     String?
+  receiverName      String?
+  country           String
+  xmlPayload        String?       // SUNAT/SAT XML
+  xmlHash           String?
+  digitalSignature  String?
+  sunatTicket       String?
+  sunatStatus       String?
+  pdfUrl            String?
+  xmlUrl            String?
+  sentAt            DateTime?
+  lineItems         Json?
+  notes             String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([senderId, status])
+  @@index([receiverId])
+  @@index([country, type])
+}
+
+// ─── LOANS ──────────────────────────────────────────────────────
+
+model Loan {
+  id                 String     @id @default(cuid())
+  userId             String
+  user               User       @relation(fields: [userId], references: [id])
+  status             LoanStatus @default(APPLICATION)
+  principalAmount    BigInt
+  currency           String
+  interestRate       Float      // annual rate
+  termMonths         Int
+  monthlyPayment     BigInt?
+  totalInterest      BigInt?
+  tcea               Float?     // TCEA for Peru
+  disbursedAmount    BigInt?
+  disbursedAt        DateTime?
+  outstandingBalance BigInt?
+  nextPaymentDate    DateTime?
+  nextPaymentAmount  BigInt?
+  missedPayments     Int        @default(0)
+  creditScore        Float?
+  creditScoreSource  String?
+  applicationData    Json?
+  approvedAt         DateTime?
+  approvedBy         String?
+  rejectedReason     String?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  repayments         LoanRepayment[]
+
+  @@index([userId, status])
+}
+
+model LoanRepayment {
+  id           String   @id @default(cuid())
+  loanId       String
+  loan         Loan     @relation(fields: [loanId], references: [id])
+  installment  Int
+  dueDate      DateTime
+  amount       BigInt
+  principal    BigInt
+  interest     BigInt
+  paidAmount   BigInt   @default(0)
+  paidAt       DateTime?
+  status       String   @default("PENDING") // PENDING, PAID, OVERDUE, PARTIAL
+  createdAt    DateTime @default(now())
+
+  @@index([loanId, installment])
+  @@index([dueDate, status])
+}
+
+// ─── FX RATES ───────────────────────────────────────────────────
+
+model FxRate {
+  id           String   @id @default(cuid())
+  baseCurrency String
+  quoteCurrency String
+  bid          Float
+  ask          Float
+  mid          Float
+  spread       Float
+  source       String
+  validFrom    DateTime
+  validTo      DateTime?
+  createdAt    DateTime @default(now())
+
+  @@index([baseCurrency, quoteCurrency, validFrom])
+}
+
+// ─── AGENT ORCHESTRATION ────────────────────────────────────────
+
+model Agent {
+  id          String        @id @default(cuid())
+  number      Int           @unique // 1-51
+  name        String        @unique
+  category    AgentCategory
   description String
-  transcript  String?
-  resolvedAt  DateTime?
-  createdAt   DateTime     @default(now())
-  media       MediaAsset[]
+  isActive    Boolean       @default(true)
+  version     String        @default("1.0.0")
+  config      Json?
+  kpis        Json?
+  slaMs       Int?          // max latency in ms
+  lastHealthCheck DateTime?
+  healthStatus    String?   // healthy, degraded, down
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  executions  AgentExecution[]
 }
 
-model MediaAsset {
-  id          String     @id @default(cuid())
-  kind        MediaKind
-  storageKey  String     // s3 key
-  signedUrl   String?    // último signed URL emitido (cache cortita)
-  signedExpiresAt DateTime?
+model AgentExecution {
+  id          String   @id @default(cuid())
+  agentId     String
+  agent       Agent    @relation(fields: [agentId], references: [id])
+  input       Json
+  output      Json?
+  status      String   @default("running") // running, completed, failed, timeout
   durationMs  Int?
-  orderId     String?
-  order       Order?     @relation(fields: [orderId], references: [id])
-  incidentId  String?
-  incident    Incident?  @relation(fields: [incidentId], references: [id])
-  createdAt   DateTime   @default(now())
+  errorMsg    String?
+  triggeredBy String?  // user_id, system, or agent_id
+  traceId     String?
+  parentExecId String?
+  createdAt   DateTime @default(now())
+  completedAt DateTime?
+
+  @@index([agentId, createdAt])
+  @@index([traceId])
+  @@index([status])
 }
 
-model Receipt {
-  id        String   @id @default(cuid())
-  orderId   String   @unique
-  order     Order    @relation(fields: [orderId], references: [id])
-  payload   Json
-  htmlUrl   String?
-  createdAt DateTime @default(now())
+// ─── KOPERA POINTS ──────────────────────────────────────────────
+
+model KoperaPoints {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balance      Int      @default(0)
+  lifetimeEarned Int    @default(0)
+  lifetimeSpent  Int    @default(0)
+  tier         String   @default("BRONZE") // BRONZE, SILVER, GOLD, PLATINUM, DIAMOND
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  history      PointsHistory[]
 }
 
-// Audit log: una fila por acción sensible
+model PointsHistory {
+  id           String       @id @default(cuid())
+  pointsId     String
+  points       KoperaPoints @relation(fields: [pointsId], references: [id])
+  amount       Int
+  type         String       // EARN, REDEEM, BONUS, EXPIRE
+  reason       String
+  referenceId  String?
+  createdAt    DateTime     @default(now())
+
+  @@index([pointsId, createdAt])
+}
+
+// ─── NOTIFICATIONS ──────────────────────────────────────────────
+
+model Notification {
+  id          String           @id @default(cuid())
+  userId      String
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        NotificationType
+  channel     String           // email, sms, push, whatsapp, in_app
+  subject     String?
+  body        String
+  metadata    Json?
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  readAt      DateTime?
+  failedAt    DateTime?
+  failReason  String?
+  externalId  String?          // provider message ID
+  createdAt   DateTime         @default(now())
+
+  @@index([userId, createdAt])
+  @@index([type, sentAt])
+}
+
+// ─── AUDIT LOG ──────────────────────────────────────────────────
+
 model Event {
   id         String   @id @default(cuid())
   userId     String?
   user       User?    @relation(fields: [userId], references: [id])
   actor      String   // user|system|agent|webhook|admin
-  eventType  String   // order.created, payment.succeeded, agent.intent, ...
+  eventType  String
   payload    Json
   requestId  String?
   ip         String?
   userAgent  String?
+  agentId    String?
+  severity   AlertSeverity?
   createdAt  DateTime @default(now())
 
   @@index([eventType, createdAt])
   @@index([requestId])
+  @@index([userId, eventType])
+  @@index([agentId])
+}
+
+// ─── RECURRING / SUBSCRIPTIONS ──────────────────────────────────
+
+model Subscription {
+  id            String   @id @default(cuid())
+  userId        String
+  merchantId    String?
+  planName      String
+  amount        BigInt
+  currency      String
+  interval      String   // daily, weekly, monthly, yearly
+  intervalCount Int      @default(1)
+  status        String   @default("active") // active, paused, cancelled, past_due
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  nextBillingDate    DateTime
+  retryCount    Int      @default(0)
+  maxRetries    Int      @default(3)
+  cancelledAt   DateTime?
+  metadata      Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId, status])
+  @@index([nextBillingDate, status])
+}
+
+// ─── ANT EXPENSES (GASTOS HORMIGA) ─────────────────────────────
+
+model AntExpense {
+  id           String   @id @default(cuid())
+  userId       String
+  category     String   // coffee, delivery, streaming, fees, subscriptions
+  merchantName String
+  amount       BigInt
+  currency     String
+  frequency    String   // daily, weekly, monthly
+  monthlyTotal BigInt
+  yearlyProjection BigInt
+  detectedAt   DateTime @default(now())
+  isActive     Boolean  @default(true)
+  suggestion   String?
+  savingsIfCut BigInt?
+  createdAt    DateTime @default(now())
+
+  @@index([userId, category])
+  @@index([userId, isActive])
 }

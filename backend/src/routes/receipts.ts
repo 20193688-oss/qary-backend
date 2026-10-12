@@ -6,26 +6,22 @@ interface Deps {
   prisma: PrismaClient;
 }
 
-function buildReceiptPayload(p: {
+function buildReceiptPayload(gp: {
   id: string;
-  orderId: string;
-  amountCents: number;
+  amount: bigint;
   currency: string;
   status: string;
-  capturedAt: Date | null;
-  voicePinVerified: boolean;
-  order: { userId: string; pickup: unknown; dropoff: unknown };
+  settledAt: Date | null;
+  transaction: { userId: string; description: string | null; reference: string | null };
 }) {
   return {
-    receiptId: p.id,
-    orderId: p.orderId,
-    userId: p.order.userId,
-    amount: { cents: p.amountCents, currency: p.currency },
-    status: p.status,
-    capturedAt: p.capturedAt?.toISOString() ?? null,
-    voicePinVerified: p.voicePinVerified,
-    pickup: p.order.pickup,
-    dropoff: p.order.dropoff,
+    receiptId: gp.id,
+    transactionRef: gp.transaction.reference,
+    userId: gp.transaction.userId,
+    amount: { cents: Number(gp.amount), currency: gp.currency },
+    status: gp.status,
+    settledAt: gp.settledAt?.toISOString() ?? null,
+    description: gp.transaction.description,
     issuedAt: new Date().toISOString(),
   };
 }
@@ -41,14 +37,14 @@ td{padding:8px 0;border-bottom:1px solid #EEEEF8;vertical-align:top}
 .total{font-size:22px;font-weight:800}.sig{margin-top:24px;font:11px/1.4 ui-monospace,monospace;word-break:break-all;color:#6B6B8A}
 .badge{display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700;background:#E8F8F0;color:#00723C}
 </style></head><body>
-<h1>QARY · Recibo</h1>
+<h1>KOPERA · Recibo</h1>
 <div class="muted">Emitido ${data.issuedAt}</div>
 <div style="margin-top:8px"><span class="badge">${data.status}</span></div>
 <table>
   <tr><td>Recibo</td><td><b>${data.receiptId}</b></td></tr>
-  <tr><td>Pedido</td><td>${data.orderId}</td></tr>
-  <tr><td>Capturado</td><td>${data.capturedAt ?? '—'}</td></tr>
-  <tr><td>PIN/voz verificado</td><td>${data.voicePinVerified ? 'sí' : 'no'}</td></tr>
+  <tr><td>Referencia</td><td>${data.transactionRef ?? '—'}</td></tr>
+  <tr><td>Liquidado</td><td>${data.settledAt ?? '—'}</td></tr>
+  <tr><td>Descripción</td><td>${data.description ?? '—'}</td></tr>
   <tr><td>Total</td><td class="total">${fmt(data.amount.cents, data.amount.currency)}</td></tr>
 </table>
 <div class="sig">HMAC-SHA256: ${sig}</div>
@@ -61,14 +57,14 @@ export async function registerReceiptsRoutes(app: FastifyInstance, deps: Deps) {
   app.get('/api/receipts/:id', async (req, reply) => {
     const id = (req.params as { id: string }).id;
     const accept = (req.headers.accept ?? '').toLowerCase();
-    const payment = await prisma.payment.findUnique({
+    const gp = await prisma.gatewayPayment.findUnique({
       where: { id },
-      include: { order: true },
+      include: { transaction: true },
     });
-    if (!payment) return reply.code(404).send({ error: 'not_found' });
-    if (payment.status !== 'SUCCEEDED') return reply.code(409).send({ error: 'not_captured_yet' });
+    if (!gp) return reply.code(404).send({ error: 'not_found' });
+    if (gp.status !== 'CAPTURED') return reply.code(409).send({ error: 'not_captured_yet' });
 
-    const data = buildReceiptPayload(payment);
+    const data = buildReceiptPayload(gp);
     const sig = hmacSign(JSON.stringify(data));
 
     if (accept.includes('text/html')) {

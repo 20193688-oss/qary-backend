@@ -16,24 +16,68 @@ export function createInMemoryPrisma(): PrismaClient {
   const tables: Record<string, Row[]> = {
     user: [],
     refreshToken: [],
+    event: [],
+    transaction: [],
+    gatewayPayment: [],
+    wallet: [],
+    ledgerEntry: [],
+    fxRate: [],
+    invoice: [],
+    loan: [],
+    loanRepayment: [],
+    koperaPoints: [],
+    pointsHistory: [],
+    kycProfile: [],
+    businessProfile: [],
+    tokenizedCard: [],
+    bankAccount: [],
+    dispute: [],
+    agent: [],
+    agentExecution: [],
+    notification: [],
+    subscription: [],
+    antExpense: [],
+    userSession: [],
+    // legacy
     order: [],
     payment: [],
     incident: [],
     mediaAsset: [],
     receipt: [],
-    event: [],
     driver: [],
   };
 
   const model = (name: string) => {
-    const arr = () => tables[name]!;
+    const arr = () => {
+      if (!tables[name]) tables[name] = [];
+      return tables[name]!;
+    };
     return {
-      async findUnique({ where }: { where: Record<string, unknown> }) {
-        return arr().find((r) => matches(r, where)) ?? null;
+      async findUnique({ where, include }: { where: Record<string, unknown>; include?: Record<string, boolean> }) {
+        const r = arr().find((x) => matches(x, where));
+        if (!r) return null;
+        if (include) {
+          const result = { ...r };
+          for (const rel of Object.keys(include)) {
+            if (include[rel]) {
+              const relTable = tables[rel];
+              if (relTable) {
+                const fk = `${rel}Id`;
+                if (r[fk]) {
+                  (result as Record<string, unknown>)[rel] = relTable.find((x) => x.id === r[fk]) ?? null;
+                } else {
+                  const parentFk = `${name}Id`;
+                  (result as Record<string, unknown>)[rel] = relTable.find((x) => x[parentFk] === r.id) ?? null;
+                }
+              }
+            }
+          }
+          return result;
+        }
+        return r;
       },
       async findFirst({ where }: { where?: Record<string, unknown> } = {}) {
         if (!where) return arr()[0] ?? null;
-        // soporte naive para `payload: { path: [...], equals: ... }`
         return arr().find((r) => {
           for (const [k, v] of Object.entries(where)) {
             if (v && typeof v === 'object' && 'path' in v && 'equals' in (v as Record<string, unknown>)) {
@@ -52,7 +96,7 @@ export function createInMemoryPrisma(): PrismaClient {
           return true;
         }) ?? null;
       },
-      async findMany({ where }: { where?: Record<string, unknown> } = {}) {
+      async findMany({ where, orderBy }: { where?: Record<string, unknown>; orderBy?: unknown } = {}) {
         if (!where) return [...arr()];
         return arr().filter((r) => matches(r, where));
       },
@@ -90,31 +134,74 @@ export function createInMemoryPrisma(): PrismaClient {
         const [removed] = arr().splice(idx, 1);
         return removed;
       },
+      async count({ where }: { where?: Record<string, unknown> } = {}) {
+        if (!where) return arr().length;
+        return arr().filter((r) => matches(r, where)).length;
+      },
     };
+  };
+
+  const txHandler = async (fn: (tx: unknown) => Promise<unknown>) => {
+    return fn(prisma);
   };
 
   const prisma = {
     user: model('user'),
     refreshToken: model('refreshToken'),
-    order: model('order'),
-    payment: { ...model('payment'),
-      async findUnique({ where, include }: { where: Record<string, unknown>; include?: { order?: boolean } }) {
-        const r = tables.payment!.find((x) => matches(x, where));
+    event: model('event'),
+    transaction: {
+      ...model('transaction'),
+      async findUnique({ where, include }: { where: Record<string, unknown>; include?: { gatewayPayment?: boolean } }) {
+        const r = tables.transaction!.find((x) => matches(x, where));
         if (!r) return null;
-        if (include?.order) {
-          const order = tables.order!.find((o) => o.id === r.orderId);
-          return { ...r, order };
+        if (include?.gatewayPayment) {
+          const gp = tables.gatewayPayment!.find((g) => g.transactionId === r.id);
+          return { ...r, gatewayPayment: gp ?? null };
         }
         return r;
-      } },
+      },
+    },
+    gatewayPayment: {
+      ...model('gatewayPayment'),
+      async findUnique({ where, include }: { where: Record<string, unknown>; include?: { transaction?: boolean } }) {
+        const r = tables.gatewayPayment!.find((x) => matches(x, where));
+        if (!r) return null;
+        if (include?.transaction) {
+          const tx = tables.transaction!.find((t) => t.id === r.transactionId);
+          return { ...r, transaction: tx ?? null };
+        }
+        return r;
+      },
+    },
+    wallet: model('wallet'),
+    ledgerEntry: model('ledgerEntry'),
+    fxRate: model('fxRate'),
+    invoice: model('invoice'),
+    loan: model('loan'),
+    loanRepayment: model('loanRepayment'),
+    koperaPoints: model('koperaPoints'),
+    pointsHistory: model('pointsHistory'),
+    kycProfile: model('kycProfile'),
+    businessProfile: model('businessProfile'),
+    tokenizedCard: model('tokenizedCard'),
+    bankAccount: model('bankAccount'),
+    dispute: model('dispute'),
+    agent: model('agent'),
+    agentExecution: model('agentExecution'),
+    notification: model('notification'),
+    subscription: model('subscription'),
+    antExpense: model('antExpense'),
+    userSession: model('userSession'),
+    // legacy
+    order: model('order'),
+    payment: model('payment'),
     incident: model('incident'),
     mediaAsset: model('mediaAsset'),
     receipt: model('receipt'),
-    event: model('event'),
     driver: model('driver'),
+    $transaction: txHandler,
   } as unknown as PrismaClient;
 
-  // Helper para inspeccionar tablas en tests
   (prisma as unknown as { __tables: typeof tables }).__tables = tables;
   return prisma;
 }

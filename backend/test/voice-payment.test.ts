@@ -26,21 +26,16 @@ async function bootstrap() {
     payload: { pin: '4242' },
   });
 
-  const order = await prisma.order.create({
-    data: {
-      userId: user.id, pickup: {}, dropoff: {},
-      amountCents: 2500, currency: 'USD',
-    },
-  } as never) as { id: string };
-
-  await app.inject({
+  // Create a transaction + gateway payment via the payments endpoint
+  const payRes = await app.inject({
     method: 'POST', url: '/api/payments/intent',
     headers: { authorization: `Bearer ${accessToken}` },
-    payload: { orderId: order.id, amountCents: 2500 },
+    payload: { amountCents: 2500 },
   });
+  const { transactionId } = payRes.json();
 
   voiceInternals.failureCounts.clear();
-  return { app, prisma, accessToken, user, order };
+  return { app, prisma, accessToken, user, transactionId };
 }
 
 describe('voice-confirm', () => {
@@ -51,12 +46,12 @@ describe('voice-confirm', () => {
     const res = await ctx.app.inject({
       method: 'POST', url: '/api/voice-confirm',
       headers: { authorization: `Bearer ${ctx.accessToken}` },
-      payload: { orderId: ctx.order.id, userId: ctx.user.id, confirmPin: '4242' },
+      payload: { transactionId: ctx.transactionId, userId: ctx.user.id, confirmPin: '4242' },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.ok).toBe(true);
-    expect(body.status).toBe('SUCCEEDED');
+    expect(body.status).toBe('COMPLETED');
     expect(body.voicePinVerified).toBe(true);
     expect(body.ttsConfirmation).toMatch(/confirmado/i);
     expect(body.receiptUrl).toMatch(/\/api\/receipts\//);
@@ -66,7 +61,7 @@ describe('voice-confirm', () => {
     const res = await ctx.app.inject({
       method: 'POST', url: '/api/voice-confirm',
       headers: { authorization: `Bearer ${ctx.accessToken}` },
-      payload: { orderId: ctx.order.id, userId: ctx.user.id, confirmPin: '0000' },
+      payload: { transactionId: ctx.transactionId, userId: ctx.user.id, confirmPin: '0000' },
     });
     expect(res.statusCode).toBe(401);
     expect(res.json().error).toBe('invalid_pin');
@@ -76,7 +71,7 @@ describe('voice-confirm', () => {
     const res = await ctx.app.inject({
       method: 'POST', url: '/api/voice-confirm',
       headers: { authorization: `Bearer ${ctx.accessToken}` },
-      payload: { orderId: ctx.order.id, userId: 'someone-else', confirmPin: '4242' },
+      payload: { transactionId: ctx.transactionId, userId: 'someone-else', confirmPin: '4242' },
     });
     expect(res.statusCode).toBe(403);
   });
@@ -86,13 +81,13 @@ describe('voice-confirm', () => {
       await ctx.app.inject({
         method: 'POST', url: '/api/voice-confirm',
         headers: { authorization: `Bearer ${ctx.accessToken}` },
-        payload: { orderId: ctx.order.id, userId: ctx.user.id, confirmPin: '0000' },
+        payload: { transactionId: ctx.transactionId, userId: ctx.user.id, confirmPin: '0000' },
       });
     }
     const res = await ctx.app.inject({
       method: 'POST', url: '/api/voice-confirm',
       headers: { authorization: `Bearer ${ctx.accessToken}` },
-      payload: { orderId: ctx.order.id, userId: ctx.user.id, confirmPin: '4242' },
+      payload: { transactionId: ctx.transactionId, userId: ctx.user.id, confirmPin: '4242' },
     });
     expect(res.statusCode).toBe(429);
   });
