@@ -72,6 +72,25 @@ export async function registerLoanRepaymentRoutes(app: FastifyInstance, prisma: 
     }
   });
 
+  app.get('/api/loans/:loanId/repayments/delinquency', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { loanId } = req.params as { loanId: string };
+
+    const loan = await prisma.loan.findUnique({ where: { id: loanId } });
+    if (!loan) return reply.code(404).send({ error: 'loan_not_found' });
+    if (loan.userId !== req.auth!.userId) return reply.code(403).send({ error: 'forbidden' });
+
+    const result = await svc.getDelinquencyReport(loanId);
+    return {
+      ...result,
+      overdueAmount: result.overdueAmount.toString(),
+      overdueInstallments: result.overdueInstallments.map((i) => ({
+        ...i,
+        amount: i.amount.toString(),
+        paidAmount: i.paidAmount.toString(),
+      })),
+    };
+  });
+
   app.get('/api/loans/:loanId/repayments/payment-history', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { loanId } = req.params as { loanId: string };
 

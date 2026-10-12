@@ -99,6 +99,42 @@ export class EventService {
     };
   }
 
+  async getSecurityAudit(userId: string) {
+    const events = await this.prisma.event.findMany({ where: { userId } });
+
+    const securityTypes = ['auth.login', 'auth.logout', 'auth.failed', 'auth.mfa_enabled', 'auth.mfa_disabled',
+      'auth.password_changed', 'auth.pin_set', 'auth.pin_changed', 'session.revoked', 'session.created'];
+    const securityEvents = events.filter((e: any) => securityTypes.includes(e.eventType) || e.severity === 'CRITICAL' || e.severity === 'EMERGENCY');
+
+    const byType: Record<string, number> = {};
+    const uniqueIps = new Set<string>();
+    let criticalCount = 0;
+    let failedAuthCount = 0;
+    const recentActivity: Array<{ eventType: string; ip: string | null; createdAt: Date }> = [];
+
+    for (const e of securityEvents) {
+      byType[e.eventType] = (byType[e.eventType] ?? 0) + 1;
+      if (e.ip) uniqueIps.add(e.ip);
+      if (e.severity === 'CRITICAL' || e.severity === 'EMERGENCY') criticalCount++;
+      if (e.eventType === 'auth.failed') failedAuthCount++;
+      recentActivity.push({ eventType: e.eventType, ip: e.ip, createdAt: e.createdAt });
+    }
+
+    recentActivity.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    const riskLevel = criticalCount > 0 ? 'high' : failedAuthCount > 5 ? 'medium' : 'low';
+
+    return {
+      totalSecurityEvents: securityEvents.length,
+      byType,
+      uniqueIps: uniqueIps.size,
+      criticalCount,
+      failedAuthAttempts: failedAuthCount,
+      riskLevel,
+      recentActivity: recentActivity.slice(0, 20),
+    };
+  }
+
   async listByRequest(requestId: string) {
     return this.prisma.event.findMany({
       where: { requestId },

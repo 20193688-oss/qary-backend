@@ -93,6 +93,19 @@ export async function registerTransactionRoutes(app: FastifyInstance, prisma: Pr
     }));
   });
 
+  app.get('/api/transaction-history/counterparty-report', { preHandler: [app.requireAuth] }, async (req) => {
+    const result = await svc.getCounterpartyReport(req.auth!.userId);
+    return {
+      totalCounterparties: result.totalCounterparties,
+      totalTransactions: result.totalTransactions,
+      topCounterparties: result.topCounterparties.map((c) => ({
+        ...c,
+        totalSent: c.totalSent.toString(),
+        totalReceived: c.totalReceived.toString(),
+      })),
+    };
+  });
+
   app.get('/api/transaction-history/distribution', { preHandler: [app.requireAuth] }, async (req) => {
     const query = req.query as { currency?: string };
     const dist = await svc.getTypeDistribution(req.auth!.userId, query.currency);

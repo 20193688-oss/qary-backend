@@ -32,6 +32,26 @@ export async function registerLedgerRoutes(app: FastifyInstance, prisma: PrismaC
     }));
   });
 
+  app.get('/api/ledger/:walletId/reconciliation', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { walletId } = req.params as { walletId: string };
+
+    const wallet = await prisma.wallet.findUnique({ where: { id: walletId } });
+    if (!wallet) return reply.code(404).send({ error: 'wallet_not_found' });
+    if (wallet.userId !== req.auth!.userId) return reply.code(403).send({ error: 'forbidden' });
+
+    const result = await svc.getReconciliationReport(walletId);
+    return {
+      ...result,
+      walletBalance: result.walletBalance.toString(),
+      computedBalance: result.computedBalance.toString(),
+      mismatches: result.mismatches.map((m) => ({
+        ...m,
+        expected: m.expected.toString(),
+        recorded: m.recorded.toString(),
+      })),
+    };
+  });
+
   app.get('/api/ledger/:walletId/flow-analysis', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { walletId } = req.params as { walletId: string };
 

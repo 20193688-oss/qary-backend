@@ -127,6 +127,37 @@ export class BusinessProfileService {
     };
   }
 
+  async getComplianceReadiness(userId: string) {
+    const profile = await this.prisma.businessProfile.findUnique({ where: { userId } });
+    if (!profile) throw new Error('profile_not_found');
+
+    const checks = [
+      { name: 'tax_id', passed: !!profile.taxId },
+      { name: 'legal_name', passed: !!profile.legalName },
+      { name: 'legal_rep', passed: !!(profile.legalRepName && profile.legalRepDocNumber) },
+      { name: 'fiscal_address', passed: !!profile.fiscalAddress },
+      { name: 'verification', passed: profile.status === 'APPROVED' },
+      { name: 'screening', passed: !!(profile as any).lastScreeningAt },
+      { name: 'risk_score', passed: profile.riskScore !== null && profile.riskScore !== undefined },
+    ];
+
+    const passedCount = checks.filter((c) => c.passed).length;
+    const readinessPercent = Math.round((passedCount / checks.length) * 100);
+    const isReady = checks.every((c) => c.passed);
+    const blockers = checks.filter((c) => !c.passed).map((c) => c.name);
+
+    return {
+      isReady,
+      readinessPercent,
+      passedChecks: passedCount,
+      totalChecks: checks.length,
+      blockers,
+      checks,
+      status: profile.status,
+      riskScore: profile.riskScore,
+    };
+  }
+
   async reject(userId: string, reason: string) {
     const profile = await this.prisma.businessProfile.findUnique({ where: { userId } });
     if (!profile) throw new Error('profile_not_found');

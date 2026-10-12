@@ -83,6 +83,45 @@ export class LedgerService {
     };
   }
 
+  async getReconciliationReport(walletId: string) {
+    const wallet = await this.prisma.wallet.findUnique({ where: { id: walletId } });
+    if (!wallet) throw new Error('wallet_not_found');
+
+    const entries = await this.prisma.ledgerEntry.findMany({
+      where: { walletId },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    let computedBalance = BigInt(0);
+    const mismatches: Array<{ entryId: string; expected: bigint; recorded: bigint; entryType: string }> = [];
+    let creditCount = 0;
+    let debitCount = 0;
+
+    for (const e of entries) {
+      if (e.balanceBefore !== computedBalance) {
+        mismatches.push({ entryId: e.id, expected: computedBalance, recorded: e.balanceBefore, entryType: e.entryType });
+      }
+      computedBalance = e.balanceAfter;
+      if (e.entryType === 'CREDIT') creditCount++;
+      else debitCount++;
+    }
+
+    const balanceMatchesLedger = computedBalance === wallet.balance;
+
+    return {
+      walletId,
+      currency: wallet.currency,
+      walletBalance: wallet.balance,
+      computedBalance,
+      balanceMatchesLedger,
+      totalEntries: entries.length,
+      creditCount,
+      debitCount,
+      mismatches,
+      status: mismatches.length === 0 && balanceMatchesLedger ? 'clean' : 'discrepancies_found',
+    };
+  }
+
   async getStatement(walletId: string, from: string, to: string) {
     const entries = await this.prisma.ledgerEntry.findMany({
       where: {

@@ -192,6 +192,47 @@ export class TransactionService {
     };
   }
 
+  async getCounterpartyReport(userId: string) {
+    const txns = await this.prisma.transaction.findMany({ where: { userId, status: 'COMPLETED' } });
+
+    const byCounterparty: Record<string, { count: number; totalSent: bigint; totalReceived: bigint; currencies: Set<string>; lastTransaction: Date | null }> = {};
+
+    for (const t of txns) {
+      const name = (t as any).counterpartyName ?? 'unknown';
+      if (!byCounterparty[name]) {
+        byCounterparty[name] = { count: 0, totalSent: BigInt(0), totalReceived: BigInt(0), currencies: new Set(), lastTransaction: null };
+      }
+      const entry = byCounterparty[name];
+      entry.count++;
+      entry.currencies.add(t.currency);
+      const txDate = t.processedAt ?? t.createdAt;
+      if (!entry.lastTransaction || txDate > entry.lastTransaction) entry.lastTransaction = txDate;
+
+      if (t.type === 'WITHDRAWAL' || t.type === 'PAYMENT' || (t.type === 'TRANSFER' && t.senderWalletId)) {
+        entry.totalSent += t.amount;
+      } else {
+        entry.totalReceived += t.amount;
+      }
+    }
+
+    const counterparties = Object.entries(byCounterparty)
+      .map(([name, data]) => ({
+        name,
+        count: data.count,
+        totalSent: data.totalSent,
+        totalReceived: data.totalReceived,
+        currencies: [...data.currencies],
+        lastTransaction: data.lastTransaction,
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    return {
+      totalCounterparties: counterparties.length,
+      totalTransactions: txns.length,
+      topCounterparties: counterparties.slice(0, 10),
+    };
+  }
+
   async searchTransactions(userId: string, query: string, opts?: { limit?: number }) {
     const all = await this.prisma.transaction.findMany({ where: { userId } });
     const q = query.toLowerCase();
