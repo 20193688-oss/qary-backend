@@ -48,6 +48,16 @@ export async function registerLoanRoutes(app: FastifyInstance, prisma: PrismaCli
     return reply.code(201).send(serializeLoan(loan));
   });
 
+  app.get('/api/loans/summary', { preHandler: [app.requireAuth] }, async (req) => {
+    const summary = await loans.getLoanSummary(req.auth!.userId);
+    return {
+      totalLoans: summary.totalLoans,
+      totalPrincipal: summary.totalPrincipal.toString(),
+      totalOutstanding: summary.totalOutstanding.toString(),
+      byStatus: summary.byStatus,
+    };
+  });
+
   app.get('/api/loans', { preHandler: [app.requireAuth] }, async (req) => {
     const list = await loans.listByUser(req.auth!.userId);
     return list.map(serializeLoan);

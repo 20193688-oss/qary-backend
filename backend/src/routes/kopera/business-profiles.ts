@@ -95,6 +95,38 @@ export async function registerBusinessProfileRoutes(app: FastifyInstance, prisma
     }
   });
 
+  app.get('/api/business-profile/verification-status', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    try {
+      const status = await svc.getVerificationStatus(req.auth!.userId);
+      return status;
+    } catch (e: any) {
+      if (e.message === 'profile_not_found') return reply.code(404).send({ error: e.message });
+      throw e;
+    }
+  });
+
+  app.post('/api/business-profile/screening', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const body = z.object({
+      riskScore: z.number().min(0).max(100).optional(),
+      reputationScore: z.number().min(0).max(100).optional(),
+      complianceScore: z.number().min(0).max(100).optional(),
+      screeningReport: z.record(z.unknown()).optional(),
+    }).parse(req.body);
+
+    try {
+      const profile = await svc.runScreening(req.auth!.userId, body);
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'user', eventType: 'business_profile.screening',
+        payload: { riskScore: body.riskScore, complianceScore: body.complianceScore },
+        requestId: String(req.id), ip: req.ip,
+      });
+      return serialize(profile);
+    } catch (e: any) {
+      if (e.message === 'profile_not_found') return reply.code(404).send({ error: e.message });
+      throw e;
+    }
+  });
+
   app.post('/api/business-profile/verify', { preHandler: [app.requireAuth] }, async (req, reply) => {
     try {
       const profile = await svc.verify(req.auth!.userId, req.auth!.userId);
