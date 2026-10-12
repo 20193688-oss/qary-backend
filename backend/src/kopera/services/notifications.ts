@@ -85,6 +85,26 @@ export class NotificationService {
     });
   }
 
+  async getStats(userId: string) {
+    const all = await this.prisma.notification.findMany({ where: { userId } });
+    const byType: Record<string, number> = {};
+    const byChannel: Record<string, number> = {};
+    let readCount = 0;
+    let unreadCount = 0;
+    let deliveredCount = 0;
+    let failedCount = 0;
+
+    for (const n of all) {
+      byType[n.type] = (byType[n.type] ?? 0) + 1;
+      byChannel[n.channel] = (byChannel[n.channel] ?? 0) + 1;
+      if (n.readAt) readCount++; else unreadCount++;
+      if (n.deliveredAt) deliveredCount++;
+      if (n.failedAt) failedCount++;
+    }
+
+    return { total: all.length, readCount, unreadCount, deliveredCount, failedCount, byType, byChannel };
+  }
+
   async deleteAllRead(userId: string) {
     return this.prisma.notification.deleteMany({
       where: { userId, readAt: { not: null } },

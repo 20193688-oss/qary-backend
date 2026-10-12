@@ -146,6 +146,19 @@ export class FxService {
     return pairs;
   }
 
+  async getBulkRates(pairs: Array<{ base: string; quote: string }>) {
+    const results: Array<any> = [];
+    for (const pair of pairs) {
+      const rate = await this.getRate(pair.base, pair.quote);
+      if (rate) {
+        results.push(rate);
+      } else {
+        results.push({ baseCurrency: pair.base.toUpperCase(), quoteCurrency: pair.quote.toUpperCase(), error: 'rate_not_available' });
+      }
+    }
+    return results;
+  }
+
   async getRateHistory(baseCurrency: string, quoteCurrency: string, opts?: { limit?: number }) {
     const base = baseCurrency.toUpperCase();
     const quote = quoteCurrency.toUpperCase();

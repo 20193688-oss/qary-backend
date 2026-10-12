@@ -47,6 +47,10 @@ export async function registerNotificationRoutes(app: FastifyInstance, prisma: P
     return list.map(serializeNotification);
   });
 
+  app.get('/api/notifications/stats', { preHandler: [app.requireAuth] }, async (req) => {
+    return notifications.getStats(req.auth!.userId);
+  });
+
   app.get('/api/notifications/unread-count', { preHandler: [app.requireAuth] }, async (req) => {
     const count = await notifications.unreadCount(req.auth!.userId);
     return { count };

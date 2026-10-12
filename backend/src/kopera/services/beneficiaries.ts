@@ -57,6 +57,14 @@ export class BeneficiaryService {
     });
   }
 
+  async listRecent(userId: string, limit: number = 5) {
+    return this.prisma.beneficiary.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(limit, 20),
+    });
+  }
+
   async search(userId: string, query: string) {
     const all = await this.prisma.beneficiary.findMany({ where: { userId } });
     const q = query.toLowerCase();

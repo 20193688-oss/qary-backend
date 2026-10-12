@@ -90,6 +90,31 @@ export class TransactionLimitService {
     return { allowed: true };
   }
 
+  async getUsageSummary(userId: string) {
+    const limits = await this.prisma.transactionLimit.findMany({ where: { userId } });
+    const refreshed = limits.map((l) => this.refreshIfNeeded(l));
+
+    const byType: Record<string, number> = {};
+    let totalMaxAmount = BigInt(0);
+    let totalCurrentUsage = BigInt(0);
+
+    for (const l of refreshed) {
+      byType[l.limitType] = (byType[l.limitType] ?? 0) + 1;
+      totalMaxAmount += l.maxAmount;
+      totalCurrentUsage += l.currentUsage;
+    }
+
+    return {
+      totalLimits: refreshed.length,
+      byType,
+      totalMaxAmount,
+      totalCurrentUsage,
+      utilizationPercent: totalMaxAmount > BigInt(0)
+        ? Number((totalCurrentUsage * BigInt(10000)) / totalMaxAmount) / 100
+        : 0,
+    };
+  }
+
   async removeLimit(userId: string, currency: string, limitType: string) {
     const limit = await this.prisma.transactionLimit.findFirst({
       where: { userId, currency: currency.toUpperCase(), limitType: limitType.toLowerCase() },
