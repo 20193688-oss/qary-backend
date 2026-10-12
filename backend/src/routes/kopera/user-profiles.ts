@@ -62,6 +62,19 @@ export async function registerUserProfileRoutes(app: FastifyInstance, prisma: Pr
     }
   });
 
+  app.get('/api/profile/health-report', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    try {
+      const result = await svc.getAccountHealthReport(req.auth!.userId);
+      return {
+        ...result,
+        totalBalance: result.totalBalance.toString(),
+      };
+    } catch (e: any) {
+      if (e.message === 'user_not_found') return reply.code(404).send({ error: e.message });
+      throw e;
+    }
+  });
+
   app.get('/api/profile/security-activity', { preHandler: [app.requireAuth] }, async (req) => {
     const query = req.query as { limit?: string };
     const limit = Math.min(Number(query.limit ?? 20), 100);
