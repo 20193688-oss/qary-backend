@@ -90,6 +90,35 @@ export class ReferralService {
     return { referrerId: referral.referrerId, pointsAwarded: REFERRAL_BONUS_POINTS };
   }
 
+  async validateCode(code: string) {
+    const referral = await this.prisma.referral.findFirst({ where: { code: code.toUpperCase() } });
+    if (!referral) return { valid: false, reason: 'not_found' };
+    if (referral.status !== 'active') return { valid: false, reason: 'inactive' };
+    return { valid: true, referrerId: referral.referrerId };
+  }
+
+  async deactivate(userId: string) {
+    const referral = await this.prisma.referral.findFirst({ where: { referrerId: userId } });
+    if (!referral) throw new Error('referral_not_found');
+    if (referral.status !== 'active') throw new Error('already_inactive');
+
+    return this.prisma.referral.update({
+      where: { id: referral.id },
+      data: { status: 'inactive' },
+    });
+  }
+
+  async activate(userId: string) {
+    const referral = await this.prisma.referral.findFirst({ where: { referrerId: userId } });
+    if (!referral) throw new Error('referral_not_found');
+    if (referral.status === 'active') throw new Error('already_active');
+
+    return this.prisma.referral.update({
+      where: { id: referral.id },
+      data: { status: 'active' },
+    });
+  }
+
   async listSignups(userId: string) {
     const referral = await this.prisma.referral.findFirst({
       where: { referrerId: userId },

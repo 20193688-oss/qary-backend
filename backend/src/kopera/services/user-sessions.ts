@@ -54,4 +54,20 @@ export class UserSessionService {
       data: { lastActiveAt: new Date() },
     });
   }
+
+  async cleanupExpired() {
+    const now = new Date();
+    const expired = await this.prisma.userSession.findMany({
+      where: { revokedAt: null, expiresAt: { lte: now } },
+    });
+
+    for (const session of expired) {
+      await this.prisma.userSession.update({
+        where: { id: session.id },
+        data: { revokedAt: now },
+      });
+    }
+
+    return { cleaned: expired.length };
+  }
 }

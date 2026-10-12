@@ -62,6 +62,19 @@ export async function registerUserSessionRoutes(app: FastifyInstance, prisma: Pr
     }
   });
 
+  app.post('/api/sessions/:id/touch', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const session = await svc.getSession(id, req.auth!.userId);
+    if (!session) return reply.code(404).send({ error: 'not_found' });
+
+    const updated = await svc.touch(id);
+    return serialize(updated);
+  });
+
+  app.post('/api/sessions/cleanup-expired', { preHandler: [app.requireAuth] }, async () => {
+    return svc.cleanupExpired();
+  });
+
   app.post('/api/sessions/revoke-others', { preHandler: [app.requireAuth] }, async (req) => {
     const body = z.object({
       currentSessionId: z.string().min(1),

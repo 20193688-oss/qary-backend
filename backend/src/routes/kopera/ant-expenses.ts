@@ -75,6 +75,37 @@ export async function registerAntExpenseRoutes(app: FastifyInstance, prisma: Pri
     };
   });
 
+  app.get('/api/ant-expenses/breakdown/:currency', { preHandler: [app.requireAuth] }, async (req) => {
+    const { currency } = req.params as { currency: string };
+    const breakdown = await svc.getCategoryBreakdown(req.auth!.userId, currency);
+    return breakdown.map((b) => ({
+      category: b.category,
+      count: b.count,
+      monthlyTotal: b.monthlyTotal.toString(),
+      yearlyProjection: b.yearlyProjection.toString(),
+    }));
+  });
+
+  app.get('/api/ant-expenses/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const expense = await svc.getById(id);
+    if (!expense || expense.userId !== req.auth!.userId) return reply.code(404).send({ error: 'not_found' });
+    return serialize(expense);
+  });
+
+  app.post('/api/ant-expenses/:id/reactivate', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      const expense = await svc.reactivate(id, req.auth!.userId);
+      return serialize(expense);
+    } catch (err: any) {
+      if (err.message === 'expense_not_found') return reply.code(404).send({ error: err.message });
+      if (err.message === 'forbidden') return reply.code(403).send({ error: err.message });
+      if (err.message === 'already_active') return reply.code(400).send({ error: err.message });
+      throw err;
+    }
+  });
+
   app.post('/api/ant-expenses/:id/dismiss', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     try {
