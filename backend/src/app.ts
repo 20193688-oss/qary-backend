@@ -35,6 +35,10 @@ import { registerSavingsGoalRoutes } from './routes/kopera/savings-goals.js';
 import { registerPaymentLinkRoutes } from './routes/kopera/payment-links.js';
 import { registerTransactionLimitRoutes } from './routes/kopera/transaction-limits.js';
 import { registerReferralRoutes } from './routes/kopera/referrals.js';
+import { registerTokenizedCardRoutes } from './routes/kopera/tokenized-cards.js';
+import { registerBankAccountRoutes } from './routes/kopera/bank-accounts.js';
+import { registerTransactionRoutes } from './routes/kopera/transactions.js';
+import { registerAntExpenseRoutes } from './routes/kopera/ant-expenses.js';
 
 export interface AppDeps {
   prisma: PrismaClient;
@@ -104,6 +108,10 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await registerPaymentLinkRoutes(app, deps.prisma);
   await registerTransactionLimitRoutes(app, deps.prisma);
   await registerReferralRoutes(app, deps.prisma);
+  await registerTokenizedCardRoutes(app, deps.prisma);
+  await registerBankAccountRoutes(app, deps.prisma);
+  await registerTransactionRoutes(app, deps.prisma);
+  await registerAntExpenseRoutes(app, deps.prisma);
 
   return app;
 }
