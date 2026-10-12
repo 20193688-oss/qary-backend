@@ -203,6 +203,49 @@ export class InvoiceService {
     };
   }
 
+  async getCollectionEfficiency(senderId: string) {
+    const invoices = await this.prisma.invoice.findMany({ where: { senderId } });
+
+    let totalIssued = 0;
+    let paidCount = 0;
+    let overdueCount = 0;
+    let totalRevenue = BigInt(0);
+    let totalPaidMs = 0;
+    const revenueByStatus: Record<string, bigint> = {};
+
+    for (const inv of invoices) {
+      totalIssued++;
+      revenueByStatus[inv.status] = (revenueByStatus[inv.status] ?? BigInt(0)) + inv.totalAmount;
+
+      if (inv.status === 'PAID') {
+        paidCount++;
+        totalRevenue += inv.totalAmount;
+        if ((inv as any).sentAt) {
+          totalPaidMs += new Date(inv.createdAt).getTime() - new Date((inv as any).sentAt).getTime();
+        }
+      } else if (inv.status === 'OVERDUE') {
+        overdueCount++;
+      }
+    }
+
+    const collectionRate = totalIssued > 0
+      ? Math.round(paidCount / totalIssued * 10000) / 100
+      : 0;
+    const overdueRate = totalIssued > 0
+      ? Math.round(overdueCount / totalIssued * 10000) / 100
+      : 0;
+
+    return {
+      totalIssued,
+      paidCount,
+      overdueCount,
+      collectionRate,
+      overdueRate,
+      totalRevenue,
+      revenueByStatus,
+    };
+  }
+
   async getAgingReport(senderId: string) {
     const invoices = await this.prisma.invoice.findMany({ where: { senderId } });
     const now = new Date();

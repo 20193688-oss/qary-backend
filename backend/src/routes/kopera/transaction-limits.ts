@@ -58,6 +58,20 @@ export async function registerTransactionLimitRoutes(app: FastifyInstance, prism
     };
   });
 
+  app.get('/api/transaction-limits/utilization-report', { preHandler: [app.requireAuth] }, async (req) => {
+    const result = await svc.getUtilizationReport(req.auth!.userId);
+    return {
+      totalLimits: result.totalLimits,
+      nearLimitCount: result.nearLimitCount,
+      details: result.details.map((d: any) => ({
+        ...d,
+        maxAmount: d.maxAmount.toString(),
+        currentUsage: d.currentUsage.toString(),
+        headroom: d.headroom.toString(),
+      })),
+    };
+  });
+
   app.get('/api/transaction-limits/:currency/:limitType', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { currency, limitType } = req.params as { currency: string; limitType: string };
     const limit = await svc.getLimit(req.auth!.userId, currency, limitType);

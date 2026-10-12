@@ -137,6 +137,44 @@ export class ReferralService {
     };
   }
 
+  async getRewardTimeline(userId: string) {
+    const referral = await this.prisma.referral.findFirst({ where: { referrerId: userId } });
+    if (!referral) {
+      return { hasCode: false, totalSignups: 0, pendingCount: 0, rewardedCount: 0, rewardRate: 0, totalPointsEarned: 0, signups: [] };
+    }
+
+    const signups = await this.prisma.referralSignup.findMany({
+      where: { referralId: referral.id },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    let pendingCount = 0;
+    let rewardedCount = 0;
+    for (const s of signups) {
+      if (s.status === 'rewarded') rewardedCount++;
+      else pendingCount++;
+    }
+
+    const rewardRate = signups.length > 0
+      ? Math.round(rewardedCount / signups.length * 10000) / 100
+      : 0;
+
+    return {
+      hasCode: true,
+      totalSignups: signups.length,
+      pendingCount,
+      rewardedCount,
+      rewardRate,
+      totalPointsEarned: referral.totalPointsEarned,
+      signups: signups.map((s: any) => ({
+        id: s.id,
+        status: s.status,
+        rewardedAt: s.rewardedAt,
+        createdAt: s.createdAt,
+      })),
+    };
+  }
+
   async listAll(opts?: { status?: string; limit?: number; offset?: number }) {
     const where: Record<string, unknown> = {};
     if (opts?.status) where.status = opts.status;

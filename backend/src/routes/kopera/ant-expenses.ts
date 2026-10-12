@@ -91,6 +91,25 @@ export async function registerAntExpenseRoutes(app: FastifyInstance, prisma: Pri
     }));
   });
 
+  app.get('/api/ant-expenses/savings-impact', { preHandler: [app.requireAuth] }, async (req) => {
+    const result = await svc.getSavingsImpactReport(req.auth!.userId);
+    const byCurrency: Record<string, any> = {};
+    for (const [cur, data] of Object.entries(result.byCurrency)) {
+      byCurrency[cur] = {
+        monthlyTotal: data.monthlyTotal.toString(),
+        potentialSavings: data.potentialSavings.toString(),
+        count: data.count,
+      };
+    }
+    return {
+      totalTracked: result.totalTracked,
+      activeCount: result.activeCount,
+      dismissedCount: result.dismissedCount,
+      byCurrency,
+      highestImpact: result.highestImpact ? { ...result.highestImpact, savingsIfCut: result.highestImpact.savingsIfCut.toString() } : null,
+    };
+  });
+
   app.get('/api/ant-expenses/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const expense = await svc.getById(id);

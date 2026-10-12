@@ -115,6 +115,40 @@ export class PaymentLinkService {
       .sort((a: any, b: any) => a.daysRemaining - b.daysRemaining);
   }
 
+  async getConversionReport(userId: string) {
+    const links = await this.prisma.paymentLink.findMany({ where: { userId } });
+
+    let usedCount = 0;
+    let totalRevenue = BigInt(0);
+    let topLink: { id: string; code: string; amount: bigint; currency: string; timesUsed: number } | null = null;
+
+    for (const l of links) {
+      if (l.timesUsed > 0) {
+        usedCount++;
+        totalRevenue += l.amount * BigInt(l.timesUsed);
+        if (!topLink || l.timesUsed > topLink.timesUsed) {
+          topLink = { id: l.id, code: l.code, amount: l.amount, currency: l.currency, timesUsed: l.timesUsed };
+        }
+      }
+    }
+
+    const conversionRate = links.length > 0
+      ? Math.round(usedCount / links.length * 10000) / 100
+      : 0;
+    const avgRevenuePerLink = links.length > 0
+      ? totalRevenue / BigInt(links.length)
+      : BigInt(0);
+
+    return {
+      totalLinks: links.length,
+      usedCount,
+      conversionRate,
+      totalRevenue,
+      avgRevenuePerLink,
+      topPerformingLink: topLink,
+    };
+  }
+
   async deactivate(id: string, userId: string) {
     const link = await this.prisma.paymentLink.findUnique({ where: { id } });
     if (!link) throw new Error('link_not_found');

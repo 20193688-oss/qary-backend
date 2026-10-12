@@ -64,6 +64,23 @@ export async function registerInvoiceRoutes(app: FastifyInstance, prisma: Prisma
     };
   });
 
+  app.get('/api/invoices/collection-efficiency', { preHandler: [app.requireAuth] }, async (req) => {
+    const result = await invoices.getCollectionEfficiency(req.auth!.userId);
+    const revenueByStatus: Record<string, string> = {};
+    for (const [status, amt] of Object.entries(result.revenueByStatus)) {
+      revenueByStatus[status] = amt.toString();
+    }
+    return {
+      totalIssued: result.totalIssued,
+      paidCount: result.paidCount,
+      overdueCount: result.overdueCount,
+      collectionRate: result.collectionRate,
+      overdueRate: result.overdueRate,
+      totalRevenue: result.totalRevenue.toString(),
+      revenueByStatus,
+    };
+  });
+
   app.get('/api/invoices/aging', { preHandler: [app.requireAuth] }, async (req) => {
     const report = await invoices.getAgingReport(req.auth!.userId);
     const serializeBucket = (bucket: any) => ({
