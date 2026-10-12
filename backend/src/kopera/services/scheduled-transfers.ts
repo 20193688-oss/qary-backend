@@ -186,6 +186,44 @@ export class ScheduledTransferService {
     return { totalExecutions, totalAmountByCurrency, transfers };
   }
 
+  async getReliabilityReport(userId: string) {
+    const all = await this.prisma.scheduledTransfer.findMany({ where: { userId } });
+    const active = all.filter((s: any) => s.status === 'active');
+    const completed = all.filter((s: any) => s.status === 'completed');
+    const cancelled = all.filter((s: any) => s.status === 'cancelled');
+
+    let totalExecutions = 0;
+    const totalCommittedByCurrency: Record<string, bigint> = {};
+    const recipientFrequency: Record<string, number> = {};
+
+    for (const s of all) {
+      totalExecutions += s.executionCount;
+      const moved = s.amount * BigInt(s.executionCount);
+      totalCommittedByCurrency[s.currency] = (totalCommittedByCurrency[s.currency] ?? BigInt(0)) + moved;
+      recipientFrequency[s.toUserId] = (recipientFrequency[s.toUserId] ?? 0) + 1;
+    }
+
+    const completionRate = all.length > 0
+      ? Math.round(((completed.length + active.filter((a: any) => a.executionCount > 0).length) / all.length) * 10000) / 100
+      : 0;
+
+    const topRecipients = Object.entries(recipientFrequency)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([recipientId, count]) => ({ recipientId, count }));
+
+    return {
+      totalScheduled: all.length,
+      activeCount: active.length,
+      completedCount: completed.length,
+      cancelledCount: cancelled.length,
+      totalExecutions,
+      completionRate,
+      totalCommittedByCurrency,
+      topRecipients,
+    };
+  }
+
   async processDueTransfers() {
     const now = new Date();
     const due = await this.prisma.scheduledTransfer.findMany({

@@ -48,6 +48,20 @@ export async function registerWalletRoutes(app: FastifyInstance, prisma: PrismaC
     return { walletCount: result.walletCount, byWallet, dormantWallets: result.dormantWallets };
   });
 
+  app.get('/api/wallets/cash-flow-report', { preHandler: [app.requireAuth] }, async (req) => {
+    const result = await wallets.getCashFlowReport(req.auth!.userId);
+    const byCurrency: Record<string, any> = {};
+    for (const [cur, v] of Object.entries(result.byCurrency)) {
+      byCurrency[cur] = {
+        inflow: v.inflow.toString(),
+        outflow: v.outflow.toString(),
+        net: v.net.toString(),
+        count: v.count,
+      };
+    }
+    return { totalTransactions: result.totalTransactions, byCurrency, byType: result.byType };
+  });
+
   app.get('/api/wallets', { preHandler: [app.requireAuth] }, async (req) => {
     return wallets.getAllBalances(req.auth!.userId);
   });

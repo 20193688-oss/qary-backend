@@ -152,6 +152,53 @@ export class KycService {
     };
   }
 
+  async getComplianceSummary(userId: string) {
+    const profile = await this.prisma.kycProfile.findUnique({ where: { userId } });
+    if (!profile) {
+      return {
+        kycStarted: false,
+        status: null,
+        documentComplete: false,
+        identityVerified: false,
+        riskScore: null,
+        complianceReady: false,
+        checksCompleted: { pep: false, sanctions: false },
+        completionPercent: 0,
+      };
+    }
+
+    const documentComplete = !!(profile.documentType && profile.documentNumber && (profile as any).documentFrontUrl);
+    const identityVerified = profile.status === 'APPROVED' && !!profile.verifiedAt;
+    const checksCompleted = {
+      pep: profile.pepCheck ?? false,
+      sanctions: profile.sanctionsCheck ?? false,
+    };
+    const complianceReady = identityVerified && checksCompleted.pep && checksCompleted.sanctions;
+
+    const items = [
+      !!profile.firstName,
+      !!profile.documentType,
+      !!profile.documentNumber,
+      !!(profile as any).documentFrontUrl,
+      !!(profile as any).selfieUrl,
+      identityVerified,
+      checksCompleted.pep,
+      checksCompleted.sanctions,
+    ];
+    const completionPercent = Math.round((items.filter(Boolean).length / items.length) * 100);
+
+    return {
+      kycStarted: true,
+      status: profile.status,
+      documentComplete,
+      identityVerified,
+      riskScore: profile.riskScore,
+      complianceReady,
+      checksCompleted,
+      completionPercent,
+    };
+  }
+
   async setRiskScore(userId: string, riskScore: number) {
     const profile = await this.prisma.kycProfile.findUnique({ where: { userId } });
     if (!profile) throw new Error('kyc_not_found');

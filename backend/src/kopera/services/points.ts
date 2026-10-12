@@ -150,6 +150,48 @@ export class PointsService {
     };
   }
 
+  async getTierProgress(userId: string) {
+    const pts = await this.getOrCreate(userId);
+    const history = await this.prisma.pointsHistory.findMany({
+      where: { pointsId: pts.id, type: 'EARN' },
+    });
+
+    const now = Date.now();
+    const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
+    let last30DaysEarned = 0;
+    for (const h of history) {
+      if (new Date(h.createdAt).getTime() >= thirtyDaysAgo) {
+        last30DaysEarned += h.amount;
+      }
+    }
+
+    const dailyRate = last30DaysEarned / 30;
+    const nextTier = this.getNextTier(pts.tier);
+    const pointsToNext = this.getPointsToNextTier(pts.lifetimeEarned, pts.tier);
+    let projectedDaysToNextTier: number | null = null;
+    if (nextTier && pointsToNext !== null && dailyRate > 0) {
+      projectedDaysToNextTier = Math.ceil(pointsToNext / dailyRate);
+    }
+
+    const tierMultiplier: Record<string, number> = {
+      BRONZE: 1, SILVER: 1.2, GOLD: 1.5, PLATINUM: 2, DIAMOND: 3,
+    };
+
+    return {
+      currentTier: pts.tier,
+      lifetimeEarned: pts.lifetimeEarned,
+      balance: pts.balance,
+      nextTier,
+      pointsToNextTier: pointsToNext,
+      earningVelocity: {
+        last30Days: last30DaysEarned,
+        dailyAverage: Math.round(dailyRate * 10) / 10,
+      },
+      projectedDaysToNextTier,
+      currentMultiplier: tierMultiplier[pts.tier] ?? 1,
+    };
+  }
+
   private calculateTier(lifetimeEarned: number): string {
     if (lifetimeEarned >= TIER_THRESHOLDS.DIAMOND) return 'DIAMOND';
     if (lifetimeEarned >= TIER_THRESHOLDS.PLATINUM) return 'PLATINUM';
