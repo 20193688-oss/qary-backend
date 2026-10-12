@@ -30,12 +30,44 @@ export async function registerTransactionRoutes(app: FastifyInstance, prisma: Pr
       type: z.string().optional(),
       status: z.string().optional(),
       currency: z.string().length(3).optional(),
+      from: z.string().datetime().optional(),
+      to: z.string().datetime().optional(),
       limit: z.coerce.number().int().min(1).max(100).optional(),
       offset: z.coerce.number().int().min(0).optional(),
     }).parse(req.query);
 
-    const txns = await svc.listTransactions(req.auth!.userId, q);
-    return txns.map(serialize);
+    const result = await svc.listTransactions(req.auth!.userId, {
+      ...q,
+      from: q.from ? new Date(q.from) : undefined,
+      to: q.to ? new Date(q.to) : undefined,
+    });
+    return { data: result.rows.map(serialize), total: result.total };
+  });
+
+  app.get('/api/transaction-history/export', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const q = z.object({
+      currency: z.string().length(3).optional(),
+      from: z.string().datetime().optional(),
+      to: z.string().datetime().optional(),
+    }).parse(req.query);
+
+    const result = await svc.listTransactions(req.auth!.userId, {
+      currency: q.currency,
+      from: q.from ? new Date(q.from) : undefined,
+      to: q.to ? new Date(q.to) : undefined,
+      limit: 10000,
+      offset: 0,
+    });
+
+    const header = 'id,type,status,amount,currency,fee,description,reference,date\n';
+    const rows = result.rows.map((t: any) =>
+      `${t.id},${t.type},${t.status},${t.amount},${t.currency},${t.feeAmount ?? 0},"${(t.description ?? '').replace(/"/g, '""')}",${t.reference ?? ''},${t.createdAt ? new Date(t.createdAt).toISOString() : ''}`,
+    ).join('\n');
+
+    return reply
+      .header('content-type', 'text/csv')
+      .header('content-disposition', 'attachment; filename="transactions.csv"')
+      .send(header + rows);
   });
 
   app.get('/api/transaction-history/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {

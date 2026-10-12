@@ -206,6 +206,52 @@ export async function registerKycRoutes(app: FastifyInstance, prisma: PrismaClie
     });
   });
 
+  app.post('/api/kyb/approve', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const body = z.object({
+      userId: z.string().min(1),
+    }).parse(req.body);
+
+    const biz = await prisma.businessProfile.findUnique({ where: { userId: body.userId } });
+    if (!biz) return reply.code(404).send({ error: 'kyb_not_found' });
+    if (biz.status === 'APPROVED') return reply.code(400).send({ error: 'already_approved' });
+
+    const updated = await prisma.businessProfile.update({
+      where: { userId: body.userId },
+      data: { status: 'APPROVED', verifiedAt: new Date() },
+    });
+
+    await audit(prisma, {
+      userId: req.auth!.userId, actor: 'admin', eventType: 'kyb.approved',
+      payload: { businessId: updated.id, targetUserId: body.userId },
+      requestId: String(req.id), ip: req.ip,
+    });
+
+    return { id: updated.id, status: updated.status, verifiedAt: updated.verifiedAt };
+  });
+
+  app.post('/api/kyb/reject', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const body = z.object({
+      userId: z.string().min(1),
+      reason: z.string().min(1).max(500),
+    }).parse(req.body);
+
+    const biz = await prisma.businessProfile.findUnique({ where: { userId: body.userId } });
+    if (!biz) return reply.code(404).send({ error: 'kyb_not_found' });
+
+    const updated = await prisma.businessProfile.update({
+      where: { userId: body.userId },
+      data: { status: 'REJECTED', rejectedReason: body.reason },
+    });
+
+    await audit(prisma, {
+      userId: req.auth!.userId, actor: 'admin', eventType: 'kyb.rejected',
+      payload: { businessId: updated.id, targetUserId: body.userId, reason: body.reason },
+      requestId: String(req.id), ip: req.ip,
+    });
+
+    return { id: updated.id, status: updated.status, rejectedReason: updated.rejectedReason };
+  });
+
   app.get('/api/kyb/status', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const biz = await prisma.businessProfile.findUnique({ where: { userId: req.auth!.userId } });
     if (!biz) return reply.code(404).send({ error: 'kyb_not_started' });

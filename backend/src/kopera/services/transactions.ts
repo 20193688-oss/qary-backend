@@ -7,6 +7,8 @@ export class TransactionService {
     type?: string;
     status?: string;
     currency?: string;
+    from?: Date;
+    to?: Date;
     limit?: number;
     offset?: number;
   }) {
@@ -15,10 +17,31 @@ export class TransactionService {
     if (filters?.status) where.status = filters.status;
     if (filters?.currency) where.currency = filters.currency.toUpperCase();
 
-    const rows = await this.prisma.transaction.findMany({ where });
+    const allRows = await this.prisma.transaction.findMany({ where });
+
+    let filtered = allRows;
+    if (filters?.from || filters?.to) {
+      filtered = allRows.filter((t: any) => {
+        const ts = new Date(t.createdAt).getTime();
+        if (filters.from && ts < filters.from.getTime()) return false;
+        if (filters.to && ts > filters.to.getTime()) return false;
+        return true;
+      });
+    }
+
     const limit = filters?.limit ?? 50;
     const offset = filters?.offset ?? 0;
-    return rows.slice(offset, offset + limit);
+    return { rows: filtered.slice(offset, offset + limit), total: filtered.length };
+  }
+
+  async listByWallet(walletId: string, userId: string, limit = 50, offset = 0) {
+    const all = await this.prisma.transaction.findMany({
+      where: { userId },
+    });
+    const walletTxns = all.filter((t: any) =>
+      t.senderWalletId === walletId || t.receiverWalletId === walletId,
+    );
+    return { rows: walletTxns.slice(offset, offset + limit), total: walletTxns.length };
   }
 
   async getTransaction(id: string, userId: string) {

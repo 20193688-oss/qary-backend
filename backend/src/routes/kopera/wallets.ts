@@ -2,11 +2,13 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { PrismaClient } from '@prisma/client';
 import { WalletService } from '../../kopera/services/wallet.js';
+import { TransactionService } from '../../kopera/services/transactions.js';
 import { PointsService } from '../../kopera/services/points.js';
 import { audit } from '../../lib/audit.js';
 
 export async function registerWalletRoutes(app: FastifyInstance, prisma: PrismaClient) {
   const wallets = new WalletService(prisma);
+  const txnSvc = new TransactionService(prisma);
   const pointsSvc = new PointsService(prisma);
 
   async function earnPoints(userId: string, amountCents: number, type: string, txnId: string) {
@@ -197,6 +199,23 @@ export async function registerWalletRoutes(app: FastifyInstance, prisma: PrismaC
       if (msg === 'wallet_not_found') return reply.code(404).send({ error: msg });
       throw err;
     }
+  });
+
+  app.get('/api/wallets/:currency/transactions', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { currency } = req.params as { currency: string };
+    const query = req.query as { limit?: string; offset?: string };
+
+    const wallet = await prisma.wallet.findFirst({
+      where: { userId: req.auth!.userId, currency: currency.toUpperCase() },
+    });
+    if (!wallet) return reply.code(404).send({ error: 'wallet_not_found' });
+
+    const result = await txnSvc.listByWallet(
+      wallet.id, req.auth!.userId,
+      Math.min(Number(query.limit ?? 20), 100),
+      Number(query.offset ?? 0),
+    );
+    return { data: result.rows.map(serializeTransaction), total: result.total };
   });
 
   app.get('/api/transactions', { preHandler: [app.requireAuth] }, async (req) => {
