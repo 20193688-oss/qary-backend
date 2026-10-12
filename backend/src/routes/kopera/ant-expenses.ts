@@ -1,0 +1,90 @@
+import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import type { PrismaClient } from '@prisma/client';
+import { AntExpenseService } from '../../kopera/services/ant-expenses.js';
+import { audit } from '../../lib/audit.js';
+
+function serialize(e: any) {
+  return {
+    id: e.id,
+    category: e.category,
+    merchantName: e.merchantName,
+    amount: e.amount?.toString(),
+    currency: e.currency,
+    frequency: e.frequency,
+    monthlyTotal: e.monthlyTotal?.toString(),
+    yearlyProjection: e.yearlyProjection?.toString(),
+    suggestion: e.suggestion,
+    savingsIfCut: e.savingsIfCut?.toString() ?? null,
+    isActive: e.isActive,
+    detectedAt: e.detectedAt,
+  };
+}
+
+export async function registerAntExpenseRoutes(app: FastifyInstance, prisma: PrismaClient) {
+  const svc = new AntExpenseService(prisma);
+
+  app.post('/api/ant-expenses', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const body = z.object({
+      category: z.string().min(1),
+      merchantName: z.string().min(1),
+      amount: z.number().positive(),
+      currency: z.string().length(3),
+      frequency: z.enum(['daily', 'weekly', 'monthly']),
+      monthlyTotal: z.number().positive(),
+      yearlyProjection: z.number().positive(),
+      suggestion: z.string().optional(),
+      savingsIfCut: z.number().positive().optional(),
+    }).parse(req.body);
+
+    try {
+      const expense = await svc.detect(req.auth!.userId, {
+        ...body,
+        amount: BigInt(Math.round(body.amount * 100)),
+        currency: body.currency.toUpperCase(),
+        monthlyTotal: BigInt(Math.round(body.monthlyTotal * 100)),
+        yearlyProjection: BigInt(Math.round(body.yearlyProjection * 100)),
+        savingsIfCut: body.savingsIfCut ? BigInt(Math.round(body.savingsIfCut * 100)) : undefined,
+      });
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'system', eventType: 'ant_expense.detected',
+        payload: { category: body.category, merchantName: body.merchantName },
+        requestId: String(req.id), ip: req.ip,
+      });
+      return reply.code(201).send(serialize(expense));
+    } catch (err: any) {
+      if (err.message === 'expense_already_tracked') return reply.code(409).send({ error: err.message });
+      throw err;
+    }
+  });
+
+  app.get('/api/ant-expenses', { preHandler: [app.requireAuth] }, async (req) => {
+    const expenses = await svc.listActive(req.auth!.userId);
+    return expenses.map(serialize);
+  });
+
+  app.get('/api/ant-expenses/summary/:currency', { preHandler: [app.requireAuth] }, async (req) => {
+    const { currency } = req.params as { currency: string };
+    const summary = await svc.getSummary(req.auth!.userId, currency);
+    return {
+      currency: summary.currency,
+      count: summary.count,
+      totalMonthly: summary.totalMonthly.toString(),
+      totalYearly: summary.totalYearly.toString(),
+      totalSavingsIfCut: summary.totalSavingsIfCut.toString(),
+    };
+  });
+
+  app.post('/api/ant-expenses/:id/dismiss', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      const expense = await svc.dismiss(id, req.auth!.userId);
+      return serialize(expense);
+    } catch (err: any) {
+      if (err.message === 'expense_not_found') return reply.code(404).send({ error: err.message });
+      if (err.message === 'forbidden') return reply.code(403).send({ error: err.message });
+      if (err.message === 'already_dismissed') return reply.code(400).send({ error: err.message });
+      throw err;
+    }
+  });
+}

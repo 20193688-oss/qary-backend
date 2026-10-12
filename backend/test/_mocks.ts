@@ -93,6 +93,25 @@ const MODEL_DEFAULTS: Record<string, Record<string, unknown>> = {
     status: 'signed_up',
     rewardedAt: null,
   },
+  tokenizedCard: {
+    holderName: null,
+    isDefault: false,
+    country: null,
+    bankName: null,
+    fingerprint: null,
+  },
+  bankAccount: {
+    bankCode: null,
+    accountType: null,
+    isVerified: false,
+    isDefault: false,
+    metadata: null,
+  },
+  antExpense: {
+    isActive: true,
+    suggestion: null,
+    savingsIfCut: null,
+  },
 };
 
 function matches(row: Row, where: Record<string, unknown>): boolean {
