@@ -30,6 +30,18 @@ export class LedgerService {
     });
   }
 
+  async getBalanceSummary(userId: string) {
+    const wallets = await this.prisma.wallet.findMany({ where: { userId } });
+    return wallets.map((w: any) => ({
+      walletId: w.id,
+      currency: w.currency,
+      balance: w.balance,
+      availableBalance: w.availableBalance ?? w.balance,
+      holdBalance: w.holdBalance ?? BigInt(0),
+      status: w.status,
+    }));
+  }
+
   async getStatement(walletId: string, from: string, to: string) {
     const entries = await this.prisma.ledgerEntry.findMany({
       where: {

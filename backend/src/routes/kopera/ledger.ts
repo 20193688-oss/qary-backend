@@ -20,6 +20,18 @@ function serialize(e: any) {
 export async function registerLedgerRoutes(app: FastifyInstance, prisma: PrismaClient) {
   const svc = new LedgerService(prisma);
 
+  app.get('/api/ledger/summary', { preHandler: [app.requireAuth] }, async (req) => {
+    const summary = await svc.getBalanceSummary(req.auth!.userId);
+    return summary.map((w: any) => ({
+      walletId: w.walletId,
+      currency: w.currency,
+      balance: w.balance.toString(),
+      availableBalance: w.availableBalance.toString(),
+      holdBalance: w.holdBalance.toString(),
+      status: w.status,
+    }));
+  });
+
   app.get('/api/ledger/:walletId', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { walletId } = req.params as { walletId: string };
 

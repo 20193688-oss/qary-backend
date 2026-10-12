@@ -109,6 +109,26 @@ export class LoanService {
     });
   }
 
+  async getLoanSummary(userId: string) {
+    const loans = await this.prisma.loan.findMany({ where: { userId } });
+    let totalPrincipal = BigInt(0);
+    let totalOutstanding = BigInt(0);
+    const byStatus: Record<string, number> = {};
+
+    for (const loan of loans) {
+      totalPrincipal += loan.principalAmount;
+      if (loan.outstandingBalance) totalOutstanding += loan.outstandingBalance;
+      byStatus[loan.status] = (byStatus[loan.status] ?? 0) + 1;
+    }
+
+    return {
+      totalLoans: loans.length,
+      totalPrincipal,
+      totalOutstanding,
+      byStatus,
+    };
+  }
+
   async simulate(principalAmount: number, currency: string, termMonths: number, interestRate?: number) {
     const rate = interestRate ?? this.getDefaultRate(currency);
     const { monthlyPayment, totalInterest, tcea } = this.calculateAmortization(

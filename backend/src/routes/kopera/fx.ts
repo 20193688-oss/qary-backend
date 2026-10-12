@@ -10,6 +10,29 @@ export async function registerFxRoutes(app: FastifyInstance, prisma: PrismaClien
   const fx = new FxService(prisma);
   const wallets = new WalletService(prisma);
 
+  app.get('/api/fx/rate/:pair/history', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { pair } = req.params as { pair: string };
+    const [base, quote] = pair.toUpperCase().split(/[/_-]/);
+    if (!base || !quote) return reply.code(400).send({ error: 'invalid_pair_format' });
+
+    const q = z.object({
+      limit: z.coerce.number().int().min(1).max(100).optional(),
+    }).parse(req.query);
+
+    const history = await fx.getRateHistory(base, quote, { limit: q.limit });
+    return history.map((r: any) => ({
+      id: r.id,
+      baseCurrency: r.baseCurrency,
+      quoteCurrency: r.quoteCurrency,
+      bid: r.bid,
+      ask: r.ask,
+      mid: r.mid,
+      spread: r.spread,
+      source: r.source,
+      validFrom: r.validFrom,
+    }));
+  });
+
   app.get('/api/fx/rate/:pair', async (req, reply) => {
     const { pair } = req.params as { pair: string };
     const [base, quote] = pair.toUpperCase().split(/[/_-]/);

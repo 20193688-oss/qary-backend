@@ -146,6 +146,16 @@ export class FxService {
     return pairs;
   }
 
+  async getRateHistory(baseCurrency: string, quoteCurrency: string, opts?: { limit?: number }) {
+    const base = baseCurrency.toUpperCase();
+    const quote = quoteCurrency.toUpperCase();
+    return this.prisma.fxRate.findMany({
+      where: { baseCurrency: base, quoteCurrency: quote },
+      orderBy: { validFrom: 'desc' },
+      take: Math.min(opts?.limit ?? 20, 100),
+    });
+  }
+
   async storeRate(baseCurrency: string, quoteCurrency: string, bid: number, ask: number, source: string) {
     const mid = (bid + ask) / 2;
     const spread = ask - bid;
