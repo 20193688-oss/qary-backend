@@ -119,6 +119,17 @@ export class ReferralService {
     });
   }
 
+  async listAll(opts?: { status?: string; limit?: number; offset?: number }) {
+    const where: Record<string, unknown> = {};
+    if (opts?.status) where.status = opts.status;
+    return this.prisma.referral.findMany({
+      where,
+      take: Math.min(opts?.limit ?? 20, 100),
+      skip: opts?.offset ?? 0,
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   async listSignups(userId: string) {
     const referral = await this.prisma.referral.findFirst({
       where: { referrerId: userId },

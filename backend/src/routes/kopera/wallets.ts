@@ -236,6 +236,25 @@ export async function registerWalletRoutes(app: FastifyInstance, prisma: PrismaC
     return { data: result.rows.map(serializeTransaction), total: result.total };
   });
 
+  app.get('/api/transactions/summary', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const query = req.query as { currency?: string };
+    if (!query.currency) return reply.code(400).send({ error: 'currency_required' });
+    const summary = await txnSvc.getSummary(req.auth!.userId, query.currency);
+    return {
+      currency: summary.currency,
+      totalIn: summary.totalIn.toString(),
+      totalOut: summary.totalOut.toString(),
+      count: summary.count,
+    };
+  });
+
+  app.get('/api/transactions/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const txn = await txnSvc.getTransaction(id, req.auth!.userId);
+    if (!txn) return reply.code(404).send({ error: 'not_found' });
+    return serializeTransaction(txn);
+  });
+
   app.get('/api/transactions', { preHandler: [app.requireAuth] }, async (req) => {
     const query = req.query as { limit?: string; offset?: string; type?: string };
     const txns = await prisma.transaction.findMany({
