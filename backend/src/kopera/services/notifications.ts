@@ -57,4 +57,37 @@ export class NotificationService {
       where: { userId, readAt: null },
     });
   }
+
+  async getById(id: string) {
+    return this.prisma.notification.findUnique({ where: { id } });
+  }
+
+  async markDelivered(id: string) {
+    const n = await this.prisma.notification.findUnique({ where: { id } });
+    if (!n) throw new Error('notification_not_found');
+    if (n.deliveredAt) throw new Error('already_delivered');
+
+    return this.prisma.notification.update({
+      where: { id },
+      data: { deliveredAt: new Date() },
+    });
+  }
+
+  async markFailed(id: string, reason: string) {
+    const n = await this.prisma.notification.findUnique({ where: { id } });
+    if (!n) throw new Error('notification_not_found');
+
+    return this.prisma.notification.update({
+      where: { id },
+      data: { failedAt: new Date(), failReason: reason },
+    });
+  }
+
+  async delete(id: string, userId: string) {
+    const n = await this.prisma.notification.findUnique({ where: { id } });
+    if (!n) throw new Error('notification_not_found');
+    if (n.userId !== userId) throw new Error('forbidden');
+
+    return this.prisma.notification.delete({ where: { id } });
+  }
 }

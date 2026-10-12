@@ -113,4 +113,16 @@ export async function registerScheduledTransferRoutes(app: FastifyInstance, pris
       throw err;
     }
   });
+
+  app.post('/api/scheduled-transfers/process-due', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const result = await svc.processDueTransfers();
+
+    await audit(prisma, {
+      userId: req.auth!.userId, actor: 'system', eventType: 'scheduled_transfer.batch_processed',
+      payload: { processed: result.processed },
+      requestId: String(req.id), ip: req.ip,
+    });
+
+    return reply.send(result);
+  });
 }

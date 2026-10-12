@@ -111,4 +111,56 @@ export class ScheduledTransferService {
       },
     });
   }
+
+  async processDueTransfers() {
+    const now = new Date();
+    const due = await this.prisma.scheduledTransfer.findMany({
+      where: { status: 'active', nextExecutionDate: { lte: now } },
+    });
+
+    const results: Array<{ transferId: string; success: boolean; reason?: string }> = [];
+
+    for (const st of due) {
+      const senderWallet = await this.prisma.wallet.findFirst({
+        where: { userId: st.userId, currency: st.currency, status: 'ACTIVE' },
+      });
+
+      if (!senderWallet || senderWallet.balance < st.amount) {
+        results.push({ transferId: st.id, success: false, reason: 'insufficient_funds' });
+        continue;
+      }
+
+      let receiverWallet = await this.prisma.wallet.findFirst({
+        where: { userId: st.toUserId, currency: st.currency, status: 'ACTIVE' },
+      });
+
+      if (!receiverWallet) {
+        receiverWallet = await this.prisma.wallet.create({
+          data: {
+            userId: st.toUserId,
+            currency: st.currency,
+            balance: BigInt(0),
+            status: 'ACTIVE',
+            isDefault: false,
+          },
+        });
+      }
+
+      await this.prisma.wallet.update({
+        where: { id: senderWallet.id },
+        data: { balance: senderWallet.balance - st.amount },
+      });
+
+      await this.prisma.wallet.update({
+        where: { id: receiverWallet.id },
+        data: { balance: receiverWallet.balance + st.amount },
+      });
+
+      await this.markExecuted(st.id);
+
+      results.push({ transferId: st.id, success: true });
+    }
+
+    return { processed: results.length, results };
+  }
 }

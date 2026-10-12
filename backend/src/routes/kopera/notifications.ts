@@ -1,9 +1,39 @@
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import type { PrismaClient } from '@prisma/client';
 import { NotificationService } from '../../kopera/services/notifications.js';
+import { audit } from '../../lib/audit.js';
 
 export async function registerNotificationRoutes(app: FastifyInstance, prisma: PrismaClient) {
   const notifications = new NotificationService(prisma);
+
+  app.post('/api/notifications/send', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const body = z.object({
+      userId: z.string().min(1),
+      type: z.string().min(1),
+      channel: z.enum(['EMAIL', 'SMS', 'PUSH', 'WHATSAPP', 'IN_APP']).default('IN_APP'),
+      subject: z.string().optional(),
+      body: z.string().min(1),
+      metadata: z.record(z.unknown()).optional(),
+    }).parse(req.body);
+
+    const n = await notifications.create({
+      userId: body.userId,
+      type: body.type,
+      channel: body.channel,
+      subject: body.subject,
+      body: body.body,
+      metadata: body.metadata,
+    });
+
+    await audit(prisma, {
+      userId: req.auth!.userId, actor: 'system', eventType: 'notification.sent',
+      payload: { notificationId: n.id, channel: body.channel, targetUserId: body.userId },
+      requestId: String(req.id), ip: req.ip,
+    });
+
+    return reply.code(201).send(serializeNotification(n));
+  });
 
   app.get('/api/notifications', { preHandler: [app.requireAuth] }, async (req) => {
     const query = req.query as { limit?: string; offset?: string; unreadOnly?: string };
@@ -37,6 +67,48 @@ export async function registerNotificationRoutes(app: FastifyInstance, prisma: P
     const result = await notifications.markAllAsRead(req.auth!.userId);
     return { updated: result.count };
   });
+
+  app.post('/api/notifications/:id/delivered', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      const n = await notifications.markDelivered(id);
+      return reply.send(serializeNotification(n));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      if (msg === 'notification_not_found') return reply.code(404).send({ error: msg });
+      if (msg === 'already_delivered') return reply.code(400).send({ error: msg });
+      throw err;
+    }
+  });
+
+  app.post('/api/notifications/:id/failed', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = z.object({
+      reason: z.string().min(1),
+    }).parse(req.body);
+
+    try {
+      const n = await notifications.markFailed(id, body.reason);
+      return reply.send(serializeNotification(n));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      if (msg === 'notification_not_found') return reply.code(404).send({ error: msg });
+      throw err;
+    }
+  });
+
+  app.delete('/api/notifications/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      await notifications.delete(id, req.auth!.userId);
+      return reply.send({ deleted: true });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      if (msg === 'notification_not_found') return reply.code(404).send({ error: msg });
+      if (msg === 'forbidden') return reply.code(403).send({ error: msg });
+      throw err;
+    }
+  });
 }
 
 function serializeNotification(n: any) {
@@ -48,6 +120,9 @@ function serializeNotification(n: any) {
     body: n.body,
     metadata: n.metadata,
     readAt: n.readAt,
+    deliveredAt: n.deliveredAt ?? null,
+    failedAt: n.failedAt ?? null,
+    failReason: n.failReason ?? null,
     createdAt: n.createdAt,
   };
 }
