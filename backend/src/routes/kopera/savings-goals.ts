@@ -102,6 +102,45 @@ export async function registerSavingsGoalRoutes(app: FastifyInstance, prisma: Pr
     }
   });
 
+  app.post('/api/savings-goals/:id/fund', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = z.object({ amount: z.number().positive() }).parse(req.body);
+    const amountCents = BigInt(Math.round(body.amount * 100));
+
+    try {
+      const goal = await svc.getById(id);
+      if (!goal) return reply.code(404).send({ error: 'goal_not_found' });
+      if (goal.userId !== req.auth!.userId) return reply.code(403).send({ error: 'forbidden' });
+      if (goal.status !== 'active') return reply.code(400).send({ error: 'goal_not_active' });
+
+      const wallet = await prisma.wallet.findFirst({
+        where: { userId: req.auth!.userId, currency: goal.currency, status: 'ACTIVE' },
+      } as any);
+      if (!wallet) return reply.code(400).send({ error: 'wallet_not_found' });
+      if (wallet.balance < amountCents) return reply.code(400).send({ error: 'insufficient_funds' });
+
+      await prisma.wallet.update({
+        where: { id: wallet.id },
+        data: { balance: wallet.balance - amountCents },
+      });
+
+      const updated = await svc.contribute(id, req.auth!.userId, amountCents);
+
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'user', eventType: 'savings_goal.funded',
+        payload: { goalId: id, amount: body.amount, walletId: wallet.id },
+        requestId: String(req.id), ip: req.ip,
+      });
+
+      return serialize(updated);
+    } catch (err: any) {
+      if (err.message === 'goal_not_found') return reply.code(404).send({ error: err.message });
+      if (err.message === 'forbidden') return reply.code(403).send({ error: err.message });
+      if (err.message === 'goal_not_active') return reply.code(400).send({ error: err.message });
+      throw err;
+    }
+  });
+
   app.post('/api/savings-goals/:id/archive', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     try {
