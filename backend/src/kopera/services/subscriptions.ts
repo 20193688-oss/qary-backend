@@ -195,6 +195,25 @@ export class SubscriptionService {
     };
   }
 
+  async getRenewalCountdown(userId: string) {
+    const subs = await this.prisma.subscription.findMany({
+      where: { userId, status: 'active' },
+    });
+
+    const now = Date.now();
+    return subs
+      .filter((s: any) => s.nextBillingDate)
+      .map((s: any) => ({
+        subscriptionId: s.id,
+        planName: s.planName,
+        amount: s.amount,
+        currency: s.currency,
+        nextBillingDate: s.nextBillingDate,
+        daysUntilRenewal: Math.max(0, Math.ceil((s.nextBillingDate.getTime() - now) / (1000 * 60 * 60 * 24))),
+      }))
+      .sort((a: any, b: any) => a.daysUntilRenewal - b.daysUntilRenewal);
+  }
+
   async processDueBillings() {
     const now = new Date();
     const due = await this.prisma.subscription.findMany({

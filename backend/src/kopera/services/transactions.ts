@@ -84,6 +84,46 @@ export class TransactionService {
     return { currency: currency.toUpperCase(), totalIn, totalOut, count };
   }
 
+  async getMonthlyBreakdown(userId: string, currency: string, year: number) {
+    const txns = await this.prisma.transaction.findMany({
+      where: { userId, currency: currency.toUpperCase(), status: 'COMPLETED' },
+    });
+
+    const months: Array<{ month: number; totalIn: bigint; totalOut: bigint; transactionCount: number }> = [];
+    for (let m = 1; m <= 12; m++) {
+      months.push({ month: m, totalIn: BigInt(0), totalOut: BigInt(0), transactionCount: 0 });
+    }
+
+    for (const t of txns) {
+      const d = new Date(t.createdAt);
+      if (d.getFullYear() !== year) continue;
+      const bucket = months[d.getMonth()];
+      bucket.transactionCount++;
+      if (t.type === 'DEPOSIT' || t.type === 'REWARD') {
+        bucket.totalIn += t.amount;
+      } else if (t.type === 'WITHDRAWAL' || t.type === 'PAYMENT' || t.type === 'FEE' || t.type === 'TRANSFER') {
+        bucket.totalOut += t.amount;
+      }
+    }
+
+    return months;
+  }
+
+  async getTypeDistribution(userId: string, currency?: string) {
+    const where: Record<string, unknown> = { userId, status: 'COMPLETED' };
+    if (currency) where.currency = currency.toUpperCase();
+    const txns = await this.prisma.transaction.findMany({ where });
+
+    const byType: Record<string, { count: number; totalAmount: bigint }> = {};
+    for (const t of txns) {
+      if (!byType[t.type]) byType[t.type] = { count: 0, totalAmount: BigInt(0) };
+      byType[t.type].count++;
+      byType[t.type].totalAmount += t.amount;
+    }
+
+    return { totalTransactions: txns.length, byType };
+  }
+
   async searchTransactions(userId: string, query: string, opts?: { limit?: number }) {
     const all = await this.prisma.transaction.findMany({ where: { userId } });
     const q = query.toLowerCase();

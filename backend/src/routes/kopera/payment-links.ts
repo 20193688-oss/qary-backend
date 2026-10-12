@@ -71,6 +71,16 @@ export async function registerPaymentLinkRoutes(app: FastifyInstance, prisma: Pr
     };
   });
 
+  app.get('/api/payment-links/expiring', { preHandler: [app.requireAuth] }, async (req) => {
+    const query = req.query as { days?: string };
+    const withinDays = Math.min(Number(query.days ?? 7), 90);
+    const results = await svc.getExpiringSoon(req.auth!.userId, withinDays);
+    return results.map((l: any) => ({
+      ...l,
+      amount: l.amount.toString(),
+    }));
+  });
+
   app.get('/api/payment-links/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const link = await svc.getById(id);
