@@ -29,6 +29,9 @@ import { registerGatewayRoutes } from './routes/kopera/gateway.js';
 import { registerNotificationRoutes } from './routes/kopera/notifications.js';
 import { registerDisputeRoutes } from './routes/kopera/disputes.js';
 import { registerSubscriptionRoutes } from './routes/kopera/subscriptions.js';
+import { registerBeneficiaryRoutes } from './routes/kopera/beneficiaries.js';
+import { registerScheduledTransferRoutes } from './routes/kopera/scheduled-transfers.js';
+import { registerSavingsGoalRoutes } from './routes/kopera/savings-goals.js';
 
 export interface AppDeps {
   prisma: PrismaClient;
@@ -92,6 +95,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await registerNotificationRoutes(app, deps.prisma);
   await registerDisputeRoutes(app, deps.prisma);
   await registerSubscriptionRoutes(app, deps.prisma);
+  await registerBeneficiaryRoutes(app, deps.prisma);
+  await registerScheduledTransferRoutes(app, deps.prisma);
+  await registerSavingsGoalRoutes(app, deps.prisma);
 
   return app;
 }

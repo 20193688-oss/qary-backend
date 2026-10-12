@@ -772,6 +772,61 @@ model Subscription {
   @@index([nextBillingDate, status])
 }
 
+// ─── BENEFICIARIES ─────────────────────────────────────────────
+
+model Beneficiary {
+  id              String   @id @default(cuid())
+  userId          String
+  nickname        String
+  recipientUserId String
+  recipientEmail  String
+  currency        String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId, recipientUserId])
+  @@index([userId])
+}
+
+// ─── SCHEDULED TRANSFERS ───────────────────────────────────────
+
+model ScheduledTransfer {
+  id                String    @id @default(cuid())
+  userId            String
+  toUserId          String
+  currency          String
+  amount            BigInt
+  frequency         String    // once, daily, weekly, biweekly, monthly
+  description       String
+  status            String    @default("active") // active, paused, cancelled, completed
+  nextExecutionDate DateTime?
+  lastExecutionDate DateTime?
+  executionCount    Int       @default(0)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([userId, status])
+  @@index([status, nextExecutionDate])
+}
+
+// ─── SAVINGS GOALS ─────────────────────────────────────────────
+
+model SavingsGoal {
+  id            String    @id @default(cuid())
+  userId        String
+  name          String
+  targetAmount  BigInt
+  currentAmount BigInt    @default(0)
+  currency      String
+  status        String    @default("active") // active, completed, archived
+  deadline      DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([userId, status])
+}
+
 // ─── ANT EXPENSES (GASTOS HORMIGA) ─────────────────────────────
 
 model AntExpense {

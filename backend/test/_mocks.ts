@@ -58,6 +58,20 @@ const MODEL_DEFAULTS: Record<string, Record<string, unknown>> = {
     merchantId: null,
     metadata: null,
   },
+  beneficiary: {
+    currency: null,
+  },
+  scheduledTransfer: {
+    status: 'active',
+    lastExecutionDate: null,
+    executionCount: 0,
+  },
+  savingsGoal: {
+    currentAmount: BigInt(0),
+    status: 'active',
+    deadline: null,
+    completedAt: null,
+  },
 };
 
 function matches(row: Row, where: Record<string, unknown>): boolean {
@@ -100,6 +114,9 @@ export function createInMemoryPrisma(): PrismaClient {
     agentExecution: [],
     notification: [],
     subscription: [],
+    beneficiary: [],
+    scheduledTransfer: [],
+    savingsGoal: [],
     antExpense: [],
     userSession: [],
     // legacy
@@ -275,6 +292,9 @@ export function createInMemoryPrisma(): PrismaClient {
     agentExecution: model('agentExecution'),
     notification: model('notification'),
     subscription: model('subscription'),
+    beneficiary: model('beneficiary'),
+    scheduledTransfer: model('scheduledTransfer'),
+    savingsGoal: model('savingsGoal'),
     antExpense: model('antExpense'),
     userSession: model('userSession'),
     // legacy
