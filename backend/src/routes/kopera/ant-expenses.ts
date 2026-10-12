@@ -110,6 +110,27 @@ export async function registerAntExpenseRoutes(app: FastifyInstance, prisma: Pri
     };
   });
 
+  app.get('/api/ant-expenses/trend-analysis', { preHandler: [app.requireAuth] }, async (req) => {
+    const result = await svc.getTrendAnalysis(req.auth!.userId);
+    const byFrequency: Record<string, any> = {};
+    for (const [freq, data] of Object.entries(result.byFrequency)) {
+      byFrequency[freq] = { count: data.count, totalMonthly: data.totalMonthly.toString() };
+    }
+    return {
+      totalExpenses: result.totalExpenses,
+      activeCount: result.activeCount,
+      dismissedCount: result.dismissedCount,
+      totalActiveMonthly: result.totalActiveMonthly.toString(),
+      totalDismissedMonthly: result.totalDismissedMonthly.toString(),
+      avgPerExpense: result.avgPerExpense.toString(),
+      byFrequency,
+      topMerchants: result.topMerchants.map((m) => ({
+        ...m,
+        monthlyTotal: m.monthlyTotal.toString(),
+      })),
+    };
+  });
+
   app.get('/api/ant-expenses/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const expense = await svc.getById(id);

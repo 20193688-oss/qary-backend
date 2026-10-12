@@ -128,6 +128,48 @@ export class AntExpenseService {
     };
   }
 
+  async getTrendAnalysis(userId: string) {
+    const expenses = await this.prisma.antExpense.findMany({ where: { userId } });
+    const active = expenses.filter((e: any) => e.isActive);
+    const dismissed = expenses.filter((e: any) => !e.isActive);
+
+    const byFrequency: Record<string, { count: number; totalMonthly: bigint }> = {};
+    let totalActiveMonthly = BigInt(0);
+    let totalDismissedMonthly = BigInt(0);
+
+    const topMerchants: { merchantName: string; category: string; monthlyTotal: bigint; currency: string }[] = [];
+
+    for (const e of expenses) {
+      if (!byFrequency[e.frequency]) byFrequency[e.frequency] = { count: 0, totalMonthly: BigInt(0) };
+      byFrequency[e.frequency].count++;
+      byFrequency[e.frequency].totalMonthly += e.monthlyTotal;
+
+      if (e.isActive) {
+        totalActiveMonthly += e.monthlyTotal;
+        topMerchants.push({ merchantName: e.merchantName, category: e.category, monthlyTotal: e.monthlyTotal, currency: e.currency });
+      } else {
+        totalDismissedMonthly += e.monthlyTotal;
+      }
+    }
+
+    topMerchants.sort((a, b) => Number(b.monthlyTotal - a.monthlyTotal));
+
+    const avgPerExpense = active.length > 0
+      ? totalActiveMonthly / BigInt(active.length)
+      : BigInt(0);
+
+    return {
+      totalExpenses: expenses.length,
+      activeCount: active.length,
+      dismissedCount: dismissed.length,
+      totalActiveMonthly,
+      totalDismissedMonthly,
+      avgPerExpense,
+      byFrequency,
+      topMerchants: topMerchants.slice(0, 5),
+    };
+  }
+
   async dismiss(id: string, userId: string) {
     const expense = await this.prisma.antExpense.findUnique({ where: { id } });
     if (!expense) throw new Error('expense_not_found');

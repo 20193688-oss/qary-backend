@@ -280,6 +280,59 @@ export class InvoiceService {
     };
   }
 
+  async getTaxSummary(senderId: string) {
+    const invoices = await this.prisma.invoice.findMany({ where: { senderId } });
+
+    const byCountry: Record<string, { invoiceCount: number; subtotal: bigint; taxAmount: bigint; totalAmount: bigint; totalRate: number; avgTaxRate: number }> = {};
+    const byType: Record<string, { invoiceCount: number; subtotal: bigint; taxAmount: bigint; totalAmount: bigint }> = {};
+    let totalSubtotal = BigInt(0);
+    let totalTax = BigInt(0);
+    let totalAmount = BigInt(0);
+    let validCount = 0;
+
+    for (const inv of invoices) {
+      if (inv.status === 'CANCELLED' || inv.status === 'VOIDED') continue;
+      validCount++;
+
+      const country = inv.country;
+      if (!byCountry[country]) byCountry[country] = { invoiceCount: 0, subtotal: BigInt(0), taxAmount: BigInt(0), totalAmount: BigInt(0), totalRate: 0, avgTaxRate: 0 };
+      byCountry[country].invoiceCount++;
+      byCountry[country].subtotal += inv.subtotal;
+      byCountry[country].taxAmount += inv.taxAmount;
+      byCountry[country].totalAmount += inv.totalAmount;
+      byCountry[country].totalRate += inv.taxRate;
+
+      const type = inv.type;
+      if (!byType[type]) byType[type] = { invoiceCount: 0, subtotal: BigInt(0), taxAmount: BigInt(0), totalAmount: BigInt(0) };
+      byType[type].invoiceCount++;
+      byType[type].subtotal += inv.subtotal;
+      byType[type].taxAmount += inv.taxAmount;
+      byType[type].totalAmount += inv.totalAmount;
+
+      totalSubtotal += inv.subtotal;
+      totalTax += inv.taxAmount;
+      totalAmount += inv.totalAmount;
+    }
+
+    for (const data of Object.values(byCountry)) {
+      data.avgTaxRate = data.invoiceCount > 0 ? Math.round((data.totalRate / data.invoiceCount) * 10000) / 10000 : 0;
+    }
+
+    const effectiveTaxRate = totalSubtotal > BigInt(0)
+      ? Math.round(Number(totalTax * BigInt(10000) / totalSubtotal)) / 100
+      : 0;
+
+    return {
+      totalInvoices: validCount,
+      totalSubtotal,
+      totalTax,
+      totalAmount,
+      effectiveTaxRate,
+      byCountry,
+      byType,
+    };
+  }
+
   private getDefaultTaxRate(country: string): number {
     const rates: Record<string, number> = {
       PE: 0.18, // IGV

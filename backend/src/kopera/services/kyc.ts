@@ -199,6 +199,72 @@ export class KycService {
     };
   }
 
+  async getRenewalReadiness(userId: string) {
+    const profile = await this.prisma.kycProfile.findUnique({ where: { userId } });
+    if (!profile) {
+      return {
+        kycExists: false,
+        status: null,
+        needsRenewal: false,
+        renewalUrgency: 'none' as const,
+        missingFields: ['all'],
+        completionPercent: 0,
+        daysUntilExpiry: null as number | null,
+        recommendations: ['Start KYC verification'],
+      };
+    }
+
+    const missingFields: string[] = [];
+    if (!profile.firstName) missingFields.push('firstName');
+    if (!profile.lastName) missingFields.push('lastName');
+    if (!profile.documentType) missingFields.push('documentType');
+    if (!profile.documentNumber) missingFields.push('documentNumber');
+    if (!(profile as any).documentFrontUrl) missingFields.push('documentFrontUrl');
+    if (!(profile as any).documentBackUrl) missingFields.push('documentBackUrl');
+    if (!(profile as any).selfieUrl) missingFields.push('selfieUrl');
+    if (!(profile as any).livenessImageUrl) missingFields.push('livenessImageUrl');
+
+    const totalFields = 8;
+    const completionPercent = Math.round(((totalFields - missingFields.length) / totalFields) * 100);
+
+    let daysUntilExpiry: number | null = null;
+    let needsRenewal = false;
+    let renewalUrgency: 'none' | 'upcoming' | 'critical' | 'expired' = 'none';
+
+    if (profile.status === 'APPROVED' && profile.verifiedAt) {
+      const expiresAt = new Date(profile.verifiedAt.getTime() + 365 * 24 * 60 * 60 * 1000);
+      daysUntilExpiry = Math.ceil((expiresAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+      if (daysUntilExpiry <= 0) { needsRenewal = true; renewalUrgency = 'expired'; }
+      else if (daysUntilExpiry <= 30) { needsRenewal = true; renewalUrgency = 'critical'; }
+      else if (daysUntilExpiry <= 90) { needsRenewal = true; renewalUrgency = 'upcoming'; }
+    } else if (profile.status === 'REJECTED') {
+      needsRenewal = true;
+      renewalUrgency = 'critical';
+    }
+
+    const recommendations: string[] = [];
+    if (profile.status === 'REJECTED') recommendations.push('Resubmit KYC with corrected information');
+    if (renewalUrgency === 'expired') recommendations.push('KYC has expired, renewal required immediately');
+    else if (renewalUrgency === 'critical') recommendations.push('KYC expires within 30 days, start renewal');
+    else if (renewalUrgency === 'upcoming') recommendations.push('KYC expires within 90 days, plan renewal');
+    if (missingFields.length > 0 && profile.status !== 'APPROVED') {
+      recommendations.push(`Complete missing fields: ${missingFields.join(', ')}`);
+    }
+    if (!profile.pepCheck) recommendations.push('PEP check pending');
+    if (!profile.sanctionsCheck) recommendations.push('Sanctions check pending');
+
+    return {
+      kycExists: true,
+      status: profile.status,
+      needsRenewal,
+      renewalUrgency,
+      missingFields,
+      completionPercent,
+      daysUntilExpiry,
+      recommendations,
+    };
+  }
+
   async setRiskScore(userId: string, riskScore: number) {
     const profile = await this.prisma.kycProfile.findUnique({ where: { userId } });
     if (!profile) throw new Error('kyc_not_found');

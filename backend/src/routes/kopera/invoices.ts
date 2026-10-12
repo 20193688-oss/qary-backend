@@ -99,6 +99,38 @@ export async function registerInvoiceRoutes(app: FastifyInstance, prisma: Prisma
     };
   });
 
+  app.get('/api/invoices/tax-summary', { preHandler: [app.requireAuth] }, async (req) => {
+    const result = await invoices.getTaxSummary(req.auth!.userId);
+    const byCountry: Record<string, any> = {};
+    for (const [country, data] of Object.entries(result.byCountry)) {
+      byCountry[country] = {
+        invoiceCount: data.invoiceCount,
+        subtotal: data.subtotal.toString(),
+        taxAmount: data.taxAmount.toString(),
+        totalAmount: data.totalAmount.toString(),
+        avgTaxRate: data.avgTaxRate,
+      };
+    }
+    const byType: Record<string, any> = {};
+    for (const [type, data] of Object.entries(result.byType)) {
+      byType[type] = {
+        invoiceCount: data.invoiceCount,
+        subtotal: data.subtotal.toString(),
+        taxAmount: data.taxAmount.toString(),
+        totalAmount: data.totalAmount.toString(),
+      };
+    }
+    return {
+      totalInvoices: result.totalInvoices,
+      totalSubtotal: result.totalSubtotal.toString(),
+      totalTax: result.totalTax.toString(),
+      totalAmount: result.totalAmount.toString(),
+      effectiveTaxRate: result.effectiveTaxRate,
+      byCountry,
+      byType,
+    };
+  });
+
   app.get('/api/invoices', { preHandler: [app.requireAuth] }, async (req) => {
     const query = req.query as { status?: string; limit?: string; offset?: string };
     const list = await invoices.listBySender(req.auth!.userId, {
