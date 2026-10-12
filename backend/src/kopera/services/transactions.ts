@@ -233,6 +233,68 @@ export class TransactionService {
     };
   }
 
+  async getCashFlowForecast(userId: string, currency: string, forecastDays: number = 30) {
+    const cur = currency.toUpperCase();
+    const txns = await this.prisma.transaction.findMany({
+      where: { userId, currency: cur, status: 'COMPLETED' },
+    });
+
+    if (txns.length === 0) {
+      return {
+        currency: cur,
+        forecastDays,
+        historicalDays: 0,
+        avgDailyInflow: BigInt(0),
+        avgDailyOutflow: BigInt(0),
+        projectedNetFlow: BigInt(0),
+        confidence: 'none' as const,
+        byType: {},
+      };
+    }
+
+    const dates = txns.map((t) => new Date(t.createdAt).getTime());
+    const minDate = Math.min(...dates);
+    const maxDate = Math.max(...dates);
+    const historicalDays = Math.max(1, Math.round((maxDate - minDate) / (24 * 60 * 60 * 1000)));
+
+    let totalInflow = BigInt(0);
+    let totalOutflow = BigInt(0);
+    const byType: Record<string, { count: number; total: bigint; direction: string }> = {};
+
+    for (const t of txns) {
+      const isInflow = t.type === 'DEPOSIT' || t.type === 'REWARD' ||
+        (t.type === 'TRANSFER' && t.receiverWalletId && !t.senderWalletId);
+
+      if (isInflow) {
+        totalInflow += t.amount;
+      } else {
+        totalOutflow += t.amount;
+      }
+
+      const dir = isInflow ? 'inflow' : 'outflow';
+      if (!byType[t.type]) byType[t.type] = { count: 0, total: BigInt(0), direction: dir };
+      byType[t.type].count++;
+      byType[t.type].total += t.amount;
+    }
+
+    const avgDailyInflow = totalInflow / BigInt(historicalDays);
+    const avgDailyOutflow = totalOutflow / BigInt(historicalDays);
+    const projectedNetFlow = (avgDailyInflow - avgDailyOutflow) * BigInt(forecastDays);
+
+    const confidence = historicalDays >= 30 ? 'high' : historicalDays >= 7 ? 'medium' : 'low';
+
+    return {
+      currency: cur,
+      forecastDays,
+      historicalDays,
+      avgDailyInflow,
+      avgDailyOutflow,
+      projectedNetFlow,
+      confidence,
+      byType,
+    };
+  }
+
   async searchTransactions(userId: string, query: string, opts?: { limit?: number }) {
     const all = await this.prisma.transaction.findMany({ where: { userId } });
     const q = query.toLowerCase();

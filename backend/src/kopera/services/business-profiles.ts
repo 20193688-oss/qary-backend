@@ -158,6 +158,67 @@ export class BusinessProfileService {
     };
   }
 
+  async getDueDiligenceReport(userId: string) {
+    const profile = await this.prisma.businessProfile.findUnique({ where: { userId } });
+    if (!profile) throw new Error('profile_not_found');
+
+    const fields = ['taxId', 'taxIdType', 'taxIdCountry', 'legalName', 'tradeName',
+      'incorporationDate', 'economicActivity', 'ciiu', 'fiscalAddress',
+      'legalRepName', 'legalRepDocType', 'legalRepDocNumber'] as const;
+    const filledCount = fields.filter((f) => !!(profile as any)[f]).length;
+    const completeness = Math.round((filledCount / fields.length) * 100);
+
+    const checks: Array<{ area: string; status: string; detail: string }> = [];
+
+    checks.push({
+      area: 'identity',
+      status: profile.taxId && profile.taxIdType && profile.taxIdCountry ? 'pass' : 'fail',
+      detail: profile.taxId ? `${profile.taxIdType} in ${profile.taxIdCountry}` : 'Tax ID missing',
+    });
+
+    checks.push({
+      area: 'legal_representation',
+      status: profile.legalRepName && profile.legalRepDocNumber ? 'pass' : 'fail',
+      detail: profile.legalRepName ? `${profile.legalRepName}` : 'Legal representative not set',
+    });
+
+    checks.push({
+      area: 'verification',
+      status: profile.status === 'APPROVED' ? 'pass' : 'pending',
+      detail: `Status: ${profile.status}`,
+    });
+
+    const hasScreening = !!(profile as any).lastScreeningAt;
+    checks.push({
+      area: 'screening',
+      status: hasScreening ? 'pass' : 'fail',
+      detail: hasScreening ? `Last screened: ${(profile as any).lastScreeningAt}` : 'No screening performed',
+    });
+
+    const riskScore = profile.riskScore ?? null;
+    checks.push({
+      area: 'risk_assessment',
+      status: riskScore !== null ? 'pass' : 'fail',
+      detail: riskScore !== null ? `Risk score: ${riskScore}` : 'No risk assessment',
+    });
+
+    const passedCount = checks.filter((c) => c.status === 'pass').length;
+    const overallScore = Math.round((passedCount / checks.length) * 100);
+    const blockers = checks.filter((c) => c.status === 'fail').map((c) => c.area);
+    const overallStatus = blockers.length === 0 ? 'approved' : blockers.length <= 2 ? 'needs_attention' : 'incomplete';
+
+    return {
+      userId,
+      profileCompleteness: completeness,
+      overallScore,
+      overallStatus,
+      checks,
+      blockers,
+      riskScore,
+      status: profile.status,
+    };
+  }
+
   async reject(userId: string, reason: string) {
     const profile = await this.prisma.businessProfile.findUnique({ where: { userId } });
     if (!profile) throw new Error('profile_not_found');

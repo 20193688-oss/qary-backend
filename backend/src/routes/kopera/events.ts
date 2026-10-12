@@ -45,6 +45,10 @@ export async function registerEventRoutes(app: FastifyInstance, prisma: PrismaCl
     return svc.getSecurityAudit(req.auth!.userId);
   });
 
+  app.get('/api/events/compliance-report', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getComplianceReport(req.auth!.userId);
+  });
+
   app.get('/api/events/timeline', { preHandler: [app.requireAuth] }, async (req) => {
     const q = z.object({
       days: z.coerce.number().int().min(1).max(365).optional(),

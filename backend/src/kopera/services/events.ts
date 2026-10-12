@@ -135,6 +135,57 @@ export class EventService {
     };
   }
 
+  async getComplianceReport(userId: string) {
+    const events = await this.prisma.event.findMany({ where: { userId } });
+
+    const sensitiveTypes = ['auth.login', 'auth.failed', 'auth.password_changed', 'auth.mfa_enabled',
+      'auth.mfa_disabled', 'auth.pin_set', 'session.created', 'session.revoked',
+      'wallet.created', 'transfer.sent', 'transfer.received', 'fx.executed',
+      'kyc.submitted', 'kyc.approved', 'kyc.rejected', 'card.added', 'card.removed',
+      'bank_account.added', 'bank_account.removed', 'beneficiary.created', 'beneficiary.deleted'];
+
+    const byCategory: Record<string, number> = {};
+    const retentionBuckets: Record<string, number> = { '0-30d': 0, '31-90d': 0, '91-180d': 0, '181-365d': 0, '365d+': 0 };
+    const now = Date.now();
+    let sensitiveCount = 0;
+    let oldestEvent: Date | null = null;
+    let newestEvent: Date | null = null;
+
+    for (const e of events) {
+      const category = e.eventType.split('.')[0] ?? 'other';
+      byCategory[category] = (byCategory[category] ?? 0) + 1;
+
+      if (sensitiveTypes.includes(e.eventType)) sensitiveCount++;
+
+      const ageMs = now - new Date(e.createdAt).getTime();
+      const ageDays = ageMs / (24 * 60 * 60 * 1000);
+      if (ageDays <= 30) retentionBuckets['0-30d']++;
+      else if (ageDays <= 90) retentionBuckets['31-90d']++;
+      else if (ageDays <= 180) retentionBuckets['91-180d']++;
+      else if (ageDays <= 365) retentionBuckets['181-365d']++;
+      else retentionBuckets['365d+']++;
+
+      const created = new Date(e.createdAt);
+      if (!oldestEvent || created < oldestEvent) oldestEvent = created;
+      if (!newestEvent || created > newestEvent) newestEvent = created;
+    }
+
+    const recommendations: string[] = [];
+    if (retentionBuckets['365d+'] > 0) recommendations.push(`${retentionBuckets['365d+']} events older than 1 year — review data retention policy`);
+    if (sensitiveCount === 0 && events.length > 0) recommendations.push('No sensitive events logged — verify audit trail coverage');
+
+    return {
+      totalEvents: events.length,
+      sensitiveEventCount: sensitiveCount,
+      byCategory,
+      retentionBuckets,
+      oldestEvent,
+      newestEvent,
+      dataRetentionDays: oldestEvent ? Math.round((now - oldestEvent.getTime()) / (24 * 60 * 60 * 1000)) : 0,
+      recommendations,
+    };
+  }
+
   async listByRequest(requestId: string) {
     return this.prisma.event.findMany({
       where: { requestId },

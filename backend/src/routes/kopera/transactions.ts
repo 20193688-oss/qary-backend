@@ -106,6 +106,29 @@ export async function registerTransactionRoutes(app: FastifyInstance, prisma: Pr
     };
   });
 
+  app.get('/api/transaction-history/cash-flow-forecast', { preHandler: [app.requireAuth] }, async (req) => {
+    const q = z.object({
+      currency: z.string().length(3),
+      days: z.coerce.number().int().min(1).max(365).optional(),
+    }).parse(req.query);
+
+    const result = await svc.getCashFlowForecast(req.auth!.userId, q.currency, q.days);
+    const byType: Record<string, { count: number; total: string; direction: string }> = {};
+    for (const [type, data] of Object.entries(result.byType)) {
+      byType[type] = { count: data.count, total: data.total.toString(), direction: data.direction };
+    }
+    return {
+      currency: result.currency,
+      forecastDays: result.forecastDays,
+      historicalDays: result.historicalDays,
+      avgDailyInflow: result.avgDailyInflow.toString(),
+      avgDailyOutflow: result.avgDailyOutflow.toString(),
+      projectedNetFlow: result.projectedNetFlow.toString(),
+      confidence: result.confidence,
+      byType,
+    };
+  });
+
   app.get('/api/transaction-history/distribution', { preHandler: [app.requireAuth] }, async (req) => {
     const query = req.query as { currency?: string };
     const dist = await svc.getTypeDistribution(req.auth!.userId, query.currency);
