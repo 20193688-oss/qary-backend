@@ -1,10 +1,14 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { PrismaClient } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
 import { FxService } from '../../kopera/services/fx.js';
+import { WalletService } from '../../kopera/services/wallet.js';
+import { audit } from '../../lib/audit.js';
 
 export async function registerFxRoutes(app: FastifyInstance, prisma: PrismaClient) {
   const fx = new FxService(prisma);
+  const wallets = new WalletService(prisma);
 
   app.get('/api/fx/rate/:pair', async (req, reply) => {
     const { pair } = req.params as { pair: string };
@@ -39,6 +43,117 @@ export async function registerFxRoutes(app: FastifyInstance, prisma: PrismaClien
       const msg = err instanceof Error ? err.message : 'unknown';
       return reply.code(400).send({ error: msg });
     }
+  });
+
+  app.post('/api/fx/execute', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const body = z.object({
+      amount: z.number().positive(),
+      fromCurrency: z.string().length(3),
+      toCurrency: z.string().length(3),
+    }).parse(req.body);
+
+    const fromCurrency = body.fromCurrency.toUpperCase();
+    const toCurrency = body.toCurrency.toUpperCase();
+    const amountCents = BigInt(Math.round(body.amount * 100));
+
+    const fromWallet = await wallets.getWallet(req.auth!.userId, fromCurrency);
+    if (!fromWallet) return reply.code(404).send({ error: 'source_wallet_not_found' });
+    if (fromWallet.status !== 'ACTIVE') return reply.code(400).send({ error: 'source_wallet_frozen' });
+    if (fromWallet.availableBalance < amountCents) return reply.code(400).send({ error: 'insufficient_funds' });
+
+    const rate = await fx.getRate(fromCurrency, toCurrency);
+    if (!rate) return reply.code(400).send({ error: `no_rate_available_${fromCurrency}_${toCurrency}` });
+
+    const appliedRate = rate.ask;
+    const convertedAmount = BigInt(Math.round(Number(amountCents) * appliedRate));
+    const reference = `FX-${Date.now()}-${randomUUID().slice(0, 8)}`;
+
+    const toWallet = await wallets.getOrCreateWallet(req.auth!.userId, toCurrency);
+
+    const result = await prisma.$transaction(async (tx) => {
+      const txn = await tx.transaction.create({
+        data: {
+          userId: req.auth!.userId,
+          type: 'FX_CONVERSION',
+          status: 'COMPLETED',
+          amount: amountCents,
+          currency: fromCurrency,
+          fxRate: appliedRate,
+          fxSourceCurrency: fromCurrency,
+          fxTargetCurrency: toCurrency,
+          fxSourceAmount: amountCents,
+          fxTargetAmount: convertedAmount,
+          description: `Convert ${fromCurrency} to ${toCurrency}`,
+          reference,
+          senderWalletId: fromWallet.id,
+          receiverWalletId: toWallet.id,
+          processedAt: new Date(),
+        },
+      });
+
+      await tx.ledgerEntry.create({
+        data: {
+          walletId: fromWallet.id,
+          transactionId: txn.id,
+          amount: -amountCents,
+          balanceBefore: fromWallet.balance,
+          balanceAfter: fromWallet.balance - amountCents,
+          entryType: 'DEBIT',
+          description: `FX conversion to ${toCurrency}`,
+        },
+      });
+
+      await tx.wallet.update({
+        where: { id: fromWallet.id },
+        data: {
+          balance: fromWallet.balance - amountCents,
+          availableBalance: fromWallet.availableBalance - amountCents,
+        },
+      });
+
+      await tx.ledgerEntry.create({
+        data: {
+          walletId: toWallet.id,
+          transactionId: txn.id,
+          amount: convertedAmount,
+          balanceBefore: toWallet.balance,
+          balanceAfter: toWallet.balance + convertedAmount,
+          entryType: 'CREDIT',
+          description: `FX conversion from ${fromCurrency}`,
+        },
+      });
+
+      await tx.wallet.update({
+        where: { id: toWallet.id },
+        data: {
+          balance: toWallet.balance + convertedAmount,
+          availableBalance: toWallet.availableBalance + convertedAmount,
+        },
+      });
+
+      return txn;
+    });
+
+    await audit(prisma, {
+      userId: req.auth!.userId, actor: 'user', eventType: 'fx.executed',
+      payload: {
+        transactionId: result.id,
+        fromCurrency, toCurrency,
+        fromAmount: body.amount, rate: appliedRate,
+      },
+      requestId: String(req.id), ip: req.ip,
+    });
+
+    return reply.code(201).send({
+      transactionId: result.id,
+      reference: result.reference,
+      fromCurrency,
+      toCurrency,
+      fromAmount: amountCents.toString(),
+      toAmount: convertedAmount.toString(),
+      rate: appliedRate,
+      spreadBps: rate.spreadBps,
+    });
   });
 
   app.post('/api/fx/quote', { preHandler: [app.requireAuth] }, async (req, reply) => {

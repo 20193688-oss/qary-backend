@@ -230,4 +230,70 @@ export class WalletService {
       isDefault: w.isDefault,
     }));
   }
+
+  async freeze(userId: string, currency: string) {
+    const wallet = await this.getWallet(userId, currency);
+    if (!wallet) throw new Error('wallet_not_found');
+    if (wallet.status === 'FROZEN') throw new Error('already_frozen');
+    if (wallet.status === 'CLOSED') throw new Error('wallet_closed');
+
+    return this.prisma.wallet.update({
+      where: { id: wallet.id },
+      data: { status: 'FROZEN' },
+    });
+  }
+
+  async unfreeze(userId: string, currency: string) {
+    const wallet = await this.getWallet(userId, currency);
+    if (!wallet) throw new Error('wallet_not_found');
+    if (wallet.status !== 'FROZEN') throw new Error('not_frozen');
+
+    return this.prisma.wallet.update({
+      where: { id: wallet.id },
+      data: { status: 'ACTIVE' },
+    });
+  }
+
+  async hold(userId: string, currency: string, amount: bigint) {
+    const wallet = await this.getWallet(userId, currency);
+    if (!wallet) throw new Error('wallet_not_found');
+    if (wallet.availableBalance < amount) throw new Error('insufficient_available');
+
+    return this.prisma.wallet.update({
+      where: { id: wallet.id },
+      data: {
+        holdBalance: wallet.holdBalance + amount,
+        availableBalance: wallet.availableBalance - amount,
+      },
+    });
+  }
+
+  async releaseHold(userId: string, currency: string, amount: bigint) {
+    const wallet = await this.getWallet(userId, currency);
+    if (!wallet) throw new Error('wallet_not_found');
+    if (wallet.holdBalance < amount) throw new Error('hold_exceeds_balance');
+
+    return this.prisma.wallet.update({
+      where: { id: wallet.id },
+      data: {
+        holdBalance: wallet.holdBalance - amount,
+        availableBalance: wallet.availableBalance + amount,
+      },
+    });
+  }
+
+  async setDefault(userId: string, currency: string) {
+    const wallet = await this.getWallet(userId, currency);
+    if (!wallet) throw new Error('wallet_not_found');
+
+    await this.prisma.wallet.updateMany({
+      where: { userId, isDefault: true },
+      data: { isDefault: false },
+    });
+
+    return this.prisma.wallet.update({
+      where: { id: wallet.id },
+      data: { isDefault: true },
+    });
+  }
 }

@@ -84,7 +84,7 @@ export async function registerWalletRoutes(app: FastifyInstance, prisma: PrismaC
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'unknown';
-      if (msg === 'insufficient_funds') return reply.code(400).send({ error: msg });
+      if (msg === 'insufficient_funds' || msg === 'wallet_frozen') return reply.code(400).send({ error: msg });
       if (msg === 'wallet_not_found') return reply.code(404).send({ error: msg });
       throw err;
     }
@@ -119,6 +119,82 @@ export async function registerWalletRoutes(app: FastifyInstance, prisma: PrismaC
         return reply.code(400).send({ error: msg });
       }
       if (msg.includes('not_found')) return reply.code(404).send({ error: msg });
+      throw err;
+    }
+  });
+
+  app.post('/api/wallets/:currency/freeze', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { currency } = req.params as { currency: string };
+    try {
+      const wallet = await wallets.freeze(req.auth!.userId, currency);
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'user', eventType: 'wallet.frozen',
+        payload: { currency }, requestId: String(req.id), ip: req.ip,
+      });
+      return serializeWallet(wallet);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      if (msg === 'wallet_not_found') return reply.code(404).send({ error: msg });
+      if (msg === 'already_frozen' || msg === 'wallet_closed') return reply.code(400).send({ error: msg });
+      throw err;
+    }
+  });
+
+  app.post('/api/wallets/:currency/unfreeze', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { currency } = req.params as { currency: string };
+    try {
+      const wallet = await wallets.unfreeze(req.auth!.userId, currency);
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'user', eventType: 'wallet.unfrozen',
+        payload: { currency }, requestId: String(req.id), ip: req.ip,
+      });
+      return serializeWallet(wallet);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      if (msg === 'wallet_not_found') return reply.code(404).send({ error: msg });
+      if (msg === 'not_frozen') return reply.code(400).send({ error: msg });
+      throw err;
+    }
+  });
+
+  app.post('/api/wallets/:currency/hold', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { currency } = req.params as { currency: string };
+    const body = z.object({ amount: z.number().positive() }).parse(req.body);
+    const amountCents = BigInt(Math.round(body.amount * 100));
+    try {
+      const wallet = await wallets.hold(req.auth!.userId, currency, amountCents);
+      return serializeWallet(wallet);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      if (msg === 'wallet_not_found') return reply.code(404).send({ error: msg });
+      if (msg === 'insufficient_available') return reply.code(400).send({ error: msg });
+      throw err;
+    }
+  });
+
+  app.post('/api/wallets/:currency/release', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { currency } = req.params as { currency: string };
+    const body = z.object({ amount: z.number().positive() }).parse(req.body);
+    const amountCents = BigInt(Math.round(body.amount * 100));
+    try {
+      const wallet = await wallets.releaseHold(req.auth!.userId, currency, amountCents);
+      return serializeWallet(wallet);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      if (msg === 'wallet_not_found') return reply.code(404).send({ error: msg });
+      if (msg === 'hold_exceeds_balance') return reply.code(400).send({ error: msg });
+      throw err;
+    }
+  });
+
+  app.post('/api/wallets/:currency/set-default', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { currency } = req.params as { currency: string };
+    try {
+      const wallet = await wallets.setDefault(req.auth!.userId, currency);
+      return serializeWallet(wallet);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      if (msg === 'wallet_not_found') return reply.code(404).send({ error: msg });
       throw err;
     }
   });

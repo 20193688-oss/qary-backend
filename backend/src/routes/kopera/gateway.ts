@@ -4,12 +4,13 @@ import type { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { audit } from '../../lib/audit.js';
 import { AgentOrchestrator } from '../../kopera/agents/orchestrator.js';
+import { GatewayPaymentService } from '../../kopera/services/gateway.js';
 import '../../kopera/agents/definitions.js';
 
 export async function registerGatewayRoutes(app: FastifyInstance, prisma: PrismaClient) {
   const orchestrator = new AgentOrchestrator(prisma);
+  const gateway = new GatewayPaymentService(prisma);
 
-  // Create a payment through the Kopera gateway
   app.post('/api/gateway/payments', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const body = z.object({
       amount: z.number().positive(),
@@ -29,15 +30,9 @@ export async function registerGatewayRoutes(app: FastifyInstance, prisma: Prisma
 
     const idempotencyKey = body.idempotencyKey ?? randomUUID();
 
-    // Check for duplicate
-    const existing = await prisma.gatewayPayment.findUnique({
-      where: { idempotencyKey },
-    });
-    if (existing) {
-      return reply.send(serializeGatewayPayment(existing));
-    }
+    const existing = await gateway.findByIdempotencyKey(idempotencyKey);
+    if (existing) return reply.send(serializeGatewayPayment(existing));
 
-    // Run antifraud in parallel with payment processing
     const results = await orchestrator.executeParallel(
       [3, 26],
       {
@@ -65,37 +60,19 @@ export async function registerGatewayRoutes(app: FastifyInstance, prisma: Prisma
     }
 
     const amountCents = BigInt(Math.round(body.amount * 100));
-    const reference = `GW-${Date.now()}-${randomUUID().slice(0, 8)}`;
 
-    const transaction = await prisma.transaction.create({
-      data: {
-        userId: req.auth!.userId,
-        type: 'PAYMENT',
-        status: antifraudDecision === 'REVIEW' ? 'PROCESSING' : 'COMPLETED',
-        amount: amountCents,
-        currency: body.currency.toUpperCase(),
-        description: body.description,
-        reference,
-        paymentMethodUsed: body.paymentMethod as any,
-        metadata: (body.metadata ?? {}) as object,
-        processedAt: antifraudDecision === 'APPROVE' ? new Date() : undefined,
-      },
-    });
-
-    const gatewayPayment = await prisma.gatewayPayment.create({
-      data: {
-        transactionId: transaction.id,
-        merchantId: body.merchantId,
-        status: antifraudDecision === 'REVIEW' ? 'REQUIRES_ACTION' : 'CAPTURED',
-        paymentMethod: body.paymentMethod as any,
-        amount: amountCents,
-        currency: body.currency.toUpperCase(),
-        antifraudScore,
-        antifraudDecision,
-        antifraudDetails: (antifraudResult?.data ?? {}) as object,
-        idempotencyKey,
-        threeDSecureStatus: body.paymentMethod === 'CARD' && body.amount > 100 ? 'required' : 'not_required',
-      },
+    const { gatewayPayment } = await gateway.createPayment({
+      userId: req.auth!.userId,
+      amount: amountCents,
+      currency: body.currency.toUpperCase(),
+      paymentMethod: body.paymentMethod,
+      description: body.description,
+      merchantId: body.merchantId,
+      idempotencyKey,
+      antifraudScore,
+      antifraudDecision,
+      antifraudDetails: (antifraudResult?.data ?? {}) as object,
+      metadata: body.metadata as object,
     });
 
     await audit(prisma, {
@@ -115,10 +92,7 @@ export async function registerGatewayRoutes(app: FastifyInstance, prisma: Prisma
 
   app.get('/api/gateway/payments/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
-    const gp = await prisma.gatewayPayment.findUnique({
-      where: { id },
-      include: { transaction: true },
-    });
+    const gp = await gateway.findById(id);
     if (!gp) return reply.code(404).send({ error: 'not_found' });
     if (gp.transaction.userId !== req.auth!.userId) return reply.code(403).send({ error: 'forbidden' });
     return serializeGatewayPayment(gp);
@@ -126,19 +100,74 @@ export async function registerGatewayRoutes(app: FastifyInstance, prisma: Prisma
 
   app.get('/api/gateway/payments', { preHandler: [app.requireAuth] }, async (req) => {
     const query = req.query as { limit?: string; offset?: string; status?: string };
-    const payments = await prisma.gatewayPayment.findMany({
-      where: {
-        transaction: { userId: req.auth!.userId },
-        ...(query.status ? { status: query.status as any } : {}),
-      },
-      take: Math.min(Number(query.limit ?? 20), 100),
-      skip: Number(query.offset ?? 0),
-      orderBy: { createdAt: 'desc' },
+    const payments = await gateway.listByUser(req.auth!.userId, {
+      limit: query.limit ? Number(query.limit) : undefined,
+      offset: query.offset ? Number(query.offset) : undefined,
+      status: query.status,
     });
     return payments.map(serializeGatewayPayment);
   });
 
-  // Refund a gateway payment
+  app.post('/api/gateway/payments/:id/capture', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      const gp = await gateway.capture(id);
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'user', eventType: 'gateway.payment_captured',
+        payload: { gatewayPaymentId: id },
+        requestId: String(req.id), ip: req.ip,
+      });
+      return serializeGatewayPayment(gp);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      if (msg === 'not_found') return reply.code(404).send({ error: msg });
+      if (msg === 'cannot_capture') return reply.code(400).send({ error: msg });
+      throw err;
+    }
+  });
+
+  app.post('/api/gateway/payments/:id/void', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      const gp = await gateway.void(id);
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'user', eventType: 'gateway.payment_voided',
+        payload: { gatewayPaymentId: id },
+        requestId: String(req.id), ip: req.ip,
+      });
+      return serializeGatewayPayment(gp);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      if (msg === 'not_found') return reply.code(404).send({ error: msg });
+      if (msg === 'cannot_void') return reply.code(400).send({ error: msg });
+      throw err;
+    }
+  });
+
+  app.post('/api/gateway/payments/:id/settle', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = z.object({
+      settlementAmount: z.number().positive().optional(),
+      settlementCurrency: z.string().length(3).optional(),
+    }).parse(req.body);
+
+    try {
+      const settlementCents = body.settlementAmount ? BigInt(Math.round(body.settlementAmount * 100)) : undefined;
+      const gp = await gateway.settle(id, settlementCents, body.settlementCurrency?.toUpperCase());
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'user', eventType: 'gateway.payment_settled',
+        payload: { gatewayPaymentId: id, settlementAmount: body.settlementAmount },
+        requestId: String(req.id), ip: req.ip,
+      });
+      return serializeGatewayPayment(gp);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      if (msg === 'not_found') return reply.code(404).send({ error: msg });
+      if (msg === 'cannot_settle') return reply.code(400).send({ error: msg });
+      throw err;
+    }
+  });
+
   app.post('/api/gateway/payments/:id/refund', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const body = z.object({
@@ -146,51 +175,25 @@ export async function registerGatewayRoutes(app: FastifyInstance, prisma: Prisma
       reason: z.string().optional(),
     }).parse(req.body);
 
-    const gp = await prisma.gatewayPayment.findUnique({
-      where: { id },
-      include: { transaction: true },
-    });
-    if (!gp) return reply.code(404).send({ error: 'not_found' });
-    if (gp.status !== 'CAPTURED' && gp.status !== 'SETTLED') {
-      return reply.code(400).send({ error: 'cannot_refund_status' });
+    try {
+      const refundCents = body.amount ? BigInt(Math.round(body.amount * 100)) : undefined;
+      const result = await gateway.refund(id, refundCents, body.reason);
+
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'user', eventType: 'gateway.refund',
+        payload: { gatewayPaymentId: id, amount: Number(result.amount) },
+        requestId: String(req.id), ip: req.ip,
+      });
+
+      return reply.send({ refunded: true, amount: result.amount.toString() });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      if (msg === 'not_found') return reply.code(404).send({ error: msg });
+      if (msg === 'cannot_refund_status') return reply.code(400).send({ error: msg });
+      throw err;
     }
-
-    const refundAmount = body.amount ? BigInt(Math.round(body.amount * 100)) : gp.amount;
-
-    await prisma.$transaction(async (tx) => {
-      await tx.gatewayPayment.update({
-        where: { id },
-        data: { status: 'REFUNDED' },
-      });
-      await tx.transaction.update({
-        where: { id: gp.transactionId },
-        data: { status: 'REVERSED' },
-      });
-      await tx.transaction.create({
-        data: {
-          userId: gp.transaction.userId,
-          type: 'REFUND',
-          status: 'COMPLETED',
-          amount: refundAmount,
-          currency: gp.currency,
-          description: body.reason ?? 'Refund',
-          reference: `REF-${Date.now()}-${randomUUID().slice(0, 8)}`,
-          reversalOf: gp.transactionId,
-          processedAt: new Date(),
-        },
-      });
-    });
-
-    await audit(prisma, {
-      userId: req.auth!.userId, actor: 'user', eventType: 'gateway.refund',
-      payload: { gatewayPaymentId: id, amount: Number(refundAmount) },
-      requestId: String(req.id), ip: req.ip,
-    });
-
-    return reply.send({ refunded: true, amount: refundAmount.toString() });
   });
 
-  // Payment link generation
   app.post('/api/gateway/payment-links', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const body = z.object({
       amount: z.number().positive(),
@@ -227,6 +230,9 @@ function serializeGatewayPayment(gp: any) {
     antifraudScore: gp.antifraudScore,
     antifraudDecision: gp.antifraudDecision,
     idempotencyKey: gp.idempotencyKey,
+    settlementAmount: gp.settlementAmount?.toString() ?? null,
+    settlementCurrency: gp.settlementCurrency ?? null,
+    settledAt: gp.settledAt ?? null,
     createdAt: gp.createdAt,
   };
 }

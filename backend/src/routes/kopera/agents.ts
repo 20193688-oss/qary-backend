@@ -118,6 +118,82 @@ export async function registerAgentRoutes(app: FastifyInstance, prisma: PrismaCl
     };
   });
 
+  // Agent execution history
+  app.get('/api/agents/executions', { preHandler: [app.requireAuth] }, async (req) => {
+    const query = req.query as { agentId?: string; status?: string; traceId?: string; limit?: string; offset?: string };
+    const where: Record<string, unknown> = {};
+    if (query.agentId) where.agentId = query.agentId;
+    if (query.status) where.status = query.status;
+    if (query.traceId) where.traceId = query.traceId;
+
+    const executions = await prisma.agentExecution.findMany({
+      where,
+      take: Math.min(Number(query.limit ?? 20), 100),
+      skip: Number(query.offset ?? 0),
+      orderBy: { createdAt: 'desc' },
+    });
+    return executions.map(serializeExecution);
+  });
+
+  // Get single execution by ID
+  app.get('/api/agents/executions/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const exec = await prisma.agentExecution.findUnique({ where: { id } });
+    if (!exec) return reply.code(404).send({ error: 'execution_not_found' });
+    return serializeExecution(exec);
+  });
+
+  // Agent admin: get single agent details
+  app.get('/api/agents/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const agent = await prisma.agent.findUnique({ where: { id } });
+    if (!agent) return reply.code(404).send({ error: 'agent_not_found' });
+    return serializeAgent(agent);
+  });
+
+  // Agent admin: enable/disable and update config
+  app.patch('/api/agents/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = z.object({
+      isActive: z.boolean().optional(),
+      config: z.record(z.unknown()).optional(),
+    }).parse(req.body);
+
+    const agent = await prisma.agent.findUnique({ where: { id } });
+    if (!agent) return reply.code(404).send({ error: 'agent_not_found' });
+
+    const updated = await prisma.agent.update({
+      where: { id },
+      data: {
+        ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
+        ...(body.config ? { config: body.config as object } : {}),
+      },
+    });
+
+    return serializeAgent(updated);
+  });
+
+  // Agent admin: health check
+  app.post('/api/agents/:id/health', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = z.object({
+      status: z.enum(['healthy', 'degraded', 'down']),
+    }).parse(req.body);
+
+    const agent = await prisma.agent.findUnique({ where: { id } });
+    if (!agent) return reply.code(404).send({ error: 'agent_not_found' });
+
+    const updated = await prisma.agent.update({
+      where: { id },
+      data: {
+        healthStatus: body.status,
+        lastHealthCheck: new Date(),
+      },
+    });
+
+    return serializeAgent(updated);
+  });
+
   // Financial health check
   app.get('/api/financial-health', { preHandler: [app.requireAuth] }, async (req) => {
     const result = await orchestrator.execute(
@@ -142,4 +218,35 @@ export async function registerAgentRoutes(app: FastifyInstance, prisma: PrismaCl
     );
     return result.data ?? {};
   });
+}
+
+function serializeExecution(e: any) {
+  return {
+    id: e.id,
+    agentId: e.agentId,
+    status: e.status,
+    durationMs: e.durationMs,
+    errorMsg: e.errorMsg,
+    triggeredBy: e.triggeredBy,
+    traceId: e.traceId,
+    parentExecId: e.parentExecId,
+    createdAt: e.createdAt,
+    completedAt: e.completedAt,
+  };
+}
+
+function serializeAgent(a: any) {
+  return {
+    id: a.id,
+    number: a.number,
+    name: a.name,
+    category: a.category,
+    description: a.description,
+    isActive: a.isActive,
+    version: a.version,
+    config: a.config,
+    slaMs: a.slaMs,
+    healthStatus: a.healthStatus,
+    lastHealthCheck: a.lastHealthCheck,
+  };
 }
