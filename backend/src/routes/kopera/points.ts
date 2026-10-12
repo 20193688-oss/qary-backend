@@ -10,13 +10,18 @@ export async function registerPointsRoutes(app: FastifyInstance, prisma: PrismaC
     return points.getBalance(req.auth!.userId);
   });
 
+  app.get('/api/points/leaderboard', { preHandler: [app.requireAuth] }, async (req) => {
+    const query = req.query as { limit?: string };
+    return points.leaderboard(Math.min(Number(query.limit ?? 10), 50));
+  });
+
   app.get('/api/points/history', { preHandler: [app.requireAuth] }, async (req) => {
-    const query = req.query as { limit?: string; offset?: string };
-    return points.getHistory(
-      req.auth!.userId,
-      Math.min(Number(query.limit ?? 20), 100),
-      Number(query.offset ?? 0),
-    );
+    const query = req.query as { limit?: string; offset?: string; type?: string };
+    return points.getHistory(req.auth!.userId, {
+      type: query.type,
+      limit: Math.min(Number(query.limit ?? 20), 100),
+      offset: Number(query.offset ?? 0),
+    });
   });
 
   app.post('/api/points/earn', { preHandler: [app.requireAuth] }, async (req, reply) => {

@@ -83,15 +83,31 @@ export class PointsService {
     };
   }
 
-  async getHistory(userId: string, limit = 20, offset = 0) {
+  async getHistory(userId: string, opts?: { type?: string; limit?: number; offset?: number }) {
     const points = await this.prisma.koperaPoints.findUnique({ where: { userId } });
     if (!points) return [];
+    const where: Record<string, unknown> = { pointsId: points.id };
+    if (opts?.type) where.type = opts.type;
     return this.prisma.pointsHistory.findMany({
-      where: { pointsId: points.id },
-      take: limit,
-      skip: offset,
+      where,
+      take: Math.min(opts?.limit ?? 20, 100),
+      skip: opts?.offset ?? 0,
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  async leaderboard(limit = 10) {
+    const all = await this.prisma.koperaPoints.findMany({});
+    return all
+      .sort((a: any, b: any) => b.lifetimeEarned - a.lifetimeEarned)
+      .slice(0, Math.min(limit, 50))
+      .map((p: any, i: number) => ({
+        rank: i + 1,
+        userId: p.userId,
+        tier: p.tier,
+        lifetimeEarned: p.lifetimeEarned,
+        balance: p.balance,
+      }));
   }
 
   pointsForTransaction(amountCents: number, type: string, tier: string): number {

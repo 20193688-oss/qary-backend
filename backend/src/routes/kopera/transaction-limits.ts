@@ -64,6 +64,16 @@ export async function registerTransactionLimitRoutes(app: FastifyInstance, prism
     return svc.checkAndIncrement(req.auth!.userId, body.currency, amountCents);
   });
 
+  app.post('/api/transaction-limits/check-available', { preHandler: [app.requireAuth] }, async (req) => {
+    const body = z.object({
+      currency: z.string().length(3),
+      amount: z.number().positive(),
+    }).parse(req.body);
+
+    const amountCents = BigInt(Math.round(body.amount * 100));
+    return svc.checkAvailable(req.auth!.userId, body.currency, amountCents);
+  });
+
   app.delete('/api/transaction-limits/:currency/:limitType', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { currency, limitType } = req.params as { currency: string; limitType: string };
     try {

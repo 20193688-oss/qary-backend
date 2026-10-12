@@ -42,6 +42,15 @@ export async function registerUserSessionRoutes(app: FastifyInstance, prisma: Pr
     return sessions.map(serialize);
   });
 
+  app.get('/api/sessions/history', { preHandler: [app.requireAuth] }, async (req) => {
+    const query = req.query as { limit?: string; offset?: string };
+    const sessions = await svc.listAll(req.auth!.userId, {
+      limit: Math.min(Number(query.limit ?? 20), 100),
+      offset: Number(query.offset ?? 0),
+    });
+    return sessions.map(serialize);
+  });
+
   app.get('/api/sessions/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const session = await svc.getSession(id, req.auth!.userId);
