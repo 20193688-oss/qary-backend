@@ -1,0 +1,115 @@
+import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import type { PrismaClient } from '@prisma/client';
+import { SubscriptionService } from '../../kopera/services/subscriptions.js';
+import { audit } from '../../lib/audit.js';
+
+export async function registerSubscriptionRoutes(app: FastifyInstance, prisma: PrismaClient) {
+  const subscriptions = new SubscriptionService(prisma);
+
+  app.post('/api/subscriptions', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const body = z.object({
+      planName: z.string().min(1),
+      amount: z.number().positive(),
+      currency: z.string().length(3),
+      interval: z.enum(['daily', 'weekly', 'monthly', 'yearly']),
+      intervalCount: z.number().int().min(1).max(12).optional(),
+      merchantId: z.string().optional(),
+    }).parse(req.body);
+
+    const sub = await subscriptions.create({
+      userId: req.auth!.userId,
+      planName: body.planName,
+      amount: BigInt(Math.round(body.amount * 100)),
+      currency: body.currency,
+      interval: body.interval,
+      intervalCount: body.intervalCount,
+      merchantId: body.merchantId,
+    });
+
+    await audit(prisma, {
+      userId: req.auth!.userId, actor: 'user', eventType: 'subscription.created',
+      payload: { subscriptionId: sub.id, planName: body.planName },
+      requestId: String(req.id), ip: req.ip,
+    });
+
+    return reply.code(201).send(serializeSub(sub));
+  });
+
+  app.get('/api/subscriptions', { preHandler: [app.requireAuth] }, async (req) => {
+    const list = await subscriptions.listByUser(req.auth!.userId);
+    return list.map(serializeSub);
+  });
+
+  app.get('/api/subscriptions/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const sub = await subscriptions.getById(id);
+    if (!sub) return reply.code(404).send({ error: 'not_found' });
+    if (sub.userId !== req.auth!.userId) return reply.code(403).send({ error: 'forbidden' });
+    return serializeSub(sub);
+  });
+
+  app.post('/api/subscriptions/:id/cancel', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      const sub = await subscriptions.cancel(id, req.auth!.userId);
+      await audit(prisma, {
+        userId: req.auth!.userId, actor: 'user', eventType: 'subscription.cancelled',
+        payload: { subscriptionId: sub.id },
+        requestId: String(req.id), ip: req.ip,
+      });
+      return reply.send(serializeSub(sub));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      if (msg === 'subscription_not_found') return reply.code(404).send({ error: msg });
+      if (msg === 'forbidden') return reply.code(403).send({ error: msg });
+      if (msg === 'already_cancelled') return reply.code(400).send({ error: msg });
+      throw err;
+    }
+  });
+
+  app.post('/api/subscriptions/:id/pause', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      const sub = await subscriptions.pause(id, req.auth!.userId);
+      return reply.send(serializeSub(sub));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      if (msg === 'subscription_not_found') return reply.code(404).send({ error: msg });
+      if (msg === 'forbidden') return reply.code(403).send({ error: msg });
+      if (msg === 'not_active') return reply.code(400).send({ error: msg });
+      throw err;
+    }
+  });
+
+  app.post('/api/subscriptions/:id/resume', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      const sub = await subscriptions.resume(id, req.auth!.userId);
+      return reply.send(serializeSub(sub));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      if (msg === 'subscription_not_found') return reply.code(404).send({ error: msg });
+      if (msg === 'forbidden') return reply.code(403).send({ error: msg });
+      if (msg === 'not_paused') return reply.code(400).send({ error: msg });
+      throw err;
+    }
+  });
+}
+
+function serializeSub(s: any) {
+  return {
+    id: s.id,
+    planName: s.planName,
+    amount: s.amount.toString(),
+    currency: s.currency,
+    interval: s.interval,
+    intervalCount: s.intervalCount,
+    status: s.status,
+    currentPeriodStart: s.currentPeriodStart,
+    currentPeriodEnd: s.currentPeriodEnd,
+    nextBillingDate: s.nextBillingDate,
+    cancelledAt: s.cancelledAt,
+    createdAt: s.createdAt,
+  };
+}

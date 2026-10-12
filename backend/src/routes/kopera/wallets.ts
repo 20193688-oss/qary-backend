@@ -2,10 +2,20 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { PrismaClient } from '@prisma/client';
 import { WalletService } from '../../kopera/services/wallet.js';
+import { PointsService } from '../../kopera/services/points.js';
 import { audit } from '../../lib/audit.js';
 
 export async function registerWalletRoutes(app: FastifyInstance, prisma: PrismaClient) {
   const wallets = new WalletService(prisma);
+  const pointsSvc = new PointsService(prisma);
+
+  async function earnPoints(userId: string, amountCents: number, type: string, txnId: string) {
+    try {
+      const balance = await pointsSvc.getBalance(userId);
+      const pts = pointsSvc.pointsForTransaction(amountCents, type, balance.tier);
+      if (pts > 0) await pointsSvc.earn(userId, pts, `${type} reward`, txnId);
+    } catch { /* best-effort */ }
+  }
 
   app.get('/api/wallets', { preHandler: [app.requireAuth] }, async (req) => {
     return wallets.getAllBalances(req.auth!.userId);
@@ -43,6 +53,7 @@ export async function registerWalletRoutes(app: FastifyInstance, prisma: PrismaC
       userId: req.auth!.userId, actor: 'user', eventType: 'wallet.deposit',
       payload: { currency: body.currency, amount: body.amount }, requestId: String(req.id), ip: req.ip,
     });
+    await earnPoints(req.auth!.userId, Number(amountCents), 'DEPOSIT', result.transaction.id);
     return reply.send({
       transactionId: result.transaction.id,
       reference: result.transaction.reference,
@@ -97,6 +108,7 @@ export async function registerWalletRoutes(app: FastifyInstance, prisma: PrismaC
         payload: { toUserId: body.toUserId, currency: body.currency, amount: body.amount },
         requestId: String(req.id), ip: req.ip,
       });
+      await earnPoints(req.auth!.userId, Number(amountCents), 'TRANSFER', result.transaction.id);
       return reply.send({
         transactionId: result.transaction.id,
         reference: result.transaction.reference,

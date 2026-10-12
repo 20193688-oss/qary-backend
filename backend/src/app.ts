@@ -26,6 +26,9 @@ import { registerPointsRoutes } from './routes/kopera/points.js';
 import { registerAgentRoutes } from './routes/kopera/agents.js';
 import { registerKycRoutes } from './routes/kopera/kyc.js';
 import { registerGatewayRoutes } from './routes/kopera/gateway.js';
+import { registerNotificationRoutes } from './routes/kopera/notifications.js';
+import { registerDisputeRoutes } from './routes/kopera/disputes.js';
+import { registerSubscriptionRoutes } from './routes/kopera/subscriptions.js';
 
 export interface AppDeps {
   prisma: PrismaClient;
@@ -86,6 +89,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await registerAgentRoutes(app, deps.prisma);
   await registerKycRoutes(app, deps.prisma);
   await registerGatewayRoutes(app, deps.prisma);
+  await registerNotificationRoutes(app, deps.prisma);
+  await registerDisputeRoutes(app, deps.prisma);
+  await registerSubscriptionRoutes(app, deps.prisma);
 
   return app;
 }

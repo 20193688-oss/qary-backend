@@ -26,6 +26,38 @@ const MODEL_DEFAULTS: Record<string, Record<string, unknown>> = {
     interestRate: 0.15,
     outstandingBalance: BigInt(0),
   },
+  loanRepayment: {
+    paidAmount: BigInt(0),
+    paidAt: null,
+    status: 'PENDING',
+  },
+  notification: {
+    channel: 'in_app',
+    readAt: null,
+    sentAt: null,
+    deliveredAt: null,
+    failedAt: null,
+    failReason: null,
+    externalId: null,
+    metadata: null,
+    subject: null,
+  },
+  dispute: {
+    status: 'OPENED',
+    evidenceSubmitted: null,
+    evidenceDeadline: null,
+    resolvedAt: null,
+    outcome: null,
+  },
+  subscription: {
+    status: 'active',
+    intervalCount: 1,
+    retryCount: 0,
+    maxRetries: 3,
+    cancelledAt: null,
+    merchantId: null,
+    metadata: null,
+  },
 };
 
 function matches(row: Row, where: Record<string, unknown>): boolean {
@@ -138,6 +170,15 @@ export function createInMemoryPrisma(): PrismaClient {
         arr().push(row);
         return row;
       },
+      async createMany({ data }: { data: Row[] }) {
+        const rows = data.map((d) => {
+          const defaults = MODEL_DEFAULTS[name] ?? {};
+          const row = { id: d.id ?? randomUUID(), createdAt: new Date(), updatedAt: new Date(), ...defaults, ...d };
+          arr().push(row);
+          return row;
+        });
+        return { count: rows.length };
+      },
       async update({ where, data }: { where: Record<string, unknown>; data: Row }) {
         const r = arr().find((x) => matches(x, where));
         if (!r) throw new Error(`update: ${name} not found`);
@@ -210,7 +251,18 @@ export function createInMemoryPrisma(): PrismaClient {
     ledgerEntry: model('ledgerEntry'),
     fxRate: model('fxRate'),
     invoice: model('invoice'),
-    loan: model('loan'),
+    loan: {
+      ...model('loan'),
+      async findUnique({ where, include }: { where: Record<string, unknown>; include?: { repayments?: unknown } }) {
+        const r = tables.loan!.find((x) => matches(x, where));
+        if (!r) return null;
+        if (include?.repayments) {
+          const reps = tables.loanRepayment!.filter((x) => x.loanId === r.id);
+          return { ...r, repayments: reps };
+        }
+        return r;
+      },
+    },
     loanRepayment: model('loanRepayment'),
     koperaPoints: model('koperaPoints'),
     pointsHistory: model('pointsHistory'),
