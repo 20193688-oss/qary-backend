@@ -93,6 +93,12 @@ export class AntExpenseService {
     })).sort((a, b) => Number(b.monthlyTotal - a.monthlyTotal));
   }
 
+  async listDismissed(userId: string) {
+    return this.prisma.antExpense.findMany({
+      where: { userId, isActive: false },
+    });
+  }
+
   async dismiss(id: string, userId: string) {
     const expense = await this.prisma.antExpense.findUnique({ where: { id } });
     if (!expense) throw new Error('expense_not_found');

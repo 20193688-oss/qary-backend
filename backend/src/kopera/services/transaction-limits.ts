@@ -75,6 +75,21 @@ export class TransactionLimitService {
     return { allowed: true };
   }
 
+  async checkAvailable(userId: string, currency: string, amount: bigint): Promise<{ allowed: boolean; reason?: string }> {
+    const limits = await this.prisma.transactionLimit.findMany({
+      where: { userId, currency: currency.toUpperCase() },
+    });
+
+    for (const raw of limits) {
+      const limit = this.refreshIfNeeded(raw);
+      if (limit.currentUsage + amount > limit.maxAmount) {
+        return { allowed: false, reason: `${limit.limitType}_limit_exceeded` };
+      }
+    }
+
+    return { allowed: true };
+  }
+
   async removeLimit(userId: string, currency: string, limitType: string) {
     const limit = await this.prisma.transactionLimit.findFirst({
       where: { userId, currency: currency.toUpperCase(), limitType: limitType.toLowerCase() },

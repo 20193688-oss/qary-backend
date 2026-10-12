@@ -55,6 +55,15 @@ export class UserSessionService {
     });
   }
 
+  async listAll(userId: string, opts?: { limit?: number; offset?: number }) {
+    return this.prisma.userSession.findMany({
+      where: { userId },
+      take: Math.min(opts?.limit ?? 20, 100),
+      skip: opts?.offset ?? 0,
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   async cleanupExpired() {
     const now = new Date();
     const expired = await this.prisma.userSession.findMany({
