@@ -126,6 +126,63 @@ export class BeneficiaryService {
     };
   }
 
+  async getNetworkMap(userId: string) {
+    const beneficiaries = await this.prisma.beneficiary.findMany({ where: { userId } });
+    const txns = await this.prisma.transaction.findMany({
+      where: { userId, type: 'TRANSFER', status: 'COMPLETED' },
+    });
+
+    const recipientMap: Record<string, { nickname: string; currency: string | null; transferCount: number; totalVolume: bigint; lastTransferAt: Date | null }> = {};
+
+    for (const b of beneficiaries) {
+      recipientMap[b.recipientUserId] = {
+        nickname: b.nickname,
+        currency: (b as any).currency ?? null,
+        transferCount: 0,
+        totalVolume: BigInt(0),
+        lastTransferAt: null,
+      };
+    }
+
+    for (const t of txns) {
+      const recipientId = (t as any).receiverWalletId ? undefined : null;
+      for (const [rid, entry] of Object.entries(recipientMap)) {
+        const matchesSender = (t as any).senderWalletId !== undefined;
+        if (matchesSender) {
+          entry.transferCount++;
+          entry.totalVolume += t.amount;
+          const txDate = t.processedAt ?? t.createdAt;
+          if (!entry.lastTransferAt || txDate > entry.lastTransferAt) entry.lastTransferAt = txDate;
+        }
+      }
+    }
+
+    const frequentRecipients = Object.entries(recipientMap)
+      .filter(([, v]) => v.transferCount > 0)
+      .sort((a, b) => b[1].transferCount - a[1].transferCount)
+      .slice(0, 5)
+      .map(([recipientId, data]) => ({ recipientId, ...data, totalVolume: data.totalVolume }));
+
+    const dormantBeneficiaries = Object.entries(recipientMap)
+      .filter(([, v]) => v.transferCount === 0)
+      .map(([recipientId, data]) => ({ recipientId, nickname: data.nickname, currency: data.currency }));
+
+    const byCurrency: Record<string, number> = {};
+    for (const b of beneficiaries) {
+      const cur = (b as any).currency ?? 'UNSET';
+      byCurrency[cur] = (byCurrency[cur] ?? 0) + 1;
+    }
+
+    return {
+      totalBeneficiaries: beneficiaries.length,
+      activeRecipients: frequentRecipients.length,
+      dormantCount: dormantBeneficiaries.length,
+      byCurrency,
+      frequentRecipients,
+      dormantBeneficiaries,
+    };
+  }
+
   async remove(beneficiaryId: string, userId: string) {
     const b = await this.prisma.beneficiary.findUnique({ where: { id: beneficiaryId } });
     if (!b) throw new Error('beneficiary_not_found');

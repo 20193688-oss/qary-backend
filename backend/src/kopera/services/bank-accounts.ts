@@ -175,6 +175,50 @@ export class BankAccountService {
     };
   }
 
+  async getCoverageAnalysis(userId: string) {
+    const accounts = await this.prisma.bankAccount.findMany({ where: { userId } });
+
+    const byCountry: Record<string, { rails: string[]; currencies: string[]; verifiedCount: number; totalCount: number }> = {};
+    const byRail: Record<string, { countries: string[]; count: number; verifiedCount: number }> = {};
+
+    for (const a of accounts) {
+      if (!byCountry[a.country]) byCountry[a.country] = { rails: [], currencies: [], verifiedCount: 0, totalCount: 0 };
+      const countryEntry = byCountry[a.country];
+      countryEntry.totalCount++;
+      if (a.isVerified) countryEntry.verifiedCount++;
+      if (!countryEntry.rails.includes(a.rail)) countryEntry.rails.push(a.rail);
+      if (!countryEntry.currencies.includes(a.currency)) countryEntry.currencies.push(a.currency);
+
+      if (!byRail[a.rail]) byRail[a.rail] = { countries: [], count: 0, verifiedCount: 0 };
+      const railEntry = byRail[a.rail];
+      railEntry.count++;
+      if (a.isVerified) railEntry.verifiedCount++;
+      if (!railEntry.countries.includes(a.country)) railEntry.countries.push(a.country);
+    }
+
+    const recommendations: string[] = [];
+    const verifiedCount = accounts.filter((a: any) => a.isVerified).length;
+    const unverifiedCount = accounts.length - verifiedCount;
+
+    if (unverifiedCount > 0) recommendations.push(`${unverifiedCount} account(s) need verification`);
+    if (Object.keys(byCountry).length === 1 && accounts.length > 0) recommendations.push('Consider adding accounts in other countries for broader coverage');
+    if (Object.keys(byRail).length === 1 && accounts.length > 0) recommendations.push('Consider diversifying payment rails');
+
+    const hasDefault = accounts.some((a: any) => a.isDefault);
+    if (accounts.length > 0 && !hasDefault) recommendations.push('Set a default bank account');
+
+    return {
+      totalAccounts: accounts.length,
+      verifiedCount,
+      unverifiedCount,
+      countryCoverage: Object.keys(byCountry).length,
+      railCoverage: Object.keys(byRail).length,
+      byCountry,
+      byRail,
+      recommendations,
+    };
+  }
+
   async removeAccount(id: string, userId: string) {
     const acct = await this.prisma.bankAccount.findUnique({ where: { id } });
     if (!acct) throw new Error('account_not_found');

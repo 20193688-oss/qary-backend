@@ -69,6 +69,17 @@ export async function registerBeneficiaryRoutes(app: FastifyInstance, prisma: Pr
     return svc.getTransferReadiness(req.auth!.userId);
   });
 
+  app.get('/api/beneficiaries/network-map', { preHandler: [app.requireAuth] }, async (req) => {
+    const result = await svc.getNetworkMap(req.auth!.userId);
+    return {
+      ...result,
+      frequentRecipients: result.frequentRecipients.map((r: any) => ({
+        ...r,
+        totalVolume: r.totalVolume.toString(),
+      })),
+    };
+  });
+
   app.get('/api/beneficiaries/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const b = await svc.getById(id);

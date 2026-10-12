@@ -65,6 +65,10 @@ export async function registerBankAccountRoutes(app: FastifyInstance, prisma: Pr
     return svc.getPayoutReadiness(req.auth!.userId);
   });
 
+  app.get('/api/bank-accounts/coverage-analysis', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getCoverageAnalysis(req.auth!.userId);
+  });
+
   app.patch('/api/bank-accounts/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const body = z.object({

@@ -67,6 +67,10 @@ export async function registerTokenizedCardRoutes(app: FastifyInstance, prisma: 
     return svc.getExpiryForecast(req.auth!.userId);
   });
 
+  app.get('/api/cards/security-posture', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getSecurityPosture(req.auth!.userId);
+  });
+
   app.get('/api/cards/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const card = await svc.getCard(id);
