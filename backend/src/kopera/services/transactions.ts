@@ -362,4 +362,63 @@ export class TransactionService {
     const limit = Math.min(opts?.limit ?? 50, 100);
     return matched.slice(0, limit);
   }
+
+  async getFeeAnalysis(userId: string, currency?: string) {
+    const where: Record<string, unknown> = { userId, status: 'COMPLETED' };
+    if (currency) where.currency = currency.toUpperCase();
+
+    const txns = await this.prisma.transaction.findMany({ where });
+
+    if (txns.length === 0) {
+      return {
+        totalTransactions: 0,
+        totalFees: '0',
+        avgFeePerTransaction: '0',
+        feeToAmountRatio: 0,
+        byType: {},
+      };
+    }
+
+    let totalFees = BigInt(0);
+    let totalAmount = BigInt(0);
+    const typeMap = new Map<string, { count: number; fees: bigint; amounts: bigint }>();
+
+    for (const t of txns) {
+      const fee = (t as any).feeAmount ?? BigInt(0);
+      totalFees += fee;
+      totalAmount += t.amount;
+
+      const type = t.type;
+      const entry = typeMap.get(type) ?? { count: 0, fees: BigInt(0), amounts: BigInt(0) };
+      entry.count++;
+      entry.fees += fee;
+      entry.amounts += t.amount;
+      typeMap.set(type, entry);
+    }
+
+    const avgFee = txns.length > 0 ? totalFees / BigInt(txns.length) : BigInt(0);
+    const feeToAmountRatio = Number(totalAmount) > 0
+      ? Math.round(Number(totalFees) * 10000 / Number(totalAmount)) / 100
+      : 0;
+
+    const byType: Record<string, any> = {};
+    for (const [type, data] of typeMap) {
+      byType[type] = {
+        count: data.count,
+        totalFees: data.fees.toString(),
+        avgFee: (data.count > 0 ? data.fees / BigInt(data.count) : BigInt(0)).toString(),
+        feeToAmountRatio: Number(data.amounts) > 0
+          ? Math.round(Number(data.fees) * 10000 / Number(data.amounts)) / 100
+          : 0,
+      };
+    }
+
+    return {
+      totalTransactions: txns.length,
+      totalFees: totalFees.toString(),
+      avgFeePerTransaction: avgFee.toString(),
+      feeToAmountRatio,
+      byType,
+    };
+  }
 }

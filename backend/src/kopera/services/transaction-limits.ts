@@ -291,6 +291,47 @@ export class TransactionLimitService {
     };
   }
 
+  async getCurrencyBreakdown(userId: string) {
+    const limits = await this.prisma.transactionLimit.findMany({ where: { userId } });
+
+    if (limits.length === 0) {
+      return {
+        totalLimits: 0,
+        distinctCurrencies: 0,
+        byCurrency: [],
+      };
+    }
+
+    const currMap = new Map<string, { maxTotal: bigint; usageTotal: bigint; daily: number; monthly: number }>();
+    for (const l of limits) {
+      const entry = currMap.get(l.currency) ?? { maxTotal: BigInt(0), usageTotal: BigInt(0), daily: 0, monthly: 0 };
+      entry.maxTotal += l.maxAmount;
+      entry.usageTotal += l.currentUsage;
+      if (l.limitType === 'daily') entry.daily++;
+      else entry.monthly++;
+      currMap.set(l.currency, entry);
+    }
+
+    const byCurrency = Array.from(currMap.entries())
+      .map(([currency, data]) => ({
+        currency,
+        totalMaxAmount: data.maxTotal.toString(),
+        totalCurrentUsage: data.usageTotal.toString(),
+        utilization: Number(data.maxTotal) > 0
+          ? Math.round(Number(data.usageTotal) * 10000 / Number(data.maxTotal)) / 100
+          : 0,
+        dailyLimits: data.daily,
+        monthlyLimits: data.monthly,
+      }))
+      .sort((a, b) => Number(BigInt(b.totalMaxAmount) - BigInt(a.totalMaxAmount)));
+
+    return {
+      totalLimits: limits.length,
+      distinctCurrencies: currMap.size,
+      byCurrency,
+    };
+  }
+
   async removeLimit(userId: string, currency: string, limitType: string) {
     const limit = await this.prisma.transactionLimit.findFirst({
       where: { userId, currency: currency.toUpperCase(), limitType: limitType.toLowerCase() },
