@@ -295,6 +295,62 @@ export class TransactionService {
     };
   }
 
+  async getRecurringPatterns(userId: string) {
+    const txns = await this.prisma.transaction.findMany({
+      where: { userId, status: 'COMPLETED' },
+    });
+
+    if (txns.length === 0) {
+      return { totalTransactions: 0, patternsDetected: 0, patterns: [] };
+    }
+
+    const groups: Record<string, { count: number; dates: Date[]; type: string; counterparty: string; amount: bigint; currency: string }> = {};
+
+    for (const t of txns) {
+      const counterparty = (t as any).counterpartyName ?? 'unknown';
+      const key = `${counterparty}|${t.type}|${t.amount}|${t.currency}`;
+      if (!groups[key]) {
+        groups[key] = { count: 0, dates: [], type: t.type, counterparty, amount: t.amount, currency: t.currency };
+      }
+      groups[key].count++;
+      groups[key].dates.push(new Date(t.createdAt));
+    }
+
+    const patterns = Object.values(groups)
+      .filter(g => g.count >= 2)
+      .map(g => {
+        const sortedDates = g.dates.sort((a, b) => a.getTime() - b.getTime());
+        let totalGapDays = 0;
+        for (let i = 1; i < sortedDates.length; i++) {
+          totalGapDays += (sortedDates[i].getTime() - sortedDates[i - 1].getTime()) / (1000 * 60 * 60 * 24);
+        }
+        const avgGapDays = sortedDates.length > 1
+          ? Math.round(totalGapDays / (sortedDates.length - 1) * 10) / 10
+          : 0;
+
+        let estimatedFrequency: string;
+        if (avgGapDays <= 2) estimatedFrequency = 'daily';
+        else if (avgGapDays <= 10) estimatedFrequency = 'weekly';
+        else if (avgGapDays <= 45) estimatedFrequency = 'monthly';
+        else estimatedFrequency = 'irregular';
+
+        return {
+          counterparty: g.counterparty,
+          type: g.type,
+          amount: g.amount.toString(),
+          currency: g.currency,
+          occurrences: g.count,
+          avgGapDays,
+          estimatedFrequency,
+          firstSeen: sortedDates[0],
+          lastSeen: sortedDates[sortedDates.length - 1],
+        };
+      })
+      .sort((a, b) => b.occurrences - a.occurrences);
+
+    return { totalTransactions: txns.length, patternsDetected: patterns.length, patterns };
+  }
+
   async searchTransactions(userId: string, query: string, opts?: { limit?: number }) {
     const all = await this.prisma.transaction.findMany({ where: { userId } });
     const q = query.toLowerCase();

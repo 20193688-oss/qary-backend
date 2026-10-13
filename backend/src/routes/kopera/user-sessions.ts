@@ -59,6 +59,14 @@ export async function registerUserSessionRoutes(app: FastifyInstance, prisma: Pr
     return svc.getDeviceReport(req.auth!.userId);
   });
 
+  app.get('/api/sessions/geo-distribution', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getGeoDistribution(req.auth!.userId);
+  });
+
+  app.get('/api/sessions/lifecycle', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getSessionLifecycle(req.auth!.userId);
+  });
+
   app.get('/api/sessions/risk-assessment', { preHandler: [app.requireAuth] }, async (req) => {
     return svc.getRiskAssessment(req.auth!.userId);
   });

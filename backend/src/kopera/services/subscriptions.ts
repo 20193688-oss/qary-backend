@@ -368,6 +368,59 @@ export class SubscriptionService {
     };
   }
 
+  async getBillingHealth(userId: string) {
+    const subs = await this.prisma.subscription.findMany({ where: { userId } });
+
+    const active = subs.filter((s: any) => s.status === 'active');
+    const pastDue = subs.filter((s: any) => s.status === 'past_due');
+    const paused = subs.filter((s: any) => s.status === 'paused');
+
+    let totalRetries = 0;
+    let subsWithRetries = 0;
+    const atRisk: Array<{ id: string; planName: string; retryCount: number; status: string }> = [];
+
+    for (const s of subs) {
+      const retries = (s as any).retryCount ?? 0;
+      totalRetries += retries;
+      if (retries > 0) subsWithRetries++;
+      if (retries >= 2 || s.status === 'past_due') {
+        atRisk.push({ id: s.id, planName: s.planName, retryCount: retries, status: s.status });
+      }
+    }
+
+    const avgRetries = subs.length > 0
+      ? Math.round(totalRetries / subs.length * 100) / 100
+      : 0;
+
+    const failureRate = subs.length > 0
+      ? Math.round((pastDue.length / subs.length) * 10000) / 100
+      : 0;
+
+    let healthScore = 100;
+    healthScore -= pastDue.length * 20;
+    healthScore -= subsWithRetries * 5;
+    healthScore = Math.max(0, healthScore);
+
+    let rating: string;
+    if (healthScore >= 90) rating = 'excellent';
+    else if (healthScore >= 70) rating = 'good';
+    else if (healthScore >= 50) rating = 'fair';
+    else rating = 'poor';
+
+    return {
+      totalSubscriptions: subs.length,
+      activeCount: active.length,
+      pastDueCount: pastDue.length,
+      pausedCount: paused.length,
+      failureRate,
+      avgRetries,
+      atRiskCount: atRisk.length,
+      atRiskSubscriptions: atRisk,
+      healthScore,
+      rating,
+    };
+  }
+
   async processDueBillings() {
     const now = new Date();
     const due = await this.prisma.subscription.findMany({

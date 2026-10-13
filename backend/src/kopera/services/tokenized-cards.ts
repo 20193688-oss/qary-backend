@@ -255,6 +255,60 @@ export class TokenizedCardService {
     };
   }
 
+  async getNetworkDiversification(userId: string) {
+    const cards = await this.prisma.tokenizedCard.findMany({ where: { userId } });
+
+    if (cards.length === 0) {
+      return {
+        totalCards: 0,
+        distinctNetworks: 0,
+        concentrationIndex: 0,
+        coverage: 'none' as const,
+        dominantNetwork: null,
+        byNetwork: [],
+      };
+    }
+
+    const networkCounts: Record<string, number> = {};
+    for (const c of cards) {
+      networkCounts[c.network] = (networkCounts[c.network] ?? 0) + 1;
+    }
+
+    const distinctNetworks = Object.keys(networkCounts).length;
+
+    let hhi = 0;
+    for (const count of Object.values(networkCounts)) {
+      const share = count / cards.length;
+      hhi += share * share;
+    }
+    const concentrationIndex = Math.round(hhi * 10000) / 100;
+
+    let coverage: string;
+    if (distinctNetworks >= 4) coverage = 'excellent';
+    else if (distinctNetworks >= 3) coverage = 'diverse';
+    else if (distinctNetworks >= 2) coverage = 'limited';
+    else coverage = 'single';
+
+    const byNetwork = Object.entries(networkCounts)
+      .map(([network, count]) => ({
+        network,
+        count,
+        sharePercent: Math.round(count / cards.length * 10000) / 100,
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    const dominantNetwork = byNetwork[0]?.network ?? null;
+
+    return {
+      totalCards: cards.length,
+      distinctNetworks,
+      concentrationIndex,
+      coverage,
+      dominantNetwork,
+      byNetwork,
+    };
+  }
+
   async removeCard(id: string, userId: string) {
     const card = await this.prisma.tokenizedCard.findUnique({ where: { id } });
     if (!card) throw new Error('card_not_found');
