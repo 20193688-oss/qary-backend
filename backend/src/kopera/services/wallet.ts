@@ -543,4 +543,60 @@ export class WalletService {
       data: { isDefault: true },
     });
   }
+
+  async getCurrencyDiversification(userId: string) {
+    const wallets = await this.prisma.wallet.findMany({
+      where: { userId, status: 'ACTIVE' },
+    });
+
+    if (wallets.length === 0) {
+      return {
+        totalWallets: 0,
+        totalBalance: '0',
+        currencies: [],
+        hhi: 0,
+        concentrationLevel: 'none' as const,
+        recommendation: 'No active wallets found.',
+      };
+    }
+
+    const totalBalance = wallets.reduce((sum, w) => sum + w.balance, BigInt(0));
+    const currencies = wallets.map((w) => {
+      const share = totalBalance > BigInt(0)
+        ? Number((w.balance * BigInt(10000)) / totalBalance) / 100
+        : 0;
+      return {
+        currency: w.currency,
+        balance: w.balance.toString(),
+        share: Math.round(share * 100) / 100,
+      };
+    }).sort((a, b) => b.share - a.share);
+
+    const hhi = currencies.reduce((sum, c) => sum + (c.share * c.share), 0);
+    const normalizedHhi = Math.round(hhi * 100) / 100;
+
+    let concentrationLevel: 'high' | 'moderate' | 'low' | 'none';
+    if (wallets.length <= 1) concentrationLevel = 'high';
+    else if (normalizedHhi > 5000) concentrationLevel = 'high';
+    else if (normalizedHhi > 2500) concentrationLevel = 'moderate';
+    else concentrationLevel = 'low';
+
+    let recommendation: string;
+    if (concentrationLevel === 'high') {
+      recommendation = 'Consider diversifying across more currencies to reduce concentration risk.';
+    } else if (concentrationLevel === 'moderate') {
+      recommendation = 'Moderate diversification. Consider rebalancing if one currency dominates.';
+    } else {
+      recommendation = 'Good currency diversification across wallets.';
+    }
+
+    return {
+      totalWallets: wallets.length,
+      totalBalance: totalBalance.toString(),
+      currencies,
+      hhi: normalizedHhi,
+      concentrationLevel,
+      recommendation,
+    };
+  }
 }
