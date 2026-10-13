@@ -275,6 +275,47 @@ export class BusinessProfileService {
     };
   }
 
+  async getRiskProfile(userId: string) {
+    const profile = await this.prisma.businessProfile.findUnique({ where: { userId } });
+    if (!profile) throw new Error('profile_not_found');
+
+    const fields = ['taxId', 'taxIdType', 'taxIdCountry', 'legalName', 'tradeName',
+      'incorporationDate', 'economicActivity', 'ciiu', 'fiscalAddress',
+      'legalRepName', 'legalRepDocType', 'legalRepDocNumber'] as const;
+    const filledCount = fields.filter(f => !!(profile as any)[f]).length;
+    const completeness = Math.round((filledCount / fields.length) * 100);
+
+    const riskScore = profile.riskScore ?? null;
+    const reputationScore = (profile as any).reputationScore ?? null;
+    const complianceScore = (profile as any).complianceScore ?? null;
+    const hasScreening = !!(profile as any).lastScreeningAt;
+    const isVerified = profile.status === 'APPROVED';
+
+    const factors: Array<{ factor: string; status: string; weight: number; score: number }> = [];
+
+    factors.push({ factor: 'verification', status: isVerified ? 'pass' : 'fail', weight: 25, score: isVerified ? 25 : 0 });
+    factors.push({ factor: 'completeness', status: completeness >= 80 ? 'pass' : completeness >= 50 ? 'partial' : 'fail', weight: 20, score: Math.round(completeness * 0.2) });
+    factors.push({ factor: 'screening', status: hasScreening ? 'pass' : 'fail', weight: 20, score: hasScreening ? 20 : 0 });
+    factors.push({ factor: 'risk_score', status: riskScore !== null ? (riskScore <= 50 ? 'pass' : 'warning') : 'unknown', weight: 20, score: riskScore !== null ? Math.round((100 - Math.min(riskScore, 100)) * 0.2) : 0 });
+    factors.push({ factor: 'compliance', status: complianceScore !== null ? (complianceScore >= 70 ? 'pass' : 'warning') : 'unknown', weight: 15, score: complianceScore !== null ? Math.round(Math.min(complianceScore, 100) * 0.15) : 0 });
+
+    const overallScore = factors.reduce((sum, f) => sum + f.score, 0);
+    const riskLevel = overallScore >= 80 ? 'low' : overallScore >= 50 ? 'medium' : 'high';
+
+    return {
+      userId,
+      status: profile.status,
+      overallScore,
+      riskLevel,
+      completeness,
+      riskScore,
+      reputationScore,
+      complianceScore,
+      hasScreening,
+      factors,
+    };
+  }
+
   async reject(userId: string, reason: string) {
     const profile = await this.prisma.businessProfile.findUnique({ where: { userId } });
     if (!profile) throw new Error('profile_not_found');

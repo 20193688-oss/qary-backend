@@ -313,6 +313,50 @@ export class KycService {
     };
   }
 
+  async getDocumentCompleteness(userId: string) {
+    const profile = await this.prisma.kycProfile.findUnique({ where: { userId } });
+    if (!profile) throw new Error('kyc_not_found');
+
+    const documents = [
+      { name: 'documentFrontUrl', label: 'Document Front', uploaded: !!(profile as any).documentFrontUrl },
+      { name: 'documentBackUrl', label: 'Document Back', uploaded: !!(profile as any).documentBackUrl },
+      { name: 'selfieUrl', label: 'Selfie', uploaded: !!(profile as any).selfieUrl },
+      { name: 'livenessImageUrl', label: 'Liveness Image', uploaded: !!(profile as any).livenessImageUrl },
+    ];
+
+    const uploadedCount = documents.filter(d => d.uploaded).length;
+    const completeness = Math.round((uploadedCount / documents.length) * 100);
+    const missingDocuments = documents.filter(d => !d.uploaded).map(d => d.label);
+
+    const personalFields = [
+      { name: 'firstName', filled: !!(profile as any).firstName },
+      { name: 'lastName', filled: !!(profile as any).lastName },
+      { name: 'dateOfBirth', filled: !!(profile as any).dateOfBirth },
+      { name: 'nationality', filled: !!(profile as any).nationality },
+      { name: 'documentNumber', filled: !!(profile as any).documentNumber },
+      { name: 'documentCountry', filled: !!(profile as any).documentCountry },
+    ];
+
+    const filledPersonal = personalFields.filter(f => f.filled).length;
+    const personalCompleteness = Math.round((filledPersonal / personalFields.length) * 100);
+
+    const overallCompleteness = Math.round(((uploadedCount + filledPersonal) / (documents.length + personalFields.length)) * 100);
+    const isReady = overallCompleteness === 100;
+
+    return {
+      documentCompleteness: completeness,
+      personalCompleteness,
+      overallCompleteness,
+      isReady,
+      uploadedDocuments: uploadedCount,
+      totalDocuments: documents.length,
+      missingDocuments,
+      documents,
+      personalFields,
+      status: profile.status,
+    };
+  }
+
   async setRiskScore(userId: string, riskScore: number) {
     const profile = await this.prisma.kycProfile.findUnique({ where: { userId } });
     if (!profile) throw new Error('kyc_not_found');

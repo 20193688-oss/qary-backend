@@ -225,6 +225,61 @@ export class AntExpenseService {
     };
   }
 
+  async getActionPlan(userId: string) {
+    const expenses = await this.prisma.antExpense.findMany({ where: { userId, isActive: true } });
+
+    if (expenses.length === 0) {
+      return {
+        totalExpenses: 0,
+        totalMonthlyCost: '0',
+        totalPotentialSavings: '0',
+        actions: [] as Array<{ merchantName: string; category: string; currency: string; monthlyTotal: string; savingsIfCut: string; priority: string; suggestion: string | null }>,
+        summary: { highPriority: 0, mediumPriority: 0, lowPriority: 0 },
+      };
+    }
+
+    let totalMonthlyCost = BigInt(0);
+    let totalPotentialSavings = BigInt(0);
+
+    const actions = expenses.map(e => {
+      totalMonthlyCost += e.monthlyTotal;
+      const savings = e.savingsIfCut ?? BigInt(0);
+      totalPotentialSavings += savings;
+
+      const savingsRatio = e.monthlyTotal > BigInt(0) && savings > BigInt(0)
+        ? Number(savings * BigInt(100) / e.monthlyTotal)
+        : 0;
+      const priority = savingsRatio >= 50 ? 'high' : savingsRatio >= 20 ? 'medium' : 'low';
+
+      return {
+        merchantName: e.merchantName,
+        category: e.category,
+        currency: e.currency,
+        monthlyTotal: e.monthlyTotal.toString(),
+        savingsIfCut: savings.toString(),
+        priority,
+        suggestion: e.suggestion ?? null,
+      };
+    });
+
+    const priorityOrder = { high: 0, medium: 1, low: 2 };
+    actions.sort((a, b) => (priorityOrder[a.priority as keyof typeof priorityOrder] - priorityOrder[b.priority as keyof typeof priorityOrder]) || (Number(BigInt(b.savingsIfCut) - BigInt(a.savingsIfCut))));
+
+    const summary = {
+      highPriority: actions.filter(a => a.priority === 'high').length,
+      mediumPriority: actions.filter(a => a.priority === 'medium').length,
+      lowPriority: actions.filter(a => a.priority === 'low').length,
+    };
+
+    return {
+      totalExpenses: expenses.length,
+      totalMonthlyCost: totalMonthlyCost.toString(),
+      totalPotentialSavings: totalPotentialSavings.toString(),
+      actions,
+      summary,
+    };
+  }
+
   async dismiss(id: string, userId: string) {
     const expense = await this.prisma.antExpense.findUnique({ where: { id } });
     if (!expense) throw new Error('expense_not_found');

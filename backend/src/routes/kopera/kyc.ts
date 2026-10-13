@@ -210,6 +210,16 @@ export async function registerKycRoutes(app: FastifyInstance, prisma: PrismaClie
     }
   });
 
+  app.get('/api/kyc/document-completeness', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    try {
+      return await kyc.getDocumentCompleteness(req.auth!.userId);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      if (msg === 'kyc_not_found') return reply.code(404).send({ error: msg });
+      throw err;
+    }
+  });
+
   // Business (KYB) registration
   app.post('/api/kyb/register', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const body = z.object({

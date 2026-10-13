@@ -282,6 +282,49 @@ export class BankAccountService {
     };
   }
 
+  async getHealthCheck(userId: string) {
+    const accounts = await this.prisma.bankAccount.findMany({ where: { userId } });
+
+    if (accounts.length === 0) {
+      return {
+        totalAccounts: 0,
+        healthScore: 0,
+        rating: 'none' as const,
+        issues: ['No bank accounts added'] as string[],
+        checks: { hasDefault: false, verificationRate: 0, multiRail: false, multiCountry: false, multiCurrency: false },
+      };
+    }
+
+    const hasDefault = accounts.some((a: any) => a.isDefault);
+    const verifiedCount = accounts.filter((a: any) => a.isVerified).length;
+    const verificationRate = Math.round((verifiedCount / accounts.length) * 100);
+    const rails = new Set(accounts.map((a: any) => a.rail));
+    const countries = new Set(accounts.map((a: any) => a.country));
+    const currencies = new Set(accounts.map((a: any) => a.currency));
+    const multiRail = rails.size > 1;
+    const multiCountry = countries.size > 1;
+    const multiCurrency = currencies.size > 1;
+
+    const issues: string[] = [];
+    let score = 100;
+
+    if (!hasDefault) { score -= 15; issues.push('No default account set'); }
+    if (verificationRate < 100) { score -= Math.round((100 - verificationRate) * 0.3); issues.push(`${accounts.length - verifiedCount} unverified account(s)`); }
+    if (!multiRail && accounts.length > 1) { score -= 10; issues.push('All accounts use the same payment rail'); }
+    if (!multiCountry && accounts.length > 1) { score -= 10; issues.push('All accounts in the same country'); }
+
+    score = Math.max(0, score);
+    const rating = score >= 80 ? 'excellent' : score >= 60 ? 'good' : score >= 40 ? 'fair' : 'poor';
+
+    return {
+      totalAccounts: accounts.length,
+      healthScore: score,
+      rating,
+      issues,
+      checks: { hasDefault, verificationRate, multiRail, multiCountry, multiCurrency },
+    };
+  }
+
   async removeAccount(id: string, userId: string) {
     const acct = await this.prisma.bankAccount.findUnique({ where: { id } });
     if (!acct) throw new Error('account_not_found');

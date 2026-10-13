@@ -301,6 +301,56 @@ export class FxService {
     };
   }
 
+  async getCurrencyExposureReport(userId: string) {
+    const txns = await this.prisma.transaction.findMany({
+      where: { userId, type: 'FX_CONVERSION', status: 'COMPLETED' },
+    });
+
+    if (txns.length === 0) {
+      return {
+        totalConversions: 0,
+        netFlows: {} as Record<string, string>,
+        primarySourceCurrency: null as string | null,
+        primaryTargetCurrency: null as string | null,
+        directionalBias: 'neutral' as string,
+      };
+    }
+
+    const flows: Record<string, bigint> = {};
+
+    for (const t of txns) {
+      const src = (t as any).fxSourceCurrency ?? t.currency;
+      const tgt = (t as any).fxTargetCurrency ?? '';
+      const srcAmt = (t as any).fxSourceAmount ?? BigInt(0);
+      const tgtAmt = (t as any).fxTargetAmount ?? BigInt(0);
+
+      flows[src] = (flows[src] ?? BigInt(0)) - srcAmt;
+      flows[tgt] = (flows[tgt] ?? BigInt(0)) + tgtAmt;
+    }
+
+    const netFlows: Record<string, string> = {};
+    let maxOutflow = { currency: '', amount: BigInt(0) };
+    let maxInflow = { currency: '', amount: BigInt(0) };
+
+    for (const [cur, amount] of Object.entries(flows)) {
+      netFlows[cur] = amount.toString();
+      if (amount < maxOutflow.amount) maxOutflow = { currency: cur, amount };
+      if (amount > maxInflow.amount) maxInflow = { currency: cur, amount };
+    }
+
+    const directionalBias = maxOutflow.currency && maxInflow.currency
+      ? `${maxOutflow.currency} to ${maxInflow.currency}`
+      : 'neutral';
+
+    return {
+      totalConversions: txns.length,
+      netFlows,
+      primarySourceCurrency: maxOutflow.currency || null,
+      primaryTargetCurrency: maxInflow.currency || null,
+      directionalBias,
+    };
+  }
+
   async storeRate(baseCurrency: string, quoteCurrency: string, bid: number, ask: number, source: string) {
     const mid = (bid + ask) / 2;
     const spread = ask - bid;
