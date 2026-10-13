@@ -89,6 +89,10 @@ export async function registerSubscriptionRoutes(app: FastifyInstance, prisma: P
     };
   });
 
+  app.get('/api/subscriptions/usage-timeline', { preHandler: [app.requireAuth] }, async (req) => {
+    return subscriptions.getUsageTimeline(req.auth!.userId);
+  });
+
   app.get('/api/subscriptions/churn-analysis', { preHandler: [app.requireAuth] }, async (req) => {
     const result = await subscriptions.getChurnAnalysis(req.auth!.userId);
     return {

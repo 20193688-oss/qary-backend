@@ -198,6 +198,74 @@ export class PaymentLinkService {
     };
   }
 
+  async getLifecycleAnalysis(userId: string) {
+    const links = await this.prisma.paymentLink.findMany({ where: { userId } });
+
+    let usedCount = 0;
+    let expiredUnusedCount = 0;
+    let activeCount = 0;
+    let deactivatedCount = 0;
+    let totalTimeToFirstUseMs = 0;
+    let usedWithTimeCount = 0;
+    let totalLifespanMs = 0;
+    let lifespanCount = 0;
+    const byCurrency: Record<string, { count: number; totalAmount: bigint; usedCount: number }> = {};
+
+    for (const l of links) {
+      if (!byCurrency[l.currency]) byCurrency[l.currency] = { count: 0, totalAmount: BigInt(0), usedCount: 0 };
+      byCurrency[l.currency].count++;
+      byCurrency[l.currency].totalAmount += l.amount;
+
+      if (l.timesUsed > 0) {
+        usedCount++;
+        byCurrency[l.currency].usedCount++;
+        if ((l as any).lastUsedAt && l.createdAt) {
+          totalTimeToFirstUseMs += new Date((l as any).lastUsedAt).getTime() - new Date(l.createdAt).getTime();
+          usedWithTimeCount++;
+        }
+      }
+
+      if (l.status === 'expired' && l.timesUsed === 0) expiredUnusedCount++;
+      if (l.status === 'active') activeCount++;
+      if (l.status === 'deactivated') deactivatedCount++;
+
+      if (l.expiresAt && l.createdAt) {
+        totalLifespanMs += new Date(l.expiresAt).getTime() - new Date(l.createdAt).getTime();
+        lifespanCount++;
+      }
+    }
+
+    const abandonmentRate = links.length > 0
+      ? Math.round((expiredUnusedCount / links.length) * 10000) / 100
+      : 0;
+    const avgTimeToFirstUseMs = usedWithTimeCount > 0
+      ? Math.round(totalTimeToFirstUseMs / usedWithTimeCount)
+      : null;
+    const avgLifespanDays = lifespanCount > 0
+      ? Math.round(totalLifespanMs / lifespanCount / (1000 * 60 * 60 * 24) * 10) / 10
+      : null;
+
+    const currencyBreakdown = Object.entries(byCurrency).map(([currency, data]) => ({
+      currency,
+      count: data.count,
+      totalAmount: data.totalAmount.toString(),
+      usedCount: data.usedCount,
+      conversionRate: data.count > 0 ? Math.round((data.usedCount / data.count) * 10000) / 100 : 0,
+    }));
+
+    return {
+      totalLinks: links.length,
+      activeCount,
+      usedCount,
+      expiredUnusedCount,
+      deactivatedCount,
+      abandonmentRate,
+      avgTimeToFirstUseMs,
+      avgLifespanDays,
+      currencyBreakdown,
+    };
+  }
+
   async deactivate(id: string, userId: string) {
     const link = await this.prisma.paymentLink.findUnique({ where: { id } });
     if (!link) throw new Error('link_not_found');

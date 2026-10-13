@@ -223,6 +223,74 @@ export class DisputeService {
     };
   }
 
+  async getEscalationAnalysis(userId: string) {
+    const disputes = await this.prisma.dispute.findMany({ where: { userId } });
+
+    let escalatedCount = 0;
+    let nonEscalatedCount = 0;
+    let totalEscalationTimeMs = 0;
+    let escalatedWithTimeCount = 0;
+    let escalatedResolvedCount = 0;
+    let nonEscalatedResolvedCount = 0;
+    let escalatedResolvedTimeMs = 0;
+    let nonEscalatedResolvedTimeMs = 0;
+    const reasonEscalationCount: Record<string, { escalated: number; total: number }> = {};
+
+    for (const d of disputes) {
+      const reason = d.reason ?? 'unknown';
+      if (!reasonEscalationCount[reason]) reasonEscalationCount[reason] = { escalated: 0, total: 0 };
+      reasonEscalationCount[reason].total++;
+
+      const wasEscalated = d.status === 'EVIDENCE_NEEDED' || d.status === 'UNDER_REVIEW' ||
+        ((d as any).evidenceSubmitted != null);
+
+      if (wasEscalated) {
+        escalatedCount++;
+        reasonEscalationCount[reason].escalated++;
+        if (d.resolvedAt) {
+          escalatedResolvedCount++;
+          escalatedResolvedTimeMs += d.resolvedAt.getTime() - d.createdAt.getTime();
+        }
+      } else {
+        nonEscalatedCount++;
+        if (d.resolvedAt) {
+          nonEscalatedResolvedCount++;
+          nonEscalatedResolvedTimeMs += d.resolvedAt.getTime() - d.createdAt.getTime();
+        }
+      }
+    }
+
+    const escalationRate = disputes.length > 0
+      ? Math.round((escalatedCount / disputes.length) * 10000) / 100
+      : 0;
+
+    const avgEscalatedResolutionDays = escalatedResolvedCount > 0
+      ? Math.round(escalatedResolvedTimeMs / escalatedResolvedCount / (1000 * 60 * 60 * 24) * 10) / 10
+      : null;
+    const avgNonEscalatedResolutionDays = nonEscalatedResolvedCount > 0
+      ? Math.round(nonEscalatedResolvedTimeMs / nonEscalatedResolvedCount / (1000 * 60 * 60 * 24) * 10) / 10
+      : null;
+
+    const reasonBreakdown = Object.entries(reasonEscalationCount)
+      .map(([reason, data]) => ({
+        reason,
+        total: data.total,
+        escalated: data.escalated,
+        escalationRate: data.total > 0 ? Math.round((data.escalated / data.total) * 10000) / 100 : 0,
+      }))
+      .sort((a, b) => b.escalationRate - a.escalationRate);
+
+    return {
+      totalDisputes: disputes.length,
+      escalatedCount,
+      nonEscalatedCount,
+      escalationRate,
+      avgEscalatedResolutionDays,
+      avgNonEscalatedResolutionDays,
+      reasonBreakdown,
+    };
+  }
+
   async resolve(disputeId: string, outcome: string, notes?: string) {
     const dispute = await this.prisma.dispute.findUnique({ where: { id: disputeId } });
     if (!dispute) throw new Error('dispute_not_found');

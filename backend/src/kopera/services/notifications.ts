@@ -216,6 +216,62 @@ export class NotificationService {
     };
   }
 
+  async getChannelEffectiveness(userId: string) {
+    const all = await this.prisma.notification.findMany({ where: { userId } });
+
+    const channels: Record<string, {
+      total: number; delivered: number; failed: number; read: number;
+      totalReadTimeMs: number; readWithTime: number;
+    }> = {};
+
+    for (const n of all) {
+      const ch = n.channel;
+      if (!channels[ch]) channels[ch] = { total: 0, delivered: 0, failed: 0, read: 0, totalReadTimeMs: 0, readWithTime: 0 };
+      channels[ch].total++;
+      if (n.deliveredAt) channels[ch].delivered++;
+      if (n.failedAt) channels[ch].failed++;
+      if (n.readAt) {
+        channels[ch].read++;
+        if (n.sentAt) {
+          channels[ch].totalReadTimeMs += new Date(n.readAt).getTime() - new Date(n.sentAt).getTime();
+          channels[ch].readWithTime++;
+        }
+      }
+    }
+
+    const channelScores: Array<{
+      channel: string; total: number; deliveryRate: number; readRate: number;
+      avgReadTimeMs: number | null; effectivenessScore: number;
+    }> = [];
+
+    for (const [channel, data] of Object.entries(channels)) {
+      const deliveryRate = data.total > 0 ? Math.round((data.delivered / data.total) * 10000) / 100 : 0;
+      const readRate = data.total > 0 ? Math.round((data.read / data.total) * 10000) / 100 : 0;
+      const avgReadTimeMs = data.readWithTime > 0 ? Math.round(data.totalReadTimeMs / data.readWithTime) : null;
+      const effectivenessScore = Math.round((deliveryRate * 0.4 + readRate * 0.6) * 100) / 100;
+
+      channelScores.push({ channel, total: data.total, deliveryRate, readRate, avgReadTimeMs, effectivenessScore });
+    }
+
+    channelScores.sort((a, b) => b.effectivenessScore - a.effectivenessScore);
+
+    const recommendations: string[] = [];
+    for (const cs of channelScores) {
+      if (cs.deliveryRate < 50) recommendations.push(`${cs.channel} has low delivery rate (${cs.deliveryRate}%) — check configuration`);
+      if (cs.readRate < 20 && cs.total > 5) recommendations.push(`${cs.channel} has low read rate (${cs.readRate}%) — consider reducing volume`);
+    }
+
+    const bestChannel = channelScores.length > 0 ? channelScores[0].channel : null;
+
+    return {
+      totalNotifications: all.length,
+      channelCount: channelScores.length,
+      channels: channelScores,
+      bestChannel,
+      recommendations,
+    };
+  }
+
   async deleteAllRead(userId: string) {
     return this.prisma.notification.deleteMany({
       where: { userId, readAt: { not: null } },
