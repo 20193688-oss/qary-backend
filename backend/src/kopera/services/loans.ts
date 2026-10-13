@@ -376,6 +376,66 @@ export class LoanService {
     };
   }
 
+  async getInterestCostAnalysis(userId: string) {
+    const loans = await this.prisma.loan.findMany({
+      where: { userId, status: { in: ['ACTIVE', 'APPROVED', 'DISBURSED'] } },
+    });
+
+    if (loans.length === 0) {
+      return {
+        totalLoans: 0,
+        totalPrincipal: '0',
+        totalInterestCost: '0',
+        weightedAvgRate: 0,
+        interestToPrincipalRatio: 0,
+        byLoan: [] as Array<{ loanId: string; currency: string; principal: string; interestCost: string; rate: number; costRank: number }>,
+      };
+    }
+
+    let totalPrincipal = BigInt(0);
+    let totalInterestCost = BigInt(0);
+    let weightedRateSum = 0;
+
+    const byLoan: Array<{ loanId: string; currency: string; principal: string; interestCost: string; rate: number; costRank: number }> = [];
+
+    for (const loan of loans) {
+      const principal = loan.principalAmount;
+      const interest = loan.totalInterest ?? BigInt(0);
+      totalPrincipal += principal;
+      totalInterestCost += interest;
+      weightedRateSum += Number(principal) * (loan.interestRate ?? 0);
+
+      byLoan.push({
+        loanId: loan.id,
+        currency: loan.currency,
+        principal: principal.toString(),
+        interestCost: interest.toString(),
+        rate: loan.interestRate ?? 0,
+        costRank: 0,
+      });
+    }
+
+    byLoan.sort((a, b) => Number(BigInt(b.interestCost) - BigInt(a.interestCost)));
+    byLoan.forEach((l, i) => { l.costRank = i + 1; });
+
+    const weightedAvgRate = totalPrincipal > BigInt(0)
+      ? Math.round((weightedRateSum / Number(totalPrincipal)) * 10000) / 10000
+      : 0;
+
+    const interestToPrincipalRatio = totalPrincipal > BigInt(0)
+      ? Math.round((Number(totalInterestCost) / Number(totalPrincipal)) * 10000) / 100
+      : 0;
+
+    return {
+      totalLoans: loans.length,
+      totalPrincipal: totalPrincipal.toString(),
+      totalInterestCost: totalInterestCost.toString(),
+      weightedAvgRate,
+      interestToPrincipalRatio,
+      byLoan,
+    };
+  }
+
   async simulate(principalAmount: number, currency: string, termMonths: number, interestRate?: number) {
     const rate = interestRate ?? this.getDefaultRate(currency);
     const { monthlyPayment, totalInterest, tcea } = this.calculateAmortization(

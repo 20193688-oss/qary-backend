@@ -369,6 +369,78 @@ export class LoanRepaymentService {
     };
   }
 
+  async getPartialPaymentAnalysis(loanId: string) {
+    const repayments = await this.prisma.loanRepayment.findMany({
+      where: { loanId },
+      orderBy: { installment: 'asc' },
+    });
+
+    if (repayments.length === 0) {
+      return {
+        loanId,
+        totalInstallments: 0,
+        partialPayments: 0,
+        fullPayments: 0,
+        unpaidCount: 0,
+        avgPartialRatio: 0,
+        cumulativeShortfall: '0',
+        trend: 'none' as string,
+        installments: [] as Array<{ installment: number; amount: string; paidAmount: string; ratio: number; isPartial: boolean }>,
+      };
+    }
+
+    let partialPayments = 0;
+    let fullPayments = 0;
+    let unpaidCount = 0;
+    let cumulativeShortfall = BigInt(0);
+    const ratios: number[] = [];
+    const installments: Array<{ installment: number; amount: string; paidAmount: string; ratio: number; isPartial: boolean }> = [];
+
+    for (const r of repayments) {
+      const ratio = r.amount > BigInt(0) ? Math.round((Number(r.paidAmount) / Number(r.amount)) * 10000) / 100 : 0;
+      const isPartial = r.paidAmount > BigInt(0) && r.paidAmount < r.amount;
+
+      if (r.paidAmount === BigInt(0)) unpaidCount++;
+      else if (isPartial) partialPayments++;
+      else fullPayments++;
+
+      if (r.amount > r.paidAmount) cumulativeShortfall += r.amount - r.paidAmount;
+      if (r.paidAmount > BigInt(0)) ratios.push(ratio);
+
+      installments.push({
+        installment: r.installment,
+        amount: r.amount.toString(),
+        paidAmount: r.paidAmount.toString(),
+        ratio,
+        isPartial,
+      });
+    }
+
+    const avgPartialRatio = ratios.length > 0
+      ? Math.round((ratios.reduce((s, r) => s + r, 0) / ratios.length) * 100) / 100
+      : 0;
+
+    let trend = 'none';
+    if (ratios.length >= 2) {
+      const half = Math.floor(ratios.length / 2);
+      const firstAvg = ratios.slice(0, half).reduce((s, r) => s + r, 0) / half;
+      const secondAvg = ratios.slice(half).reduce((s, r) => s + r, 0) / (ratios.length - half);
+      trend = secondAvg > firstAvg + 5 ? 'improving' : secondAvg < firstAvg - 5 ? 'deteriorating' : 'stable';
+    }
+
+    return {
+      loanId,
+      totalInstallments: repayments.length,
+      partialPayments,
+      fullPayments,
+      unpaidCount,
+      avgPartialRatio,
+      cumulativeShortfall: cumulativeShortfall.toString(),
+      trend,
+      installments,
+    };
+  }
+
   async getScheduleSummary(loanId: string) {
     const repayments = await this.prisma.loanRepayment.findMany({
       where: { loanId },
