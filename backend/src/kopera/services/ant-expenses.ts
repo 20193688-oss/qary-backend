@@ -170,6 +170,61 @@ export class AntExpenseService {
     };
   }
 
+  async getMerchantConcentration(userId: string) {
+    const expenses = await this.prisma.antExpense.findMany({ where: { userId, isActive: true } });
+
+    if (expenses.length === 0) {
+      return {
+        totalMerchants: 0,
+        totalMonthlySpend: '0',
+        herfindahlIndex: 0,
+        concentrationLevel: 'none' as const,
+        merchantShares: [] as { merchantName: string; category: string; currency: string; monthlyTotal: string; sharePercent: number }[],
+        dominantMerchant: null as { merchantName: string; category: string; sharePercent: number } | null,
+        recommendations: [] as string[],
+      };
+    }
+
+    let totalMonthly = BigInt(0);
+    for (const e of expenses) totalMonthly += e.monthlyTotal;
+
+    const merchantShares = expenses.map(e => {
+      const sharePercent = totalMonthly > BigInt(0)
+        ? Math.round(Number(e.monthlyTotal * BigInt(10000) / totalMonthly)) / 100
+        : 0;
+      return {
+        merchantName: e.merchantName,
+        category: e.category,
+        currency: e.currency,
+        monthlyTotal: e.monthlyTotal.toString(),
+        sharePercent,
+      };
+    }).sort((a, b) => b.sharePercent - a.sharePercent);
+
+    let hhi = 0;
+    for (const s of merchantShares) hhi += s.sharePercent * s.sharePercent;
+    hhi = Math.round(hhi);
+
+    const concentrationLevel = hhi > 5000 ? 'high' : hhi > 2500 ? 'moderate' : 'low';
+    const dominantMerchant = merchantShares[0] && merchantShares[0].sharePercent > 40
+      ? { merchantName: merchantShares[0].merchantName, category: merchantShares[0].category, sharePercent: merchantShares[0].sharePercent }
+      : null;
+
+    const recommendations: string[] = [];
+    if (concentrationLevel === 'high') recommendations.push('Spending is highly concentrated — consider diversifying');
+    if (dominantMerchant) recommendations.push(`${dominantMerchant.merchantName} accounts for ${dominantMerchant.sharePercent}% of spending`);
+
+    return {
+      totalMerchants: expenses.length,
+      totalMonthlySpend: totalMonthly.toString(),
+      herfindahlIndex: hhi,
+      concentrationLevel,
+      merchantShares,
+      dominantMerchant,
+      recommendations,
+    };
+  }
+
   async dismiss(id: string, userId: string) {
     const expense = await this.prisma.antExpense.findUnique({ where: { id } });
     if (!expense) throw new Error('expense_not_found');

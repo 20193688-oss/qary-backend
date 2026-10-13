@@ -131,6 +131,10 @@ export async function registerAntExpenseRoutes(app: FastifyInstance, prisma: Pri
     };
   });
 
+  app.get('/api/ant-expenses/merchant-concentration', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getMerchantConcentration(req.auth!.userId);
+  });
+
   app.get('/api/ant-expenses/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const expense = await svc.getById(id);

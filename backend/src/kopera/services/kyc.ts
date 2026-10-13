@@ -265,6 +265,54 @@ export class KycService {
     };
   }
 
+  async getOnboardingFunnel() {
+    const profiles = await this.prisma.kycProfile.findMany({});
+
+    const byStatus: Record<string, number> = {};
+    const byDocumentType: Record<string, number> = {};
+    const byCountry: Record<string, number> = {};
+    let approvedCount = 0;
+    let rejectedCount = 0;
+    let totalVerificationMs = 0;
+    let verifiedWithTimeCount = 0;
+
+    for (const p of profiles) {
+      byStatus[p.status] = (byStatus[p.status] ?? 0) + 1;
+      if (p.documentType) byDocumentType[p.documentType] = (byDocumentType[p.documentType] ?? 0) + 1;
+      if (p.documentCountry) byCountry[p.documentCountry] = (byCountry[p.documentCountry] ?? 0) + 1;
+
+      if (p.status === 'APPROVED') {
+        approvedCount++;
+        if (p.verifiedAt) {
+          totalVerificationMs += new Date(p.verifiedAt).getTime() - new Date(p.createdAt).getTime();
+          verifiedWithTimeCount++;
+        }
+      } else if (p.status === 'REJECTED') {
+        rejectedCount++;
+      }
+    }
+
+    const totalProfiles = profiles.length;
+    const approvalRate = totalProfiles > 0 ? Math.round(approvedCount / totalProfiles * 10000) / 100 : 0;
+    const rejectionRate = totalProfiles > 0 ? Math.round(rejectedCount / totalProfiles * 10000) / 100 : 0;
+    const avgVerificationDays = verifiedWithTimeCount > 0
+      ? Math.round(totalVerificationMs / verifiedWithTimeCount / (1000 * 60 * 60 * 24) * 100) / 100
+      : 0;
+
+    return {
+      totalProfiles,
+      approvedCount,
+      rejectedCount,
+      pendingCount: totalProfiles - approvedCount - rejectedCount,
+      approvalRate,
+      rejectionRate,
+      avgVerificationDays,
+      byStatus,
+      byDocumentType,
+      byCountry,
+    };
+  }
+
   async setRiskScore(userId: string, riskScore: number) {
     const profile = await this.prisma.kycProfile.findUnique({ where: { userId } });
     if (!profile) throw new Error('kyc_not_found');
