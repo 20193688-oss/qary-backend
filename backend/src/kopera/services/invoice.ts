@@ -333,6 +333,61 @@ export class InvoiceService {
     };
   }
 
+  async getReceiverAnalysis(senderId: string) {
+    const invoices = await this.prisma.invoice.findMany({ where: { senderId } });
+
+    const byReceiver: Record<string, {
+      receiverName: string | null;
+      invoiceCount: number;
+      totalBilled: bigint;
+      paidCount: number;
+      totalPaid: bigint;
+      currencies: Set<string>;
+    }> = {};
+
+    for (const inv of invoices) {
+      const key = inv.receiverId ?? inv.receiverName ?? 'unknown';
+      if (!byReceiver[key]) {
+        byReceiver[key] = { receiverName: inv.receiverName, invoiceCount: 0, totalBilled: BigInt(0), paidCount: 0, totalPaid: BigInt(0), currencies: new Set() };
+      }
+      byReceiver[key].invoiceCount++;
+      byReceiver[key].totalBilled += inv.totalAmount;
+      byReceiver[key].currencies.add(inv.currency);
+      if (inv.status === 'PAID') {
+        byReceiver[key].paidCount++;
+        byReceiver[key].totalPaid += inv.totalAmount;
+      }
+    }
+
+    const receivers = Object.entries(byReceiver).map(([receiverId, data]) => ({
+      receiverId,
+      receiverName: data.receiverName,
+      invoiceCount: data.invoiceCount,
+      totalBilled: data.totalBilled.toString(),
+      paidCount: data.paidCount,
+      totalPaid: data.totalPaid.toString(),
+      paymentRate: data.invoiceCount > 0
+        ? Math.round(data.paidCount / data.invoiceCount * 10000) / 100
+        : 0,
+      currencies: [...data.currencies],
+    })).sort((a, b) => Number(BigInt(b.totalBilled) - BigInt(a.totalBilled)));
+
+    const topReceiver = receivers[0] ?? null;
+
+    return {
+      totalInvoices: invoices.length,
+      uniqueReceivers: receivers.length,
+      receivers,
+      topReceiver: topReceiver ? {
+        receiverId: topReceiver.receiverId,
+        receiverName: topReceiver.receiverName,
+        invoiceCount: topReceiver.invoiceCount,
+        totalBilled: topReceiver.totalBilled,
+        paymentRate: topReceiver.paymentRate,
+      } : null,
+    };
+  }
+
   private getDefaultTaxRate(country: string): number {
     const rates: Record<string, number> = {
       PE: 0.18, // IGV

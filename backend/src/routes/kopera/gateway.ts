@@ -154,6 +154,10 @@ export async function registerGatewayRoutes(app: FastifyInstance, prisma: Prisma
     };
   });
 
+  app.get('/api/gateway/settlement-velocity', { preHandler: [app.requireAuth] }, async (req) => {
+    return gateway.getSettlementVelocity(req.auth!.userId);
+  });
+
   app.get('/api/gateway/payments/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const gp = await gateway.findById(id);

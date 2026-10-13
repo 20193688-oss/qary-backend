@@ -302,6 +302,80 @@ export class LoanService {
     };
   }
 
+  async getPortfolioDiversification(userId: string) {
+    const loans = await this.prisma.loan.findMany({ where: { userId } });
+    const activeStatuses = new Set(['APPLICATION', 'APPROVED', 'DISBURSED', 'UNDERWRITING']);
+    const activeLoans = loans.filter((l: any) => activeStatuses.has(l.status));
+
+    if (activeLoans.length === 0) {
+      return {
+        totalActiveLoans: 0,
+        totalPrincipal: '0',
+        byCurrency: [] as { currency: string; count: number; totalPrincipal: string; sharePercent: number }[],
+        byTermBucket: [] as { bucket: string; count: number; totalPrincipal: string }[],
+        byRateBucket: [] as { bucket: string; count: number; avgRate: number }[],
+        concentrationRisk: 'none' as const,
+      };
+    }
+
+    let totalPrincipal = BigInt(0);
+    const currencyMap: Record<string, { count: number; totalPrincipal: bigint }> = {};
+    const termBuckets: Record<string, { count: number; totalPrincipal: bigint }> = {};
+    const rateBuckets: Record<string, { count: number; totalRate: number }> = {};
+
+    for (const l of activeLoans) {
+      totalPrincipal += l.principalAmount;
+
+      if (!currencyMap[l.currency]) currencyMap[l.currency] = { count: 0, totalPrincipal: BigInt(0) };
+      currencyMap[l.currency].count++;
+      currencyMap[l.currency].totalPrincipal += l.principalAmount;
+
+      const termBucket = l.termMonths <= 12 ? 'short (<=12m)' : l.termMonths <= 60 ? 'medium (13-60m)' : 'long (>60m)';
+      if (!termBuckets[termBucket]) termBuckets[termBucket] = { count: 0, totalPrincipal: BigInt(0) };
+      termBuckets[termBucket].count++;
+      termBuckets[termBucket].totalPrincipal += l.principalAmount;
+
+      const rate = l.interestRate;
+      const rateBucket = rate <= 0.1 ? 'low (<=10%)' : rate <= 0.2 ? 'medium (11-20%)' : 'high (>20%)';
+      if (!rateBuckets[rateBucket]) rateBuckets[rateBucket] = { count: 0, totalRate: 0 };
+      rateBuckets[rateBucket].count++;
+      rateBuckets[rateBucket].totalRate += rate;
+    }
+
+    const byCurrency = Object.entries(currencyMap).map(([currency, data]) => ({
+      currency,
+      count: data.count,
+      totalPrincipal: data.totalPrincipal.toString(),
+      sharePercent: totalPrincipal > BigInt(0)
+        ? Math.round(Number(data.totalPrincipal * BigInt(10000) / totalPrincipal)) / 100
+        : 0,
+    })).sort((a, b) => b.sharePercent - a.sharePercent);
+
+    const byTermBucket = Object.entries(termBuckets).map(([bucket, data]) => ({
+      bucket,
+      count: data.count,
+      totalPrincipal: data.totalPrincipal.toString(),
+    }));
+
+    const byRateBucket = Object.entries(rateBuckets).map(([bucket, data]) => ({
+      bucket,
+      count: data.count,
+      avgRate: data.count > 0 ? Math.round(data.totalRate / data.count * 10000) / 10000 : 0,
+    }));
+
+    const maxCurrencyShare = byCurrency.length > 0 ? byCurrency[0].sharePercent : 0;
+    const concentrationRisk = byCurrency.length === 1 ? 'high' : maxCurrencyShare > 70 ? 'moderate' : 'low';
+
+    return {
+      totalActiveLoans: activeLoans.length,
+      totalPrincipal: totalPrincipal.toString(),
+      byCurrency,
+      byTermBucket,
+      byRateBucket,
+      concentrationRisk,
+    };
+  }
+
   async simulate(principalAmount: number, currency: string, termMonths: number, interestRate?: number) {
     const rate = interestRate ?? this.getDefaultRate(currency);
     const { monthlyPayment, totalInterest, tcea } = this.calculateAmortization(

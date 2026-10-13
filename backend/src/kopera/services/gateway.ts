@@ -274,6 +274,50 @@ export class GatewayPaymentService {
     };
   }
 
+  async getSettlementVelocity(userId: string) {
+    const userTxns = await this.prisma.transaction.findMany({ where: { userId } });
+    const txnIds = new Set(userTxns.map((t: any) => t.id));
+    const allPayments = await this.prisma.gatewayPayment.findMany({});
+    const payments = allPayments.filter((p: any) => txnIds.has(p.transactionId));
+
+    const settled = payments.filter((p: any) => p.status === 'SETTLED' && p.settledAt);
+    const unsettled = payments.filter((p: any) => p.status === 'CAPTURED');
+
+    let totalSettlementMs = 0;
+    const byMethod: Record<string, { count: number; totalMs: number; avgHours: number }> = {};
+
+    for (const p of settled) {
+      const ms = new Date(p.settledAt).getTime() - new Date(p.createdAt).getTime();
+      totalSettlementMs += ms;
+
+      if (!byMethod[p.paymentMethod]) byMethod[p.paymentMethod] = { count: 0, totalMs: 0, avgHours: 0 };
+      byMethod[p.paymentMethod].count++;
+      byMethod[p.paymentMethod].totalMs += ms;
+    }
+
+    for (const data of Object.values(byMethod)) {
+      data.avgHours = data.count > 0 ? Math.round(data.totalMs / data.count / (1000 * 60 * 60) * 100) / 100 : 0;
+    }
+
+    const avgSettlementHours = settled.length > 0
+      ? Math.round(totalSettlementMs / settled.length / (1000 * 60 * 60) * 100) / 100
+      : 0;
+
+    const methods = Object.entries(byMethod).sort((a, b) => a[1].avgHours - b[1].avgHours);
+    const fastestMethod = methods.length > 0 ? methods[0][0] : null;
+    const slowestMethod = methods.length > 0 ? methods[methods.length - 1][0] : null;
+
+    return {
+      totalPayments: payments.length,
+      settledCount: settled.length,
+      unsettledCount: unsettled.length,
+      avgSettlementHours,
+      fastestMethod,
+      slowestMethod,
+      byMethod,
+    };
+  }
+
   async refund(id: string, refundAmount?: bigint, reason?: string) {
     const gp = await this.prisma.gatewayPayment.findUnique({
       where: { id },
