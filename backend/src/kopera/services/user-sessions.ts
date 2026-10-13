@@ -199,6 +199,105 @@ export class UserSessionService {
     };
   }
 
+  async getGeoDistribution(userId: string) {
+    const all = await this.prisma.userSession.findMany({ where: { userId } });
+
+    if (all.length === 0) {
+      return {
+        totalSessions: 0,
+        uniqueLocations: 0,
+        primaryIp: null,
+        concentrationPercent: 0,
+        byIp: [],
+      };
+    }
+
+    const ipCounts: Record<string, { count: number; lastSeen: Date | null; devices: Set<string> }> = {};
+
+    for (const s of all) {
+      const ip = s.ip ?? 'unknown';
+      if (!ipCounts[ip]) {
+        ipCounts[ip] = { count: 0, lastSeen: null, devices: new Set() };
+      }
+      ipCounts[ip].count++;
+      const activity = s.lastActiveAt ?? s.createdAt;
+      if (!ipCounts[ip].lastSeen || activity > ipCounts[ip].lastSeen!) {
+        ipCounts[ip].lastSeen = activity;
+      }
+      if (s.deviceId) ipCounts[ip].devices.add(s.deviceId);
+    }
+
+    const byIp = Object.entries(ipCounts)
+      .map(([ip, data]) => ({
+        ip,
+        sessionCount: data.count,
+        sharePercent: Math.round(data.count / all.length * 10000) / 100,
+        deviceCount: data.devices.size,
+        lastSeen: data.lastSeen,
+      }))
+      .sort((a, b) => b.sessionCount - a.sessionCount);
+
+    const primaryIp = byIp[0]?.ip ?? null;
+    const concentrationPercent = byIp[0]?.sharePercent ?? 0;
+
+    return {
+      totalSessions: all.length,
+      uniqueLocations: byIp.length,
+      primaryIp,
+      concentrationPercent,
+      byIp,
+    };
+  }
+
+  async getSessionLifecycle(userId: string) {
+    const all = await this.prisma.userSession.findMany({ where: { userId } });
+    const now = new Date();
+
+    let activeCount = 0;
+    let revokedCount = 0;
+    let expiredCount = 0;
+    const durations: number[] = [];
+
+    for (const s of all) {
+      let endTime: Date;
+      if (s.revokedAt) {
+        revokedCount++;
+        endTime = s.revokedAt;
+      } else if (s.expiresAt && s.expiresAt <= now) {
+        expiredCount++;
+        endTime = s.expiresAt;
+      } else {
+        activeCount++;
+        endTime = now;
+      }
+
+      const durationHours = Math.round((endTime.getTime() - new Date(s.createdAt).getTime()) / (1000 * 60 * 60) * 10) / 10;
+      durations.push(durationHours);
+    }
+
+    const avgDurationHours = durations.length > 0
+      ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length * 10) / 10
+      : 0;
+
+    const longestDurationHours = durations.length > 0 ? Math.max(...durations) : 0;
+    const shortestDurationHours = durations.length > 0 ? Math.min(...durations) : 0;
+
+    const manualRevocationRate = all.length > 0
+      ? Math.round(revokedCount / all.length * 10000) / 100
+      : 0;
+
+    return {
+      totalSessions: all.length,
+      activeCount,
+      revokedCount,
+      expiredCount,
+      avgDurationHours,
+      longestDurationHours,
+      shortestDurationHours,
+      manualRevocationRate,
+    };
+  }
+
   async cleanupExpired() {
     const now = new Date();
     const expired = await this.prisma.userSession.findMany({

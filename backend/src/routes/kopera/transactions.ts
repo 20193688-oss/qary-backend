@@ -129,6 +129,23 @@ export async function registerTransactionRoutes(app: FastifyInstance, prisma: Pr
     };
   });
 
+  app.get('/api/transaction-history/velocity', { preHandler: [app.requireAuth] }, async (req) => {
+    const query = req.query as { currency?: string };
+    const result = await svc.getVelocityReport(req.auth!.userId, query.currency);
+    return {
+      totalTransactions: result.totalTransactions,
+      dailyAverage: result.dailyAverage,
+      weeklyAverage: result.weeklyAverage,
+      peakDay: result.peakDay ? { ...result.peakDay, volume: result.peakDay.volume.toString() } : null,
+      largestTransaction: result.largestTransaction ? { ...result.largestTransaction, amount: result.largestTransaction.amount.toString() } : null,
+      trendComparison: result.trendComparison,
+    };
+  });
+
+  app.get('/api/transaction-history/recurring-patterns', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getRecurringPatterns(req.auth!.userId);
+  });
+
   app.get('/api/transaction-history/distribution', { preHandler: [app.requireAuth] }, async (req) => {
     const query = req.query as { currency?: string };
     const dist = await svc.getTypeDistribution(req.auth!.userId, query.currency);

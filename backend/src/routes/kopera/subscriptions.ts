@@ -105,6 +105,10 @@ export async function registerSubscriptionRoutes(app: FastifyInstance, prisma: P
     };
   });
 
+  app.get('/api/subscriptions/billing-health', { preHandler: [app.requireAuth] }, async (req) => {
+    return subscriptions.getBillingHealth(req.auth!.userId);
+  });
+
   app.get('/api/subscriptions/renewals', { preHandler: [app.requireAuth] }, async (req) => {
     const countdown = await subscriptions.getRenewalCountdown(req.auth!.userId);
     return countdown.map((r: any) => ({
