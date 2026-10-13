@@ -246,6 +246,64 @@ export class LedgerService {
     };
   }
 
+  async getVelocityTrend(walletId: string) {
+    const entries = await this.prisma.ledgerEntry.findMany({
+      where: { walletId },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (entries.length === 0) {
+      return {
+        walletId,
+        totalEntries: 0,
+        byDay: {} as Record<string, number>,
+        avgPerDay: 0,
+        peakDay: null as string | null,
+        peakCount: 0,
+        trend: 'stable' as string,
+        acceleration: 0,
+      };
+    }
+
+    const byDay: Record<string, number> = {};
+    for (const e of entries) {
+      const d = e.createdAt;
+      const dayKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      byDay[dayKey] = (byDay[dayKey] ?? 0) + 1;
+    }
+
+    const days = Object.keys(byDay).sort();
+    const counts = days.map(d => byDay[d]);
+    const avgPerDay = Math.round((counts.reduce((s, c) => s + c, 0) / counts.length) * 100) / 100;
+
+    let peakDay: string | null = null;
+    let peakCount = 0;
+    for (const [day, count] of Object.entries(byDay)) {
+      if (count > peakCount) { peakDay = day; peakCount = count; }
+    }
+
+    let trend = 'stable';
+    let acceleration = 0;
+    if (counts.length >= 2) {
+      const half = Math.floor(counts.length / 2);
+      const firstHalf = counts.slice(0, half).reduce((s, c) => s + c, 0) / half;
+      const secondHalf = counts.slice(half).reduce((s, c) => s + c, 0) / (counts.length - half);
+      acceleration = Math.round(((secondHalf - firstHalf) / (firstHalf || 1)) * 10000) / 100;
+      trend = acceleration > 10 ? 'accelerating' : acceleration < -10 ? 'decelerating' : 'stable';
+    }
+
+    return {
+      walletId,
+      totalEntries: entries.length,
+      byDay,
+      avgPerDay,
+      peakDay,
+      peakCount,
+      trend,
+      acceleration,
+    };
+  }
+
   async getStatement(walletId: string, from: string, to: string) {
     const entries = await this.prisma.ledgerEntry.findMany({
       where: {

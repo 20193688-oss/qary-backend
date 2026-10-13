@@ -68,6 +68,10 @@ export async function registerNotificationRoutes(app: FastifyInstance, prisma: P
     return notifications.getChannelEffectiveness(req.auth!.userId);
   });
 
+  app.get('/api/notifications/fatigue', { preHandler: [app.requireAuth] }, async (req) => {
+    return notifications.getNotificationFatigue(req.auth!.userId);
+  });
+
   app.get('/api/notifications/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const n = await notifications.getById(id);

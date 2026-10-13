@@ -266,6 +266,54 @@ export class PaymentLinkService {
     };
   }
 
+  async getAmountTierAnalysis(userId: string) {
+    const links = await this.prisma.paymentLink.findMany({ where: { userId } });
+
+    const tiers: Record<string, { links: number; used: number; totalAmount: bigint; totalUsed: number }> = {
+      micro: { links: 0, used: 0, totalAmount: BigInt(0), totalUsed: 0 },
+      small: { links: 0, used: 0, totalAmount: BigInt(0), totalUsed: 0 },
+      medium: { links: 0, used: 0, totalAmount: BigInt(0), totalUsed: 0 },
+      large: { links: 0, used: 0, totalAmount: BigInt(0), totalUsed: 0 },
+    };
+
+    for (const l of links) {
+      const amt = Number(l.amount);
+      const tier = amt < 1000 ? 'micro' : amt < 10000 ? 'small' : amt < 100000 ? 'medium' : 'large';
+      tiers[tier].links++;
+      tiers[tier].totalAmount += l.amount;
+      tiers[tier].totalUsed += l.timesUsed;
+      if (l.timesUsed > 0) tiers[tier].used++;
+    }
+
+    const result: Record<string, { links: number; used: number; conversionRate: number; totalAmount: string; totalUsed: number; avgAmount: string }> = {};
+    for (const [tier, data] of Object.entries(tiers)) {
+      result[tier] = {
+        links: data.links,
+        used: data.used,
+        conversionRate: data.links > 0 ? Math.round((data.used / data.links) * 10000) / 100 : 0,
+        totalAmount: data.totalAmount.toString(),
+        totalUsed: data.totalUsed,
+        avgAmount: data.links > 0 ? (data.totalAmount / BigInt(data.links)).toString() : '0',
+      };
+    }
+
+    let bestTier: string | null = null;
+    let bestRate = 0;
+    for (const [tier, data] of Object.entries(result)) {
+      if (data.links > 0 && data.conversionRate > bestRate) {
+        bestTier = tier;
+        bestRate = data.conversionRate;
+      }
+    }
+
+    return {
+      totalLinks: links.length,
+      tiers: result,
+      bestPerformingTier: bestTier,
+      bestConversionRate: bestRate,
+    };
+  }
+
   async deactivate(id: string, userId: string) {
     const link = await this.prisma.paymentLink.findUnique({ where: { id } });
     if (!link) throw new Error('link_not_found');

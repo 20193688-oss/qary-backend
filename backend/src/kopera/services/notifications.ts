@@ -272,6 +272,88 @@ export class NotificationService {
     };
   }
 
+  async getNotificationFatigue(userId: string) {
+    const notifications = await this.prisma.notification.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (notifications.length === 0) {
+      return {
+        totalNotifications: 0,
+        overallReadRate: 0,
+        fatigueLevel: 'none' as string,
+        weeklyTrend: [] as Array<{ week: string; sent: number; read: number; readRate: number }>,
+        decliningTypes: [] as string[],
+        recommendations: [] as string[],
+      };
+    }
+
+    const totalRead = notifications.filter(n => n.readAt).length;
+    const overallReadRate = Math.round((totalRead / notifications.length) * 10000) / 100;
+
+    const byWeek: Record<string, { sent: number; read: number }> = {};
+    const byType: Record<string, { sent: number; read: number; recent: { sent: number; read: number } }> = {};
+    const now = Date.now();
+    const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
+
+    for (const n of notifications) {
+      const d = n.createdAt;
+      const weekStart = new Date(d);
+      weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+      const weekKey = `${weekStart.getFullYear()}-W${String(Math.ceil((weekStart.getDate()) / 7)).padStart(2, '0')}`;
+
+      if (!byWeek[weekKey]) byWeek[weekKey] = { sent: 0, read: 0 };
+      byWeek[weekKey].sent++;
+      if (n.readAt) byWeek[weekKey].read++;
+
+      const type = n.type;
+      if (!byType[type]) byType[type] = { sent: 0, read: 0, recent: { sent: 0, read: 0 } };
+      byType[type].sent++;
+      if (n.readAt) byType[type].read++;
+      if (d.getTime() > thirtyDaysAgo) {
+        byType[type].recent.sent++;
+        if (n.readAt) byType[type].recent.read++;
+      }
+    }
+
+    const weeklyTrend = Object.entries(byWeek)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([week, data]) => ({
+        week,
+        sent: data.sent,
+        read: data.read,
+        readRate: Math.round((data.read / data.sent) * 10000) / 100,
+      }));
+
+    const decliningTypes: string[] = [];
+    for (const [type, data] of Object.entries(byType)) {
+      if (data.sent >= 3 && data.recent.sent >= 1) {
+        const overallRate = data.read / data.sent;
+        const recentRate = data.recent.sent > 0 ? data.recent.read / data.recent.sent : 0;
+        if (recentRate < overallRate * 0.7) decliningTypes.push(type);
+      }
+    }
+
+    const recommendations: string[] = [];
+    if (overallReadRate < 30) recommendations.push('Consider reducing notification volume');
+    if (decliningTypes.length > 0) recommendations.push(`Review frequency for: ${decliningTypes.join(', ')}`);
+    if (notifications.length > 100 && overallReadRate < 50) recommendations.push('Enable notification batching');
+
+    const fatigueLevel = overallReadRate < 20 ? 'high'
+      : overallReadRate < 50 ? 'medium'
+      : 'low';
+
+    return {
+      totalNotifications: notifications.length,
+      overallReadRate,
+      fatigueLevel,
+      weeklyTrend,
+      decliningTypes,
+      recommendations,
+    };
+  }
+
   async deleteAllRead(userId: string) {
     return this.prisma.notification.deleteMany({
       where: { userId, readAt: { not: null } },
