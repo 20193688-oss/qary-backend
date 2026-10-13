@@ -313,4 +313,71 @@ export class UserSessionService {
 
     return { cleaned: expired.length };
   }
+
+  async getLoginFrequency(userId: string) {
+    const sessions = await this.prisma.userSession.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (sessions.length === 0) {
+      return {
+        totalSessions: 0,
+        byDayOfWeek: [],
+        byHourOfDay: [],
+        peakDay: null,
+        peakHour: null,
+        avgSessionsPerWeek: 0,
+        recentVsPrior: { last7Days: 0, prior7Days: 0, trend: 'stable' as string },
+      };
+    }
+
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayCounts = new Array(7).fill(0);
+    const hourCounts = new Array(24).fill(0);
+
+    for (const s of sessions) {
+      const d = new Date(s.createdAt);
+      dayCounts[d.getDay()]++;
+      hourCounts[d.getHours()]++;
+    }
+
+    const byDayOfWeek = dayNames.map((name, i) => ({ day: name, count: dayCounts[i] }));
+    const byHourOfDay = hourCounts.map((count: number, hour: number) => ({ hour, count }));
+
+    const peakDayIdx = dayCounts.indexOf(Math.max(...dayCounts));
+    const peakHourIdx = hourCounts.indexOf(Math.max(...hourCounts));
+
+    const now = Date.now();
+    const d7 = now - 7 * 24 * 60 * 60 * 1000;
+    const d14 = now - 14 * 24 * 60 * 60 * 1000;
+    const last7 = sessions.filter((s: any) => new Date(s.createdAt).getTime() >= d7).length;
+    const prior7 = sessions.filter((s: any) => {
+      const t = new Date(s.createdAt).getTime();
+      return t >= d14 && t < d7;
+    }).length;
+
+    const oldest = new Date(sessions[sessions.length - 1].createdAt).getTime();
+    const weeksSpan = Math.max(1, (now - oldest) / (7 * 24 * 60 * 60 * 1000));
+    const avgPerWeek = Math.round((sessions.length / weeksSpan) * 100) / 100;
+
+    let trend = 'stable';
+    if (prior7 > 0) {
+      const change = (last7 - prior7) / prior7;
+      if (change > 0.2) trend = 'increasing';
+      else if (change < -0.2) trend = 'decreasing';
+    } else if (last7 > 0) {
+      trend = 'increasing';
+    }
+
+    return {
+      totalSessions: sessions.length,
+      byDayOfWeek,
+      byHourOfDay,
+      peakDay: dayNames[peakDayIdx],
+      peakHour: peakHourIdx,
+      avgSessionsPerWeek: avgPerWeek,
+      recentVsPrior: { last7Days: last7, prior7Days: prior7, trend },
+    };
+  }
 }

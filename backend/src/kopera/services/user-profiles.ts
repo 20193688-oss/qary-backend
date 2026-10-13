@@ -169,4 +169,48 @@ export class UserProfileService {
       data: { accountType: 'BUSINESS' },
     });
   }
+
+  async getSecurityScorecard(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new Error('user_not_found');
+
+    const checks = [
+      { item: 'email_verified', passed: !!user.emailVerifiedAt, weight: 20 },
+      { item: 'mfa_enabled', passed: !!user.mfaEnabled, weight: 30 },
+      { item: 'pin_set', passed: !!(user as any).pin, weight: 15 },
+      { item: 'phone_added', passed: !!(user as any).phone, weight: 10 },
+      { item: 'name_set', passed: !!(user as any).name, weight: 5 },
+    ];
+
+    const accountAgeDays = Math.round(
+      (Date.now() - new Date(user.createdAt).getTime()) / (24 * 60 * 60 * 1000)
+    );
+    if (accountAgeDays >= 30) {
+      checks.push({ item: 'account_age_30d', passed: true, weight: 10 });
+    } else {
+      checks.push({ item: 'account_age_30d', passed: false, weight: 10 });
+    }
+
+    const activeSessions = await this.prisma.userSession.findMany({
+      where: { userId, revokedAt: null },
+    });
+    const hasReasonableSessions = activeSessions.length <= 5;
+    checks.push({ item: 'session_count_reasonable', passed: hasReasonableSessions, weight: 10 });
+
+    const totalWeight = checks.reduce((s, c) => s + c.weight, 0);
+    const earnedWeight = checks.filter(c => c.passed).reduce((s, c) => s + c.weight, 0);
+    const score = Math.round((earnedWeight / totalWeight) * 100);
+
+    const level = score >= 80 ? 'strong' : score >= 50 ? 'moderate' : 'weak';
+
+    return {
+      score,
+      level,
+      accountAgeDays,
+      activeSessions: activeSessions.length,
+      checklist: checks.map(c => ({ item: c.item, passed: c.passed })),
+      passedChecks: checks.filter(c => c.passed).length,
+      totalChecks: checks.length,
+    };
+  }
 }

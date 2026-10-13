@@ -309,6 +309,40 @@ export class TokenizedCardService {
     };
   }
 
+  async getBankDistribution(userId: string) {
+    const cards = await this.prisma.tokenizedCard.findMany({ where: { userId } });
+
+    if (cards.length === 0) {
+      return {
+        totalCards: 0,
+        distinctBanks: 0,
+        byBank: [],
+        dominantBank: null,
+      };
+    }
+
+    const bankMap = new Map<string, number>();
+    for (const c of cards) {
+      const bank = (c as any).bankName ?? 'Unknown';
+      bankMap.set(bank, (bankMap.get(bank) ?? 0) + 1);
+    }
+
+    const byBank = Array.from(bankMap.entries())
+      .map(([bank, count]) => ({
+        bank,
+        count,
+        share: Math.round((count / cards.length) * 10000) / 100,
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    return {
+      totalCards: cards.length,
+      distinctBanks: bankMap.size,
+      byBank,
+      dominantBank: byBank[0]?.bank ?? null,
+    };
+  }
+
   async removeCard(id: string, userId: string) {
     const card = await this.prisma.tokenizedCard.findUnique({ where: { id } });
     if (!card) throw new Error('card_not_found');

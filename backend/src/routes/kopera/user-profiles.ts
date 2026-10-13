@@ -91,6 +91,10 @@ export async function registerUserProfileRoutes(app: FastifyInstance, prisma: Pr
     return securityEvents;
   });
 
+  app.get('/api/profile/security-scorecard', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getSecurityScorecard(req.auth!.userId);
+  });
+
   app.post('/api/profile/mfa/enable', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const body = z.object({
       secret: z.string().min(1),

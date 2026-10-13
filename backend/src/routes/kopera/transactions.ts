@@ -146,6 +146,11 @@ export async function registerTransactionRoutes(app: FastifyInstance, prisma: Pr
     return svc.getRecurringPatterns(req.auth!.userId);
   });
 
+  app.get('/api/transaction-history/fee-analysis', { preHandler: [app.requireAuth] }, async (req) => {
+    const query = req.query as { currency?: string };
+    return svc.getFeeAnalysis(req.auth!.userId, query.currency);
+  });
+
   app.get('/api/transaction-history/distribution', { preHandler: [app.requireAuth] }, async (req) => {
     const query = req.query as { currency?: string };
     const dist = await svc.getTypeDistribution(req.auth!.userId, query.currency);
