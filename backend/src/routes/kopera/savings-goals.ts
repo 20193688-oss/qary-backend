@@ -91,6 +91,10 @@ export async function registerSavingsGoalRoutes(app: FastifyInstance, prisma: Pr
     };
   });
 
+  app.get('/api/savings-goals/milestone-analysis', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getMilestoneAnalysis(req.auth!.userId);
+  });
+
   app.get('/api/savings-goals/:id/progress', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     try {

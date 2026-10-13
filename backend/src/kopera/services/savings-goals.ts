@@ -353,4 +353,77 @@ export class SavingsGoalService {
       data: { status: 'archived' },
     });
   }
+
+  async getMilestoneAnalysis(userId: string) {
+    const goals = await this.prisma.savingsGoal.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (goals.length === 0) {
+      return {
+        totalGoals: 0,
+        milestonesSummary: { reached25: 0, reached50: 0, reached75: 0, reached100: 0 },
+        goals: [],
+        avgMomentum: 0,
+      };
+    }
+
+    const milestones = [25, 50, 75, 100];
+    const reached = { reached25: 0, reached50: 0, reached75: 0, reached100: 0 };
+    const goalDetails: any[] = [];
+
+    for (const g of goals) {
+      const target = Number(g.targetAmount);
+      const current = Number(g.currentAmount);
+      const progress = target > 0 ? Math.min(100, (current / target) * 100) : 0;
+
+      const passedMilestones: number[] = [];
+      for (const m of milestones) {
+        if (progress >= m) {
+          passedMilestones.push(m);
+          if (m === 25) reached.reached25++;
+          if (m === 50) reached.reached50++;
+          if (m === 75) reached.reached75++;
+          if (m === 100) reached.reached100++;
+        }
+      }
+
+      const createdAt = new Date(g.createdAt).getTime();
+      const now = Date.now();
+      const daysElapsed = Math.max(1, (now - createdAt) / (24 * 60 * 60 * 1000));
+      const dailyRate = current / daysElapsed;
+      const remaining = Math.max(0, target - current);
+      const estimatedDaysToComplete = dailyRate > 0 ? Math.round(remaining / dailyRate) : null;
+
+      const momentum = progress > 0
+        ? Math.round(Math.min(100, (progress / Math.max(1, daysElapsed)) * 30) * 100) / 100
+        : 0;
+
+      goalDetails.push({
+        goalId: g.id,
+        name: g.name,
+        currency: g.currency,
+        status: g.status,
+        progress: Math.round(progress * 100) / 100,
+        currentAmount: g.currentAmount.toString(),
+        targetAmount: g.targetAmount.toString(),
+        passedMilestones,
+        nextMilestone: milestones.find(m => progress < m) ?? null,
+        momentum,
+        estimatedDaysToComplete,
+      });
+    }
+
+    const avgMomentum = goalDetails.length > 0
+      ? Math.round((goalDetails.reduce((s: number, g: any) => s + g.momentum, 0) / goalDetails.length) * 100) / 100
+      : 0;
+
+    return {
+      totalGoals: goals.length,
+      milestonesSummary: reached,
+      goals: goalDetails,
+      avgMomentum,
+    };
+  }
 }

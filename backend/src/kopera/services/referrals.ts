@@ -314,4 +314,80 @@ export class ReferralService {
       orderBy: { createdAt: 'desc' },
     });
   }
+
+  async getReferralEffectiveness(userId: string) {
+    const referral = await this.prisma.referral.findFirst({
+      where: { referrerId: userId },
+    });
+    if (!referral) {
+      return {
+        hasReferralCode: false,
+        totalSignups: 0,
+        totalRewarded: 0,
+        conversionRate: 0,
+        weeklyBreakdown: [],
+        effectivenessScore: 0,
+        avgConversionDays: null,
+      };
+    }
+
+    const signups = await this.prisma.referralSignup.findMany({
+      where: { referralId: referral.id },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const weeklyMap = new Map<string, { signups: number; rewarded: number }>();
+    for (const s of signups) {
+      const d = new Date(s.createdAt);
+      const weekStart = new Date(d);
+      weekStart.setDate(d.getDate() - d.getDay());
+      const key = weekStart.toISOString().slice(0, 10);
+      const entry = weeklyMap.get(key) ?? { signups: 0, rewarded: 0 };
+      entry.signups++;
+      if ((s as any).rewardedAt) entry.rewarded++;
+      weeklyMap.set(key, entry);
+    }
+
+    const weeklyBreakdown = Array.from(weeklyMap.entries())
+      .map(([week, data]) => ({
+        week,
+        signups: data.signups,
+        rewarded: data.rewarded,
+        conversionRate: data.signups > 0
+          ? Math.round((data.rewarded / data.signups) * 10000) / 100
+          : 0,
+      }))
+      .sort((a, b) => a.week.localeCompare(b.week));
+
+    const rewardedSignups = signups.filter((s: any) => s.rewardedAt);
+    let avgConversionDays: number | null = null;
+    if (rewardedSignups.length > 0) {
+      const totalDays = rewardedSignups.reduce((sum: number, s: any) => {
+        const signupDate = new Date(s.createdAt).getTime();
+        const rewardDate = new Date(s.rewardedAt).getTime();
+        return sum + (rewardDate - signupDate) / (24 * 60 * 60 * 1000);
+      }, 0);
+      avgConversionDays = Math.round((totalDays / rewardedSignups.length) * 100) / 100;
+    }
+
+    const conversionRate = referral.signupCount > 0
+      ? Math.round((referral.rewardedCount / referral.signupCount) * 10000) / 100
+      : 0;
+
+    const velocityScore = Math.min(100, signups.length * 10);
+    const conversionScore = conversionRate;
+    const effectivenessScore = Math.round((velocityScore * 0.4 + conversionScore * 0.6) * 100) / 100;
+
+    return {
+      hasReferralCode: true,
+      code: referral.code,
+      totalSignups: referral.signupCount,
+      totalRewarded: referral.rewardedCount,
+      conversionRate,
+      weeklyBreakdown,
+      avgConversionDays,
+      effectivenessScore,
+      totalPointsEarned: referral.totalPointsEarned,
+    };
+  }
 }
