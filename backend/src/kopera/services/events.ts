@@ -186,6 +186,80 @@ export class EventService {
     };
   }
 
+  async getEventVelocity(userId: string) {
+    const events = await this.prisma.event.findMany({ where: { userId } });
+
+    if (events.length === 0) {
+      return {
+        totalEvents: 0,
+        eventsPerDay: 0,
+        eventsPerHour: 0,
+        peakDay: null as { date: string; count: number } | null,
+        peakHour: null as { hour: number; count: number } | null,
+        byDayOfWeek: {} as Record<string, number>,
+        trend: 'none' as string,
+      };
+    }
+
+    const now = new Date();
+    const sorted = [...events].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    const oldest = new Date(sorted[0]!.createdAt);
+    const spanDays = Math.max(1, (now.getTime() - oldest.getTime()) / (24 * 60 * 60 * 1000));
+
+    const eventsPerDay = Math.round((events.length / spanDays) * 100) / 100;
+    const eventsPerHour = Math.round((events.length / (spanDays * 24)) * 100) / 100;
+
+    const dayCountMap = new Map<string, number>();
+    const hourCountMap = new Map<number, number>();
+    const dayOfWeekNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const byDayOfWeek: Record<string, number> = {};
+
+    for (const e of events) {
+      const d = new Date(e.createdAt);
+      const dateKey = d.toISOString().slice(0, 10);
+      dayCountMap.set(dateKey, (dayCountMap.get(dateKey) ?? 0) + 1);
+
+      const hour = d.getHours();
+      hourCountMap.set(hour, (hourCountMap.get(hour) ?? 0) + 1);
+
+      const dayName = dayOfWeekNames[d.getDay()]!;
+      byDayOfWeek[dayName] = (byDayOfWeek[dayName] ?? 0) + 1;
+    }
+
+    let peakDay: { date: string; count: number } | null = null;
+    for (const [date, count] of dayCountMap) {
+      if (!peakDay || count > peakDay.count) peakDay = { date, count };
+    }
+
+    let peakHour: { hour: number; count: number } | null = null;
+    for (const [hour, count] of hourCountMap) {
+      if (!peakHour || count > peakHour.count) peakHour = { hour, count };
+    }
+
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+    const recentCount = events.filter((e: any) => new Date(e.createdAt) >= sevenDaysAgo).length;
+    const priorCount = events.filter((e: any) => {
+      const d = new Date(e.createdAt);
+      return d >= fourteenDaysAgo && d < sevenDaysAgo;
+    }).length;
+
+    let trend: string;
+    if (recentCount > priorCount * 1.2) trend = 'increasing';
+    else if (recentCount < priorCount * 0.8) trend = 'decreasing';
+    else trend = 'stable';
+
+    return {
+      totalEvents: events.length,
+      eventsPerDay,
+      eventsPerHour,
+      peakDay,
+      peakHour,
+      byDayOfWeek,
+      trend,
+    };
+  }
+
   async listByRequest(requestId: string) {
     return this.prisma.event.findMany({
       where: { requestId },

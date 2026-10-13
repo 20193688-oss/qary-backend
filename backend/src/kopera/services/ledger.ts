@@ -168,6 +168,84 @@ export class LedgerService {
     return { walletId, entryCount: entries.length, anomalies, riskScore, riskLevel };
   }
 
+  async getEntryDistribution(walletId: string) {
+    const entries = await this.prisma.ledgerEntry.findMany({
+      where: { walletId },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (entries.length === 0) {
+      return {
+        walletId,
+        totalEntries: 0,
+        creditCount: 0,
+        debitCount: 0,
+        creditTotal: '0',
+        debitTotal: '0',
+        avgCreditAmount: '0',
+        avgDebitAmount: '0',
+        largestCredit: '0',
+        largestDebit: '0',
+        creditToDebitRatio: 0,
+        byMonth: [] as Array<{ month: string; credits: number; debits: number }>,
+      };
+    }
+
+    let creditCount = 0;
+    let debitCount = 0;
+    let creditTotal = BigInt(0);
+    let debitTotal = BigInt(0);
+    let largestCredit = BigInt(0);
+    let largestDebit = BigInt(0);
+
+    const monthMap = new Map<string, { credits: number; debits: number }>();
+
+    for (const e of entries) {
+      const absAmount = e.amount < BigInt(0) ? -e.amount : e.amount;
+      const d = new Date(e.createdAt);
+      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const monthEntry = monthMap.get(monthKey) ?? { credits: 0, debits: 0 };
+
+      if (e.entryType === 'CREDIT') {
+        creditCount++;
+        creditTotal += absAmount;
+        if (absAmount > largestCredit) largestCredit = absAmount;
+        monthEntry.credits++;
+      } else {
+        debitCount++;
+        debitTotal += absAmount;
+        if (absAmount > largestDebit) largestDebit = absAmount;
+        monthEntry.debits++;
+      }
+      monthMap.set(monthKey, monthEntry);
+    }
+
+    const avgCredit = creditCount > 0 ? creditTotal / BigInt(creditCount) : BigInt(0);
+    const avgDebit = debitCount > 0 ? debitTotal / BigInt(debitCount) : BigInt(0);
+    const creditToDebitRatio = debitCount > 0
+      ? Math.round((creditCount / debitCount) * 100) / 100
+      : creditCount > 0 ? creditCount : 0;
+
+    const byMonth = Array.from(monthMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([month, data]) => ({ month, ...data }));
+
+    return {
+      walletId,
+      totalEntries: entries.length,
+      creditCount,
+      debitCount,
+      creditTotal: creditTotal.toString(),
+      debitTotal: debitTotal.toString(),
+      avgCreditAmount: avgCredit.toString(),
+      avgDebitAmount: avgDebit.toString(),
+      largestCredit: largestCredit.toString(),
+      largestDebit: largestDebit.toString(),
+      creditToDebitRatio,
+      byMonth,
+    };
+  }
+
   async getStatement(walletId: string, from: string, to: string) {
     const entries = await this.prisma.ledgerEntry.findMany({
       where: {

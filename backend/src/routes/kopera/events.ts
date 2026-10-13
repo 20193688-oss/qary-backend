@@ -56,6 +56,10 @@ export async function registerEventRoutes(app: FastifyInstance, prisma: PrismaCl
     return svc.getActivityTimeline(req.auth!.userId, q.days);
   });
 
+  app.get('/api/events/velocity', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getEventVelocity(req.auth!.userId);
+  });
+
   app.get('/api/events/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const event = await svc.getById(id);

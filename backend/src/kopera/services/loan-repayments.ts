@@ -304,6 +304,71 @@ export class LoanRepaymentService {
     };
   }
 
+  async getPaymentPunctuality(loanId: string) {
+    const loan = await this.prisma.loan.findUnique({ where: { id: loanId } });
+    if (!loan) throw new Error('loan_not_found');
+
+    const repayments = await this.prisma.loanRepayment.findMany({
+      where: { loanId },
+      orderBy: { installment: 'asc' },
+    });
+
+    let onTimeCount = 0;
+    let earlyCount = 0;
+    let lateCount = 0;
+    let totalLateDays = 0;
+    let totalEarlyDays = 0;
+    let paidCount = 0;
+    const latePayments: Array<{ installment: number; daysPastDue: number }> = [];
+
+    for (const r of repayments) {
+      if (r.status !== 'PAID' || !r.paidAt) continue;
+      paidCount++;
+
+      const dueTime = new Date(r.dueDate).getTime();
+      const paidTime = new Date(r.paidAt).getTime();
+      const diffDays = Math.round((paidTime - dueTime) / (24 * 60 * 60 * 1000));
+
+      if (diffDays > 0) {
+        lateCount++;
+        totalLateDays += diffDays;
+        latePayments.push({ installment: r.installment, daysPastDue: diffDays });
+      } else if (diffDays < -1) {
+        earlyCount++;
+        totalEarlyDays += Math.abs(diffDays);
+      } else {
+        onTimeCount++;
+      }
+    }
+
+    const punctualityScore = paidCount > 0
+      ? Math.round(((onTimeCount + earlyCount) / paidCount) * 10000) / 100
+      : 0;
+    const avgLateDays = lateCount > 0 ? Math.round((totalLateDays / lateCount) * 100) / 100 : 0;
+    const avgEarlyDays = earlyCount > 0 ? Math.round((totalEarlyDays / earlyCount) * 100) / 100 : 0;
+
+    let rating: string;
+    if (punctualityScore >= 95) rating = 'excellent';
+    else if (punctualityScore >= 80) rating = 'good';
+    else if (punctualityScore >= 60) rating = 'fair';
+    else if (paidCount > 0) rating = 'poor';
+    else rating = 'no_data';
+
+    return {
+      loanId,
+      totalInstallments: repayments.length,
+      paidInstallments: paidCount,
+      onTimeCount,
+      earlyCount,
+      lateCount,
+      punctualityScore,
+      avgLateDays,
+      avgEarlyDays,
+      rating,
+      latePayments,
+    };
+  }
+
   async getScheduleSummary(loanId: string) {
     const repayments = await this.prisma.loanRepayment.findMany({
       where: { loanId },

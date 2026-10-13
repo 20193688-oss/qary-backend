@@ -23,6 +23,14 @@ function serialize(r: any) {
 export async function registerLoanRepaymentRoutes(app: FastifyInstance, prisma: PrismaClient) {
   const svc = new LoanRepaymentService(prisma);
 
+  app.get('/api/loans/:loanId/payment-punctuality', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { loanId } = req.params as { loanId: string };
+    const loan = await prisma.loan.findUnique({ where: { id: loanId } });
+    if (!loan) return reply.code(404).send({ error: 'loan_not_found' });
+    if (loan.userId !== req.auth!.userId) return reply.code(403).send({ error: 'forbidden' });
+    return svc.getPaymentPunctuality(loanId);
+  });
+
   app.get('/api/loans/:loanId/repayments', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { loanId } = req.params as { loanId: string };
 
