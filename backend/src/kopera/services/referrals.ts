@@ -221,6 +221,77 @@ export class ReferralService {
     };
   }
 
+  async getNetworkGrowth(userId: string) {
+    const referral = await this.prisma.referral.findFirst({
+      where: { referrerId: userId },
+    });
+    if (!referral) {
+      return {
+        hasReferralCode: false,
+        totalSignups: 0,
+        rewardedSignups: 0,
+        pendingSignups: 0,
+        conversionRate: 0,
+        growthByMonth: [] as Array<{ month: string; signups: number; rewarded: number }>,
+        avgSignupsPerMonth: 0,
+        streakMonths: 0,
+        topMonth: null as { month: string; signups: number } | null,
+      };
+    }
+
+    const signups = await this.prisma.referralSignup.findMany({
+      where: { referralId: referral.id },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const rewarded = signups.filter((s: any) => s.status === 'rewarded');
+    const pending = signups.filter((s: any) => s.status === 'pending');
+
+    const monthMap = new Map<string, { signups: number; rewarded: number }>();
+    for (const s of signups) {
+      const d = new Date(s.createdAt);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const entry = monthMap.get(key) ?? { signups: 0, rewarded: 0 };
+      entry.signups++;
+      if ((s as any).status === 'rewarded') entry.rewarded++;
+      monthMap.set(key, entry);
+    }
+
+    const growthByMonth = Array.from(monthMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([month, data]) => ({ month, ...data }));
+
+    const avgSignupsPerMonth = growthByMonth.length > 0
+      ? Math.round((signups.length / growthByMonth.length) * 100) / 100
+      : 0;
+
+    let streakMonths = 0;
+    if (growthByMonth.length > 0) {
+      for (let i = growthByMonth.length - 1; i >= 0; i--) {
+        if (growthByMonth[i]!.signups > 0) streakMonths++;
+        else break;
+      }
+    }
+
+    const topMonth = growthByMonth.length > 0
+      ? growthByMonth.reduce((best, cur) => cur.signups > best.signups ? cur : best)
+      : null;
+
+    return {
+      hasReferralCode: true,
+      totalSignups: signups.length,
+      rewardedSignups: rewarded.length,
+      pendingSignups: pending.length,
+      conversionRate: signups.length > 0
+        ? Math.round((rewarded.length / signups.length) * 10000) / 100
+        : 0,
+      growthByMonth,
+      avgSignupsPerMonth,
+      streakMonths,
+      topMonth: topMonth ? { month: topMonth.month, signups: topMonth.signups } : null,
+    };
+  }
+
   async listAll(opts?: { status?: string; limit?: number; offset?: number }) {
     const where: Record<string, unknown> = {};
     if (opts?.status) where.status = opts.status;

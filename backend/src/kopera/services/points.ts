@@ -245,6 +245,84 @@ export class PointsService {
     };
   }
 
+  async getEngagementScore(userId: string) {
+    const pts = await this.getOrCreate(userId);
+
+    const history = await this.prisma.pointsHistory.findMany({
+      where: { pointsId: pts.id },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const earnEvents = history.filter((h: any) => h.type === 'EARN');
+    const redeemEvents = history.filter((h: any) => h.type === 'REDEEM');
+
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const recentEarns = earnEvents.filter((h: any) => new Date(h.createdAt) >= thirtyDaysAgo);
+    const recentRedeems = redeemEvents.filter((h: any) => new Date(h.createdAt) >= thirtyDaysAgo);
+
+    const activityFrequency = Math.min(100, recentEarns.length * 10);
+
+    const totalEarned = earnEvents.reduce((sum: number, h: any) => sum + h.amount, 0);
+    const totalRedeemed = redeemEvents.reduce((sum: number, h: any) => sum + Math.abs(h.amount), 0);
+    const redemptionEngagement = totalEarned > 0
+      ? Math.min(100, Math.round((totalRedeemed / totalEarned) * 100))
+      : 0;
+
+    const tierScore = (() => {
+      switch (pts.tier) {
+        case 'DIAMOND': return 100;
+        case 'PLATINUM': return 80;
+        case 'GOLD': return 60;
+        case 'SILVER': return 40;
+        case 'BRONZE': return 20;
+        default: return 10;
+      }
+    })();
+
+    const consistencyScore = (() => {
+      if (earnEvents.length < 2) return 0;
+      const uniqueDays = new Set(
+        earnEvents.map((h: any) => {
+          const d = new Date(h.createdAt);
+          return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+        })
+      );
+      return Math.min(100, uniqueDays.size * 5);
+    })();
+
+    const engagementScore = Math.round(
+      (activityFrequency * 0.3 + redemptionEngagement * 0.2 + tierScore * 0.3 + consistencyScore * 0.2)
+    );
+
+    let engagementLevel: string;
+    if (engagementScore >= 80) engagementLevel = 'highly_engaged';
+    else if (engagementScore >= 50) engagementLevel = 'engaged';
+    else if (engagementScore >= 20) engagementLevel = 'moderate';
+    else engagementLevel = 'low';
+
+    return {
+      userId,
+      engagementScore,
+      engagementLevel,
+      components: {
+        activityFrequency,
+        redemptionEngagement,
+        tierScore,
+        consistencyScore,
+      },
+      recentActivity: {
+        earnsLast30Days: recentEarns.length,
+        redeemsLast30Days: recentRedeems.length,
+        pointsEarnedLast30Days: recentEarns.reduce((s: number, h: any) => s + h.amount, 0),
+        pointsRedeemedLast30Days: recentRedeems.reduce((s: number, h: any) => s + Math.abs(h.amount), 0),
+      },
+      currentTier: pts.tier,
+      balance: pts.balance,
+      lifetimeEarned: pts.lifetimeEarned,
+    };
+  }
+
   private calculateTier(lifetimeEarned: number): string {
     if (lifetimeEarned >= TIER_THRESHOLDS.DIAMOND) return 'DIAMOND';
     if (lifetimeEarned >= TIER_THRESHOLDS.PLATINUM) return 'PLATINUM';

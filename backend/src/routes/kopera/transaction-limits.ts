@@ -91,6 +91,10 @@ export async function registerTransactionLimitRoutes(app: FastifyInstance, prism
     };
   });
 
+  app.get('/api/transaction-limits/spending-velocity', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getSpendingVelocity(req.auth!.userId);
+  });
+
   app.get('/api/transaction-limits/:currency/:limitType', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { currency, limitType } = req.params as { currency: string; limitType: string };
     const limit = await svc.getLimit(req.auth!.userId, currency, limitType);

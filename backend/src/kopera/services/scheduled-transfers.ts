@@ -277,6 +277,85 @@ export class ScheduledTransferService {
     };
   }
 
+  async getRecipientAnalysis(userId: string) {
+    const transfers = await this.prisma.scheduledTransfer.findMany({
+      where: { userId },
+    });
+
+    if (transfers.length === 0) {
+      return {
+        totalTransfers: 0,
+        uniqueRecipients: 0,
+        recipients: [] as Array<{
+          toUserId: string;
+          transferCount: number;
+          totalAmount: string;
+          currencies: string[];
+          frequencies: string[];
+          sharePercent: number;
+        }>,
+        topRecipient: null as { toUserId: string; totalAmount: string } | null,
+        concentrationLevel: 'none' as string,
+      };
+    }
+
+    const recipientMap = new Map<string, {
+      count: number;
+      totalAmount: bigint;
+      currencies: Set<string>;
+      frequencies: Set<string>;
+    }>();
+
+    let grandTotal = BigInt(0);
+
+    for (const t of transfers) {
+      const entry = recipientMap.get(t.toUserId) ?? {
+        count: 0,
+        totalAmount: BigInt(0),
+        currencies: new Set<string>(),
+        frequencies: new Set<string>(),
+      };
+      entry.count++;
+      entry.totalAmount += t.amount;
+      entry.currencies.add(t.currency);
+      entry.frequencies.add(t.frequency);
+      grandTotal += t.amount;
+      recipientMap.set(t.toUserId, entry);
+    }
+
+    const recipients = Array.from(recipientMap.entries())
+      .map(([toUserId, data]) => ({
+        toUserId,
+        transferCount: data.count,
+        totalAmount: data.totalAmount.toString(),
+        currencies: Array.from(data.currencies),
+        frequencies: Array.from(data.frequencies),
+        sharePercent: grandTotal > BigInt(0)
+          ? Math.round(Number(data.totalAmount * BigInt(10000) / grandTotal)) / 100
+          : 0,
+      }))
+      .sort((a, b) => Number(BigInt(b.totalAmount) - BigInt(a.totalAmount)));
+
+    const topRecipient = recipients.length > 0
+      ? { toUserId: recipients[0]!.toUserId, totalAmount: recipients[0]!.totalAmount }
+      : null;
+
+    const topShare = recipients.length > 0 ? recipients[0]!.sharePercent : 0;
+    let concentrationLevel: string;
+    if (topShare > 80) concentrationLevel = 'high';
+    else if (topShare > 50) concentrationLevel = 'moderate';
+    else if (recipients.length > 0) concentrationLevel = 'low';
+    else concentrationLevel = 'none';
+
+    return {
+      totalTransfers: transfers.length,
+      uniqueRecipients: recipientMap.size,
+      recipients,
+      topRecipient,
+      concentrationLevel,
+    };
+  }
+
   async processDueTransfers() {
     const now = new Date();
     const due = await this.prisma.scheduledTransfer.findMany({
