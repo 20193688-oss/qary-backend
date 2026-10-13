@@ -219,6 +219,69 @@ export class BankAccountService {
     };
   }
 
+  async getRailDistribution(userId: string) {
+    const accounts = await this.prisma.bankAccount.findMany({ where: { userId } });
+
+    if (accounts.length === 0) {
+      return {
+        totalAccounts: 0,
+        byRail: [] as Array<{ rail: string; count: number; sharePercent: number; verifiedCount: number; countries: string[] }>,
+        byCountry: [] as Array<{ country: string; count: number; sharePercent: number; rails: string[] }>,
+        diversificationScore: 0,
+        primaryRail: null as string | null,
+        primaryCountry: null as string | null,
+      };
+    }
+
+    const railMap = new Map<string, { count: number; verified: number; countries: Set<string> }>();
+    const countryMap = new Map<string, { count: number; rails: Set<string> }>();
+
+    for (const a of accounts) {
+      const r = railMap.get(a.rail) ?? { count: 0, verified: 0, countries: new Set<string>() };
+      r.count++;
+      if (a.isVerified) r.verified++;
+      r.countries.add(a.country);
+      railMap.set(a.rail, r);
+
+      const c = countryMap.get(a.country) ?? { count: 0, rails: new Set<string>() };
+      c.count++;
+      c.rails.add(a.rail);
+      countryMap.set(a.country, c);
+    }
+
+    const total = accounts.length;
+    const byRail = Array.from(railMap.entries())
+      .map(([rail, data]) => ({
+        rail,
+        count: data.count,
+        sharePercent: Math.round((data.count / total) * 10000) / 100,
+        verifiedCount: data.verified,
+        countries: Array.from(data.countries),
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    const byCountry = Array.from(countryMap.entries())
+      .map(([country, data]) => ({
+        country,
+        count: data.count,
+        sharePercent: Math.round((data.count / total) * 10000) / 100,
+        rails: Array.from(data.rails),
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    const hhi = byRail.reduce((sum, r) => sum + (r.sharePercent / 100) ** 2, 0);
+    const diversificationScore = Math.round((1 - hhi) * 100);
+
+    return {
+      totalAccounts: total,
+      byRail,
+      byCountry,
+      diversificationScore,
+      primaryRail: byRail[0]?.rail ?? null,
+      primaryCountry: byCountry[0]?.country ?? null,
+    };
+  }
+
   async removeAccount(id: string, userId: string) {
     const acct = await this.prisma.bankAccount.findUnique({ where: { id } });
     if (!acct) throw new Error('account_not_found');

@@ -219,6 +219,62 @@ export class BusinessProfileService {
     };
   }
 
+  async getOnboardingTimeline(userId: string) {
+    const profile = await this.prisma.businessProfile.findUnique({ where: { userId } });
+    if (!profile) throw new Error('profile_not_found');
+
+    const steps: Array<{ step: string; status: string; completedAt: Date | null }> = [];
+
+    steps.push({
+      step: 'registration',
+      status: 'completed',
+      completedAt: profile.createdAt,
+    });
+
+    const hasIdentity = !!(profile.taxId && profile.taxIdType && profile.taxIdCountry);
+    steps.push({
+      step: 'identity_documents',
+      status: hasIdentity ? 'completed' : 'pending',
+      completedAt: hasIdentity ? profile.createdAt : null,
+    });
+
+    const hasLegalRep = !!(profile.legalRepName && profile.legalRepDocNumber);
+    steps.push({
+      step: 'legal_representative',
+      status: hasLegalRep ? 'completed' : 'pending',
+      completedAt: hasLegalRep ? profile.createdAt : null,
+    });
+
+    const hasScreening = !!(profile as any).lastScreeningAt;
+    steps.push({
+      step: 'screening',
+      status: hasScreening ? 'completed' : 'pending',
+      completedAt: hasScreening ? (profile as any).lastScreeningAt : null,
+    });
+
+    steps.push({
+      step: 'verification',
+      status: profile.status === 'APPROVED' ? 'completed' : profile.status === 'REJECTED' ? 'rejected' : 'pending',
+      completedAt: profile.verifiedAt ?? null,
+    });
+
+    const completedSteps = steps.filter((s) => s.status === 'completed').length;
+    const progressPercent = Math.round((completedSteps / steps.length) * 100);
+    const currentStep = steps.find((s) => s.status === 'pending')?.step ?? (steps.every((s) => s.status === 'completed') ? 'done' : steps.find((s) => s.status === 'rejected')?.step ?? 'unknown');
+
+    return {
+      userId,
+      status: profile.status,
+      progressPercent,
+      completedSteps,
+      totalSteps: steps.length,
+      currentStep,
+      steps,
+      createdAt: profile.createdAt,
+      verifiedAt: profile.verifiedAt,
+    };
+  }
+
   async reject(userId: string, reason: string) {
     const profile = await this.prisma.businessProfile.findUnique({ where: { userId } });
     if (!profile) throw new Error('profile_not_found');
