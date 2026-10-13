@@ -279,6 +279,69 @@ export class SavingsGoalService {
     };
   }
 
+  async getContributionPatterns(userId: string) {
+    const goals = await this.prisma.savingsGoal.findMany({ where: { userId } });
+    const now = Date.now();
+
+    let totalContributed = BigInt(0);
+    let totalGoalsWithContributions = 0;
+    const byCurrency: Record<string, { count: number; totalContributed: bigint }> = {};
+
+    const goalPatterns: Array<{
+      goalId: string; name: string; currency: string;
+      contributed: string; dailyRate: number;
+      velocity: number; status: string;
+    }> = [];
+
+    for (const g of goals) {
+      if (g.currentAmount > BigInt(0)) {
+        totalGoalsWithContributions++;
+        totalContributed += g.currentAmount;
+      }
+
+      if (!byCurrency[g.currency]) byCurrency[g.currency] = { count: 0, totalContributed: BigInt(0) };
+      byCurrency[g.currency].count++;
+      byCurrency[g.currency].totalContributed += g.currentAmount;
+
+      const ageDays = Math.max(1, (now - new Date(g.createdAt).getTime()) / (1000 * 60 * 60 * 24));
+      const dailyRate = Number(g.currentAmount) / ageDays;
+      const velocity = g.targetAmount > BigInt(0)
+        ? Math.round(Number(g.currentAmount * BigInt(10000) / g.targetAmount) / ageDays) / 100
+        : 0;
+
+      goalPatterns.push({
+        goalId: g.id,
+        name: g.name,
+        currency: g.currency,
+        contributed: g.currentAmount.toString(),
+        dailyRate: Math.round(dailyRate),
+        velocity,
+        status: g.status,
+      });
+    }
+
+    goalPatterns.sort((a, b) => b.dailyRate - a.dailyRate);
+
+    const avgContribution = goals.length > 0
+      ? (totalContributed / BigInt(Math.max(1, goals.length))).toString()
+      : '0';
+
+    const currencyBreakdown = Object.entries(byCurrency).map(([currency, data]) => ({
+      currency,
+      goalCount: data.count,
+      totalContributed: data.totalContributed.toString(),
+    }));
+
+    return {
+      totalGoals: goals.length,
+      goalsWithContributions: totalGoalsWithContributions,
+      totalContributed: totalContributed.toString(),
+      avgContribution,
+      topPerformers: goalPatterns.filter(g => g.status === 'active').slice(0, 5),
+      currencyBreakdown,
+    };
+  }
+
   async archive(id: string, userId: string) {
     const goal = await this.prisma.savingsGoal.findUnique({ where: { id } });
     if (!goal) throw new Error('goal_not_found');

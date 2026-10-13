@@ -308,6 +308,66 @@ export class SubscriptionService {
     };
   }
 
+  async getUsageTimeline(userId: string) {
+    const allSubs = await this.prisma.subscription.findMany({ where: { userId } });
+    const now = Date.now();
+
+    const byStatus: Record<string, number> = {};
+    let totalTenureMs = 0;
+    let longestTenureMs = 0;
+    let longestSub: { id: string; planName: string; tenureDays: number } | null = null;
+    const byPlan: Record<string, { count: number; totalTenureMs: number; active: number }> = {};
+
+    for (const s of allSubs) {
+      byStatus[s.status] = (byStatus[s.status] ?? 0) + 1;
+
+      const endDate = (s as any).cancelledAt ?? now;
+      const tenureMs = (typeof endDate === 'number' ? endDate : new Date(endDate).getTime()) - new Date(s.createdAt).getTime();
+      totalTenureMs += tenureMs;
+
+      if (!byPlan[s.planName]) byPlan[s.planName] = { count: 0, totalTenureMs: 0, active: 0 };
+      byPlan[s.planName].count++;
+      byPlan[s.planName].totalTenureMs += tenureMs;
+      if (s.status === 'active') byPlan[s.planName].active++;
+
+      if (tenureMs > longestTenureMs) {
+        longestTenureMs = tenureMs;
+        longestSub = {
+          id: s.id,
+          planName: s.planName,
+          tenureDays: Math.round(tenureMs / (1000 * 60 * 60 * 24)),
+        };
+      }
+    }
+
+    const avgTenureDays = allSubs.length > 0
+      ? Math.round(totalTenureMs / allSubs.length / (1000 * 60 * 60 * 24) * 10) / 10
+      : 0;
+
+    const planBreakdown = Object.entries(byPlan)
+      .map(([plan, data]) => ({
+        plan,
+        totalSubscriptions: data.count,
+        activeSubscriptions: data.active,
+        avgTenureDays: Math.round(data.totalTenureMs / data.count / (1000 * 60 * 60 * 24) * 10) / 10,
+      }))
+      .sort((a, b) => b.totalSubscriptions - a.totalSubscriptions);
+
+    const activeCount = byStatus['active'] ?? 0;
+    const retentionRate = allSubs.length > 0
+      ? Math.round((activeCount / allSubs.length) * 10000) / 100
+      : 0;
+
+    return {
+      totalSubscriptions: allSubs.length,
+      byStatus,
+      avgTenureDays,
+      longestSubscription: longestSub,
+      retentionRate,
+      planBreakdown,
+    };
+  }
+
   async processDueBillings() {
     const now = new Date();
     const due = await this.prisma.subscription.findMany({

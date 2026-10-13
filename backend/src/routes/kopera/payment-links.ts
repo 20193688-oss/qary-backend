@@ -99,6 +99,10 @@ export async function registerPaymentLinkRoutes(app: FastifyInstance, prisma: Pr
     };
   });
 
+  app.get('/api/payment-links/lifecycle-analysis', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getLifecycleAnalysis(req.auth!.userId);
+  });
+
   app.get('/api/payment-links/expiring', { preHandler: [app.requireAuth] }, async (req) => {
     const query = req.query as { days?: string };
     const withinDays = Math.min(Number(query.days ?? 7), 90);
