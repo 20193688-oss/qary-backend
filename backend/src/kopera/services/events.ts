@@ -260,6 +260,69 @@ export class EventService {
     };
   }
 
+  async getAnomalyDetection(userId: string) {
+    const events = await this.prisma.event.findMany({ where: { userId } });
+
+    if (events.length === 0) {
+      return {
+        totalEvents: 0,
+        anomalies: [] as Array<{ type: string; detail: string; severity: string }>,
+        riskLevel: 'none' as const,
+        offHoursPercent: 0,
+        rareEventTypes: [] as string[],
+      };
+    }
+
+    const byType: Record<string, number> = {};
+    const byDay: Record<string, number> = {};
+    let offHoursCount = 0;
+
+    for (const e of events) {
+      byType[e.eventType] = (byType[e.eventType] ?? 0) + 1;
+      const d = e.createdAt;
+      const dayKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      byDay[dayKey] = (byDay[dayKey] ?? 0) + 1;
+      const hour = d.getHours();
+      if (hour < 6 || hour >= 23) offHoursCount++;
+    }
+
+    const offHoursPercent = Math.round((offHoursCount / events.length) * 10000) / 100;
+
+    const dayCounts = Object.values(byDay);
+    const avgPerDay = dayCounts.reduce((s, c) => s + c, 0) / (dayCounts.length || 1);
+    const stdDev = Math.sqrt(dayCounts.reduce((s, c) => s + (c - avgPerDay) ** 2, 0) / (dayCounts.length || 1));
+
+    const anomalies: Array<{ type: string; detail: string; severity: string }> = [];
+
+    const spikeDays = Object.entries(byDay).filter(([, c]) => c > avgPerDay + 2 * stdDev);
+    for (const [day, count] of spikeDays) {
+      anomalies.push({ type: 'activity_spike', detail: `${count} events on ${day} (avg ${Math.round(avgPerDay)})`, severity: 'medium' });
+    }
+
+    const rareEventTypes: string[] = [];
+    for (const [type, count] of Object.entries(byType)) {
+      if (count === 1) {
+        rareEventTypes.push(type);
+        anomalies.push({ type: 'rare_event', detail: `Event type "${type}" occurred only once`, severity: 'low' });
+      }
+    }
+
+    if (offHoursPercent > 30) {
+      anomalies.push({ type: 'off_hours_activity', detail: `${offHoursPercent}% of events occurred outside business hours`, severity: 'medium' });
+    }
+
+    const riskLevel = anomalies.filter(a => a.severity === 'medium').length >= 2 ? 'high'
+      : anomalies.length > 0 ? 'medium' : 'low';
+
+    return {
+      totalEvents: events.length,
+      anomalies,
+      riskLevel,
+      offHoursPercent,
+      rareEventTypes,
+    };
+  }
+
   async listByRequest(requestId: string) {
     return this.prisma.event.findMany({
       where: { requestId },

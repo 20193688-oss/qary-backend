@@ -68,6 +68,10 @@ export async function registerFxRoutes(app: FastifyInstance, prisma: PrismaClien
     return { totalConversions: result.totalConversions, totalVolume: result.totalVolume.toString(), byPair, bestRate: result.bestRate, worstRate: result.worstRate };
   });
 
+  app.get('/api/fx/currency-exposure', { preHandler: [app.requireAuth] }, async (req) => {
+    return fx.getCurrencyExposureReport(req.auth!.userId);
+  });
+
   app.get('/api/fx/conversion-optimizer', { preHandler: [app.requireAuth] }, async (req) => {
     const result = await fx.getConversionOptimizer(req.auth!.userId);
     return {

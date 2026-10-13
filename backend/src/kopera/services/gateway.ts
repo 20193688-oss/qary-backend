@@ -318,6 +318,58 @@ export class GatewayPaymentService {
     };
   }
 
+  async getRevenueAnalysis(userId: string) {
+    const payments = await this.prisma.gatewayPayment.findMany({
+      where: { transaction: { userId } },
+    });
+
+    if (payments.length === 0) {
+      return {
+        totalPayments: 0,
+        totalProcessed: '0',
+        totalFees: '0',
+        netRevenue: '0',
+        refundedAmount: '0',
+        byMethod: {} as Record<string, { count: number; processed: string; fees: string }>,
+        byStatus: {} as Record<string, number>,
+      };
+    }
+
+    let totalProcessed = BigInt(0);
+    let totalFees = BigInt(0);
+    let refundedAmount = BigInt(0);
+    const byMethod: Record<string, { count: number; processed: bigint; fees: bigint }> = {};
+    const byStatus: Record<string, number> = {};
+
+    for (const p of payments) {
+      byStatus[p.status] = (byStatus[p.status] ?? 0) + 1;
+      totalProcessed += p.amount;
+      totalFees += p.gatewayFee;
+      if (p.status === 'REFUNDED') refundedAmount += p.amount;
+
+      const method = p.paymentMethod;
+      if (!byMethod[method]) byMethod[method] = { count: 0, processed: BigInt(0), fees: BigInt(0) };
+      byMethod[method].count++;
+      byMethod[method].processed += p.amount;
+      byMethod[method].fees += p.gatewayFee;
+    }
+
+    const serializedByMethod: Record<string, { count: number; processed: string; fees: string }> = {};
+    for (const [m, d] of Object.entries(byMethod)) {
+      serializedByMethod[m] = { count: d.count, processed: d.processed.toString(), fees: d.fees.toString() };
+    }
+
+    return {
+      totalPayments: payments.length,
+      totalProcessed: totalProcessed.toString(),
+      totalFees: totalFees.toString(),
+      netRevenue: (totalProcessed - totalFees - refundedAmount).toString(),
+      refundedAmount: refundedAmount.toString(),
+      byMethod: serializedByMethod,
+      byStatus,
+    };
+  }
+
   async refund(id: string, refundAmount?: bigint, reason?: string) {
     const gp = await this.prisma.gatewayPayment.findUnique({
       where: { id },

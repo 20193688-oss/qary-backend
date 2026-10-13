@@ -388,6 +388,59 @@ export class InvoiceService {
     };
   }
 
+  async getCashFlowProjection(senderId: string) {
+    const invoices = await this.prisma.invoice.findMany({ where: { senderId } });
+
+    const unpaid = invoices.filter((inv: any) => inv.status === 'SENT' || inv.status === 'DRAFT' || inv.status === 'OVERDUE');
+    const paid = invoices.filter((inv: any) => inv.status === 'PAID');
+
+    let upcomingTotal = BigInt(0);
+    let overdueTotal = BigInt(0);
+    const now = new Date();
+
+    const upcoming: Array<{ invoiceId: string; receiverName: string | null; amount: string; currency: string; dueDate: Date | null; daysUntilDue: number | null }> = [];
+
+    for (const inv of unpaid) {
+      upcomingTotal += inv.totalAmount;
+      const daysUntilDue = inv.dueDate
+        ? Math.ceil((inv.dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+        : null;
+      if (daysUntilDue !== null && daysUntilDue < 0) overdueTotal += inv.totalAmount;
+      upcoming.push({
+        invoiceId: inv.id,
+        receiverName: inv.receiverName,
+        amount: inv.totalAmount.toString(),
+        currency: inv.currency,
+        dueDate: inv.dueDate,
+        daysUntilDue,
+      });
+    }
+
+    upcoming.sort((a, b) => (a.daysUntilDue ?? 999) - (b.daysUntilDue ?? 999));
+
+    let totalPaid = BigInt(0);
+    let totalPaidCount = 0;
+    for (const inv of paid) {
+      totalPaid += inv.totalAmount;
+      totalPaidCount++;
+    }
+
+    const collectionRate = invoices.length > 0
+      ? Math.round((totalPaidCount / invoices.length) * 10000) / 100
+      : 0;
+
+    return {
+      totalInvoices: invoices.length,
+      unpaidCount: unpaid.length,
+      paidCount: paid.length,
+      upcomingTotal: upcomingTotal.toString(),
+      overdueTotal: overdueTotal.toString(),
+      historicalCollectionRate: collectionRate,
+      expectedCollection: BigInt(Math.round(Number(upcomingTotal) * collectionRate / 100)).toString(),
+      upcoming,
+    };
+  }
+
   private getDefaultTaxRate(country: string): number {
     const rates: Record<string, number> = {
       PE: 0.18, // IGV
