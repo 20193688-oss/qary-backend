@@ -362,4 +362,77 @@ export class DisputeService {
       },
     });
   }
+
+  async getOutcomeAnalysis(userId: string) {
+    const disputes = await this.prisma.dispute.findMany({ where: { userId } });
+
+    if (disputes.length === 0) {
+      return {
+        totalDisputes: 0,
+        resolved: 0,
+        pending: 0,
+        winRate: 0,
+        byReason: [],
+        byCurrency: [],
+      };
+    }
+
+    const resolved = disputes.filter((d) =>
+      d.status === 'WON' || d.status === 'LOST' || d.status === 'ACCEPTED',
+    );
+    const pending = disputes.length - resolved.length;
+    const won = resolved.filter((d) => d.status === 'WON').length;
+    const winRate = resolved.length > 0 ? Math.round((won / resolved.length) * 10000) / 100 : 0;
+
+    const reasonMap = new Map<string, { total: number; won: number; lost: number; accepted: number; totalAmount: bigint }>();
+    for (const d of disputes) {
+      const reason = d.reason ?? 'unknown';
+      const entry = reasonMap.get(reason) ?? { total: 0, won: 0, lost: 0, accepted: 0, totalAmount: BigInt(0) };
+      entry.total++;
+      if (d.status === 'WON') entry.won++;
+      if (d.status === 'LOST') entry.lost++;
+      if (d.status === 'ACCEPTED') entry.accepted++;
+      entry.totalAmount += d.amount ?? BigInt(0);
+      reasonMap.set(reason, entry);
+    }
+
+    const byReason = Array.from(reasonMap.entries()).map(([reason, data]) => ({
+      reason,
+      total: data.total,
+      won: data.won,
+      lost: data.lost,
+      accepted: data.accepted,
+      winRate: (data.won + data.lost) > 0
+        ? Math.round((data.won / (data.won + data.lost)) * 10000) / 100
+        : 0,
+      totalAmount: data.totalAmount.toString(),
+    })).sort((a, b) => b.total - a.total);
+
+    const currencyMap = new Map<string, { total: number; won: number; totalAmount: bigint }>();
+    for (const d of disputes) {
+      const cur = d.currency ?? 'USD';
+      const entry = currencyMap.get(cur) ?? { total: 0, won: 0, totalAmount: BigInt(0) };
+      entry.total++;
+      if (d.status === 'WON') entry.won++;
+      entry.totalAmount += d.amount ?? BigInt(0);
+      currencyMap.set(cur, entry);
+    }
+
+    const byCurrency = Array.from(currencyMap.entries()).map(([currency, data]) => ({
+      currency,
+      total: data.total,
+      won: data.won,
+      winRate: data.total > 0 ? Math.round((data.won / data.total) * 10000) / 100 : 0,
+      totalAmount: data.totalAmount.toString(),
+    })).sort((a, b) => b.total - a.total);
+
+    return {
+      totalDisputes: disputes.length,
+      resolved: resolved.length,
+      pending,
+      winRate,
+      byReason,
+      byCurrency,
+    };
+  }
 }

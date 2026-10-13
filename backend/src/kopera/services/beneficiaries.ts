@@ -231,4 +231,68 @@ export class BeneficiaryService {
 
     return this.prisma.beneficiary.delete({ where: { id: beneficiaryId } });
   }
+
+  async getActivityScore(userId: string) {
+    const beneficiaries = await this.prisma.beneficiary.findMany({ where: { userId } });
+
+    if (beneficiaries.length === 0) {
+      return {
+        totalBeneficiaries: 0,
+        avgScore: 0,
+        scores: [],
+      };
+    }
+
+    const transactions = await this.prisma.transaction.findMany({
+      where: { userId, status: 'COMPLETED' },
+    });
+
+    const now = Date.now();
+    const scores = beneficiaries.map((b) => {
+      const related = transactions.filter(
+        (t) => t.counterpartyName === b.nickname || t.receiverWalletId === b.id,
+      );
+      const totalVolume = related.reduce((s, t) => s + t.amount, BigInt(0));
+      const txCount = related.length;
+
+      const recencyDays = related.length > 0
+        ? Math.max(
+            ...related.map((t) => {
+              const d = t.processedAt ?? t.createdAt;
+              return d ? Math.floor((now - new Date(d).getTime()) / 86400000) : 999;
+            }),
+          )
+        : null;
+
+      let recencyScore = 0;
+      if (recencyDays !== null) {
+        if (recencyDays <= 7) recencyScore = 100;
+        else if (recencyDays <= 30) recencyScore = 70;
+        else if (recencyDays <= 90) recencyScore = 40;
+        else recencyScore = 10;
+      }
+
+      const frequencyScore = Math.min(100, txCount * 20);
+      const activityScore = Math.round((recencyScore * 0.6 + frequencyScore * 0.4) * 100) / 100;
+
+      return {
+        beneficiaryId: b.id,
+        nickname: b.nickname,
+        transactionCount: txCount,
+        totalVolume: totalVolume.toString(),
+        lastActivityDaysAgo: recencyDays,
+        activityScore,
+      };
+    }).sort((a, b) => b.activityScore - a.activityScore);
+
+    const avgScore = Math.round(
+      (scores.reduce((s, sc) => s + sc.activityScore, 0) / scores.length) * 100
+    ) / 100;
+
+    return {
+      totalBeneficiaries: beneficiaries.length,
+      avgScore,
+      scores,
+    };
+  }
 }

@@ -291,4 +291,66 @@ export class AntExpenseService {
       data: { isActive: false },
     });
   }
+
+  async getCategoryRiskScore(userId: string) {
+    const expenses = await this.prisma.antExpense.findMany({
+      where: { userId, isActive: true },
+    });
+
+    if (expenses.length === 0) {
+      return {
+        totalActiveExpenses: 0,
+        overallRiskScore: 0,
+        riskLevel: 'none' as const,
+        byCategory: [],
+      };
+    }
+
+    const byCategory = new Map<string, { count: number; totalAmount: bigint; merchants: Set<string> }>();
+    for (const e of expenses) {
+      const cat = e.category ?? 'uncategorized';
+      const entry = byCategory.get(cat) ?? { count: 0, totalAmount: BigInt(0), merchants: new Set<string>() };
+      entry.count++;
+      entry.totalAmount += e.amount;
+      if (e.merchantName) entry.merchants.add(e.merchantName);
+      byCategory.set(cat, entry);
+    }
+
+    const totalAmount = expenses.reduce((s, e) => s + e.amount, BigInt(0));
+    const categories = Array.from(byCategory.entries()).map(([category, data]) => {
+      const share = totalAmount > BigInt(0)
+        ? Number((data.totalAmount * BigInt(10000)) / totalAmount) / 100
+        : 0;
+      const concentrationScore = Math.min(100, share);
+      const frequencyScore = Math.min(100, (data.count / expenses.length) * 100);
+      const merchantDiversity = data.merchants.size;
+      const diversityPenalty = merchantDiversity <= 1 ? 30 : merchantDiversity <= 2 ? 15 : 0;
+      const riskScore = Math.round((concentrationScore * 0.5 + frequencyScore * 0.3 + diversityPenalty * 0.2) * 100) / 100;
+
+      return {
+        category,
+        count: data.count,
+        totalAmount: data.totalAmount.toString(),
+        share: Math.round(share * 100) / 100,
+        merchantCount: merchantDiversity,
+        riskScore,
+      };
+    }).sort((a, b) => b.riskScore - a.riskScore);
+
+    const overallRiskScore = Math.round(
+      (categories.reduce((s, c) => s + c.riskScore, 0) / categories.length) * 100
+    ) / 100;
+
+    let riskLevel: 'high' | 'medium' | 'low' | 'none';
+    if (overallRiskScore >= 60) riskLevel = 'high';
+    else if (overallRiskScore >= 30) riskLevel = 'medium';
+    else riskLevel = 'low';
+
+    return {
+      totalActiveExpenses: expenses.length,
+      overallRiskScore,
+      riskLevel,
+      byCategory: categories,
+    };
+  }
 }

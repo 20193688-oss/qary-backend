@@ -331,4 +331,62 @@ export class BankAccountService {
     if (acct.userId !== userId) throw new Error('forbidden');
     return this.prisma.bankAccount.delete({ where: { id } });
   }
+
+  async getRedundancyAnalysis(userId: string) {
+    const accounts = await this.prisma.bankAccount.findMany({ where: { userId } });
+
+    if (accounts.length === 0) {
+      return {
+        totalAccounts: 0,
+        redundantGroups: [],
+        redundantCount: 0,
+        uniqueCount: 0,
+        recommendation: 'No bank accounts found.',
+      };
+    }
+
+    const groups = new Map<string, typeof accounts>();
+    for (const acct of accounts) {
+      const key = `${(acct.bankName ?? '').toLowerCase()}_${(acct.currency ?? '').toLowerCase()}`;
+      const list = groups.get(key) ?? [];
+      list.push(acct);
+      groups.set(key, list);
+    }
+
+    const redundantGroups = Array.from(groups.entries())
+      .filter(([, accts]) => accts.length > 1)
+      .map(([, accts]) => ({
+        bankName: accts[0].bankName ?? 'Unknown',
+        currency: accts[0].currency ?? 'Unknown',
+        count: accts.length,
+        accounts: accts.map((a) => ({
+          id: a.id,
+          holderName: a.holderName,
+          accountType: a.accountType,
+          isDefault: a.isDefault,
+          verified: a.verified,
+        })),
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    const redundantCount = redundantGroups.reduce((s, g) => s + g.count - 1, 0);
+    const uniqueCount = accounts.length - redundantCount;
+
+    let recommendation: string;
+    if (redundantCount === 0) {
+      recommendation = 'No redundant accounts detected.';
+    } else if (redundantCount <= 2) {
+      recommendation = 'A few accounts share the same bank and currency. Consider consolidating.';
+    } else {
+      recommendation = 'Multiple redundant accounts found. Consolidating could simplify management.';
+    }
+
+    return {
+      totalAccounts: accounts.length,
+      redundantGroups,
+      redundantCount,
+      uniqueCount,
+      recommendation,
+    };
+  }
 }

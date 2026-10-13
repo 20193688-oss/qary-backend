@@ -139,6 +139,10 @@ export async function registerAntExpenseRoutes(app: FastifyInstance, prisma: Pri
     return svc.getActionPlan(req.auth!.userId);
   });
 
+  app.get('/api/ant-expenses/category-risk-score', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getCategoryRiskScore(req.auth!.userId);
+  });
+
   app.get('/api/ant-expenses/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const expense = await svc.getById(id);
