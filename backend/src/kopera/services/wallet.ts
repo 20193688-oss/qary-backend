@@ -444,6 +444,91 @@ export class WalletService {
     };
   }
 
+  async getLiquidityAnalysis(userId: string) {
+    const userWallets = await this.prisma.wallet.findMany({
+      where: { userId },
+    });
+
+    if (userWallets.length === 0) {
+      return {
+        totalWallets: 0,
+        totalAvailableLiquidity: '0',
+        totalHeldAmount: '0',
+        liquidityRatio: 0,
+        byCurrency: [] as Array<{
+          currency: string;
+          balance: string;
+          holdBalance: string;
+          availableLiquidity: string;
+          liquidityPercent: number;
+        }>,
+        frozenAmount: '0',
+        immediatelyAvailable: '0',
+        liquidityScore: 'none' as string,
+      };
+    }
+
+    let totalBalance = BigInt(0);
+    let totalHold = BigInt(0);
+    let frozenTotal = BigInt(0);
+
+    const currencyMap = new Map<string, { balance: bigint; hold: bigint }>();
+
+    for (const w of userWallets) {
+      const bal = w.balance as bigint;
+      const hold = (w as any).holdBalance as bigint ?? BigInt(0);
+
+      if (w.status === 'FROZEN') {
+        frozenTotal += bal;
+      }
+
+      totalBalance += bal;
+      totalHold += hold;
+
+      const entry = currencyMap.get(w.currency) ?? { balance: BigInt(0), hold: BigInt(0) };
+      entry.balance += bal;
+      entry.hold += hold;
+      currencyMap.set(w.currency, entry);
+    }
+
+    const totalAvailable = totalBalance > totalHold ? totalBalance - totalHold : BigInt(0);
+    const immediatelyAvailable = totalAvailable > frozenTotal ? totalAvailable - frozenTotal : BigInt(0);
+    const liquidityRatio = totalBalance > BigInt(0)
+      ? Math.round(Number(immediatelyAvailable * BigInt(10000) / totalBalance)) / 100
+      : 0;
+
+    const byCurrency = Array.from(currencyMap.entries()).map(([currency, data]) => {
+      const avail = data.balance > data.hold ? data.balance - data.hold : BigInt(0);
+      return {
+        currency,
+        balance: data.balance.toString(),
+        holdBalance: data.hold.toString(),
+        availableLiquidity: avail.toString(),
+        liquidityPercent: data.balance > BigInt(0)
+          ? Math.round(Number(avail * BigInt(10000) / data.balance)) / 100
+          : 0,
+      };
+    });
+
+    let liquidityScore: string;
+    if (liquidityRatio >= 80) liquidityScore = 'excellent';
+    else if (liquidityRatio >= 50) liquidityScore = 'good';
+    else if (liquidityRatio >= 20) liquidityScore = 'fair';
+    else if (totalBalance > BigInt(0)) liquidityScore = 'low';
+    else liquidityScore = 'none';
+
+    return {
+      totalWallets: userWallets.length,
+      totalAvailableLiquidity: totalAvailable.toString(),
+      totalHeldAmount: totalHold.toString(),
+      liquidityRatio,
+      byCurrency,
+      frozenAmount: frozenTotal.toString(),
+      immediatelyAvailable: immediatelyAvailable.toString(),
+      liquidityScore,
+    };
+  }
+
   async setDefault(userId: string, currency: string) {
     const wallet = await this.getWallet(userId, currency);
     if (!wallet) throw new Error('wallet_not_found');

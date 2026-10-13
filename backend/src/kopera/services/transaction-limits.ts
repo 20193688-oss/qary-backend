@@ -203,6 +203,94 @@ export class TransactionLimitService {
     };
   }
 
+  async getSpendingVelocity(userId: string) {
+    const limits = await this.prisma.transactionLimit.findMany({
+      where: { userId },
+    });
+
+    if (limits.length === 0) {
+      return {
+        totalLimits: 0,
+        velocities: [] as Array<{
+          currency: string;
+          limitType: string;
+          maxAmount: string;
+          currentUsage: string;
+          utilizationPercent: number;
+          remainingAmount: string;
+          burnRatePerHour: string;
+          estimatedExhaustionHours: number | null;
+        }>,
+        fastestBurning: null as { currency: string; limitType: string; burnRatePerHour: string } | null,
+        avgUtilization: 0,
+      };
+    }
+
+    const now = new Date();
+    const velocities: Array<{
+      currency: string;
+      limitType: string;
+      maxAmount: string;
+      currentUsage: string;
+      utilizationPercent: number;
+      remainingAmount: string;
+      burnRatePerHour: string;
+      estimatedExhaustionHours: number | null;
+    }> = [];
+
+    let totalUtil = 0;
+    let fastestBurnRate = BigInt(0);
+    let fastestBurning: { currency: string; limitType: string; burnRatePerHour: string } | null = null;
+
+    for (const raw of limits) {
+      const limit = this.refreshIfNeeded(raw);
+      const maxAmt = limit.maxAmount as bigint;
+      const usage = limit.currentUsage as bigint;
+      const remaining = maxAmt > usage ? maxAmt - usage : BigInt(0);
+      const utilPercent = maxAmt > BigInt(0)
+        ? Math.round(Number(usage * BigInt(10000) / maxAmt)) / 100
+        : 0;
+      totalUtil += utilPercent;
+
+      const periodStartTime = (limit.periodStart as Date).getTime();
+      const elapsedHours = Math.max(1, (now.getTime() - periodStartTime) / (1000 * 60 * 60));
+      const burnRatePerHour = usage > BigInt(0)
+        ? BigInt(Math.round(Number(usage) / elapsedHours))
+        : BigInt(0);
+
+      const estimatedExhaustionHours = burnRatePerHour > BigInt(0)
+        ? Math.round(Number(remaining) / Number(burnRatePerHour) * 100) / 100
+        : null;
+
+      velocities.push({
+        currency: limit.currency,
+        limitType: limit.limitType,
+        maxAmount: maxAmt.toString(),
+        currentUsage: usage.toString(),
+        utilizationPercent: utilPercent,
+        remainingAmount: remaining.toString(),
+        burnRatePerHour: burnRatePerHour.toString(),
+        estimatedExhaustionHours,
+      });
+
+      if (burnRatePerHour > fastestBurnRate) {
+        fastestBurnRate = burnRatePerHour;
+        fastestBurning = {
+          currency: limit.currency,
+          limitType: limit.limitType,
+          burnRatePerHour: burnRatePerHour.toString(),
+        };
+      }
+    }
+
+    return {
+      totalLimits: limits.length,
+      velocities,
+      fastestBurning,
+      avgUtilization: Math.round(totalUtil / limits.length * 100) / 100,
+    };
+  }
+
   async removeLimit(userId: string, currency: string, limitType: string) {
     const limit = await this.prisma.transactionLimit.findFirst({
       where: { userId, currency: currency.toUpperCase(), limitType: limitType.toLowerCase() },

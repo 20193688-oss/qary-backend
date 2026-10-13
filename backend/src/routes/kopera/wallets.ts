@@ -82,6 +82,10 @@ export async function registerWalletRoutes(app: FastifyInstance, prisma: PrismaC
     };
   });
 
+  app.get('/api/wallets/liquidity-analysis', { preHandler: [app.requireAuth] }, async (req) => {
+    return wallets.getLiquidityAnalysis(req.auth!.userId);
+  });
+
   app.get('/api/wallets', { preHandler: [app.requireAuth] }, async (req) => {
     return wallets.getAllBalances(req.auth!.userId);
   });
