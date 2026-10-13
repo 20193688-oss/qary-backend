@@ -72,6 +72,10 @@ export async function registerDisputeRoutes(app: FastifyInstance, prisma: Prisma
     return disputes.getEscalationAnalysis(req.auth!.userId);
   });
 
+  app.get('/api/disputes/financial-impact', { preHandler: [app.requireAuth] }, async (req) => {
+    return disputes.getFinancialImpact(req.auth!.userId);
+  });
+
   app.get('/api/disputes/risk-assessment', { preHandler: [app.requireAuth] }, async (req) => {
     const result = await disputes.getRiskAssessment(req.auth!.userId);
     return {

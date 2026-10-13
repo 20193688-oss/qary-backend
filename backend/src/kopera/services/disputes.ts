@@ -291,6 +291,61 @@ export class DisputeService {
     };
   }
 
+  async getFinancialImpact(userId: string) {
+    const disputes = await this.prisma.dispute.findMany({ where: { userId } });
+
+    let totalDisputed = BigInt(0);
+    let totalRecovered = BigInt(0);
+    let totalLost = BigInt(0);
+    let pendingExposure = BigInt(0);
+    const byCurrency: Record<string, { disputed: bigint; recovered: bigint; lost: bigint; pending: bigint; count: number }> = {};
+
+    for (const d of disputes) {
+      totalDisputed += d.amount;
+      if (!byCurrency[d.currency]) byCurrency[d.currency] = { disputed: BigInt(0), recovered: BigInt(0), lost: BigInt(0), pending: BigInt(0), count: 0 };
+      byCurrency[d.currency].disputed += d.amount;
+      byCurrency[d.currency].count++;
+
+      if (d.status === 'WON') {
+        totalRecovered += d.amount;
+        byCurrency[d.currency].recovered += d.amount;
+      } else if (d.status === 'LOST') {
+        totalLost += d.amount;
+        byCurrency[d.currency].lost += d.amount;
+      } else if (d.status !== 'ACCEPTED') {
+        pendingExposure += d.amount;
+        byCurrency[d.currency].pending += d.amount;
+      }
+    }
+
+    const avgDisputeSize = disputes.length > 0 ? totalDisputed / BigInt(disputes.length) : BigInt(0);
+    const recoveryRate = disputes.length > 0
+      ? Math.round(disputes.filter(d => d.status === 'WON').length / disputes.length * 10000) / 100
+      : 0;
+
+    const serializedByCurrency: Record<string, { disputed: string; recovered: string; lost: string; pending: string; count: number }> = {};
+    for (const [cur, data] of Object.entries(byCurrency)) {
+      serializedByCurrency[cur] = {
+        disputed: data.disputed.toString(),
+        recovered: data.recovered.toString(),
+        lost: data.lost.toString(),
+        pending: data.pending.toString(),
+        count: data.count,
+      };
+    }
+
+    return {
+      totalDisputes: disputes.length,
+      totalDisputed: totalDisputed.toString(),
+      totalRecovered: totalRecovered.toString(),
+      totalLost: totalLost.toString(),
+      pendingExposure: pendingExposure.toString(),
+      avgDisputeSize: avgDisputeSize.toString(),
+      recoveryRate,
+      byCurrency: serializedByCurrency,
+    };
+  }
+
   async resolve(disputeId: string, outcome: string, notes?: string) {
     const dispute = await this.prisma.dispute.findUnique({ where: { id: disputeId } });
     if (!dispute) throw new Error('dispute_not_found');

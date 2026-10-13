@@ -183,6 +183,47 @@ export class BeneficiaryService {
     };
   }
 
+  async getCurrencyExposure(userId: string) {
+    const beneficiaries = await this.prisma.beneficiary.findMany({ where: { userId } });
+    const wallets = await this.prisma.wallet.findMany({ where: { userId, status: 'ACTIVE' } });
+
+    const beneficiaryCurrencies = new Set<string>();
+    const walletCurrencies = new Set<string>();
+    const byCurrency: Record<string, { beneficiaryCount: number; walletBalance: string; hasWallet: boolean }> = {};
+
+    for (const b of beneficiaries) {
+      const cur = (b as any).currency;
+      if (cur) {
+        beneficiaryCurrencies.add(cur);
+        if (!byCurrency[cur]) byCurrency[cur] = { beneficiaryCount: 0, walletBalance: '0', hasWallet: false };
+        byCurrency[cur].beneficiaryCount++;
+      }
+    }
+
+    for (const w of wallets) {
+      walletCurrencies.add(w.currency);
+      if (!byCurrency[w.currency]) byCurrency[w.currency] = { beneficiaryCount: 0, walletBalance: '0', hasWallet: false };
+      byCurrency[w.currency].walletBalance = w.availableBalance.toString();
+      byCurrency[w.currency].hasWallet = true;
+    }
+
+    const allCurrencies = new Set([...beneficiaryCurrencies, ...walletCurrencies]);
+    const coveredCurrencies = [...allCurrencies].filter(c => beneficiaryCurrencies.has(c) && walletCurrencies.has(c));
+    const gaps = [...allCurrencies].filter(c => walletCurrencies.has(c) && !beneficiaryCurrencies.has(c));
+    const unmatched = [...allCurrencies].filter(c => beneficiaryCurrencies.has(c) && !walletCurrencies.has(c));
+    const noCurrency = beneficiaries.filter((b: any) => !(b as any).currency).length;
+
+    return {
+      totalBeneficiaries: beneficiaries.length,
+      totalWallets: wallets.length,
+      coveredCurrencies,
+      gaps,
+      unmatchedBeneficiaries: unmatched,
+      noCurrencySet: noCurrency,
+      byCurrency,
+    };
+  }
+
   async remove(beneficiaryId: string, userId: string) {
     const b = await this.prisma.beneficiary.findUnique({ where: { id: beneficiaryId } });
     if (!b) throw new Error('beneficiary_not_found');

@@ -69,6 +69,10 @@ export async function registerBeneficiaryRoutes(app: FastifyInstance, prisma: Pr
     return svc.getTransferReadiness(req.auth!.userId);
   });
 
+  app.get('/api/beneficiaries/currency-exposure', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getCurrencyExposure(req.auth!.userId);
+  });
+
   app.get('/api/beneficiaries/network-map', { preHandler: [app.requireAuth] }, async (req) => {
     const result = await svc.getNetworkMap(req.auth!.userId);
     return {
