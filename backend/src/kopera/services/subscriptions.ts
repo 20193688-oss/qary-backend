@@ -480,4 +480,91 @@ export class SubscriptionService {
 
     return { processed: results.length, results };
   }
+
+  async getSpendingTrend(userId: string) {
+    const subs = await this.prisma.subscription.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (subs.length === 0) {
+      return {
+        totalSubscriptions: 0,
+        activeSubscriptions: 0,
+        currentMonthlyCost: '0',
+        monthlyTrend: [],
+        projectedNextMonth: '0',
+        monthOverMonthChange: 0,
+      };
+    }
+
+    const active = subs.filter((s: any) => s.status === 'active');
+
+    const currentMonthlyCost = active.reduce((sum: bigint, s: any) => {
+      const interval = s.interval;
+      const count = s.intervalCount ?? 1;
+      const monthly = interval === 'daily'
+        ? s.amount * BigInt(30) / BigInt(count)
+        : interval === 'weekly'
+          ? s.amount * BigInt(4) / BigInt(count)
+          : interval === 'yearly'
+            ? s.amount / BigInt(12 * count)
+            : s.amount / BigInt(count);
+      return sum + monthly;
+    }, BigInt(0));
+
+    const now = new Date();
+    const monthlyTrend: any[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59);
+
+      let monthlyCost = BigInt(0);
+      for (const s of subs) {
+        const created = new Date(s.createdAt);
+        const cancelledAt = (s as any).cancelledAt ? new Date((s as any).cancelledAt) : null;
+        if (created <= monthEnd && (!cancelledAt || cancelledAt >= monthStart)) {
+          const interval = (s as any).interval;
+          const count = (s as any).intervalCount ?? 1;
+          const monthly = interval === 'daily'
+            ? s.amount * BigInt(30) / BigInt(count)
+            : interval === 'weekly'
+              ? s.amount * BigInt(4) / BigInt(count)
+              : interval === 'yearly'
+                ? s.amount / BigInt(12 * count)
+                : s.amount / BigInt(count);
+          monthlyCost += monthly;
+        }
+      }
+
+      monthlyTrend.push({
+        month: monthStart.toISOString().slice(0, 7),
+        cost: monthlyCost.toString(),
+        subscriptionCount: subs.filter((s: any) => {
+          const created = new Date(s.createdAt);
+          const cancelledAt = (s as any).cancelledAt ? new Date((s as any).cancelledAt) : null;
+          return created <= monthEnd && (!cancelledAt || cancelledAt >= monthStart);
+        }).length,
+      });
+    }
+
+    const recentCosts = monthlyTrend.slice(-2);
+    let monthOverMonthChange = 0;
+    if (recentCosts.length === 2) {
+      const prev = Number(BigInt(recentCosts[0].cost));
+      const curr = Number(BigInt(recentCosts[1].cost));
+      monthOverMonthChange = prev > 0
+        ? Math.round(((curr - prev) / prev) * 10000) / 100
+        : 0;
+    }
+
+    return {
+      totalSubscriptions: subs.length,
+      activeSubscriptions: active.length,
+      currentMonthlyCost: currentMonthlyCost.toString(),
+      monthlyTrend,
+      projectedNextMonth: currentMonthlyCost.toString(),
+      monthOverMonthChange,
+    };
+  }
 }

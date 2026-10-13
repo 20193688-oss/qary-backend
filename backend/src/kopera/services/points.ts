@@ -323,6 +323,77 @@ export class PointsService {
     };
   }
 
+  async getPointsDecayRisk(userId: string) {
+    const pts = await this.getOrCreate(userId);
+    const now = new Date();
+    const d7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const d30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const d90 = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+
+    const history = await this.prisma.pointsHistory.findMany({
+      where: { pointsId: pts.id, type: 'EARN' },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const earnsLast7 = history.filter((h: any) => new Date(h.createdAt) >= d7);
+    const earnsLast30 = history.filter((h: any) => new Date(h.createdAt) >= d30);
+    const earnsLast90 = history.filter((h: any) => new Date(h.createdAt) >= d90);
+
+    const pointsLast7 = earnsLast7.reduce((s: number, h: any) => s + h.amount, 0);
+    const pointsLast30 = earnsLast30.reduce((s: number, h: any) => s + h.amount, 0);
+    const pointsLast90 = earnsLast90.reduce((s: number, h: any) => s + h.amount, 0);
+
+    const avgDaily30 = pointsLast30 / 30;
+    const avgDaily90 = pointsLast90 / 90;
+    const decayRate = avgDaily90 > 0
+      ? Math.round((1 - avgDaily30 / avgDaily90) * 10000) / 100
+      : 0;
+
+    const currentTier = pts.tier;
+    const tierThreshold = TIER_THRESHOLDS[currentTier as keyof typeof TIER_THRESHOLDS] ?? 0;
+    const prevTierThreshold = this.getPrevTierThreshold(currentTier);
+    const surplus = pts.lifetimeEarned - tierThreshold;
+
+    let projectedDaysUntilTierLoss: number | null = null;
+    if (currentTier !== 'BRONZE' && avgDaily30 > 0 && decayRate > 0) {
+      const effectiveLossRate = avgDaily30 * (decayRate / 100);
+      if (effectiveLossRate > 0) {
+        projectedDaysUntilTierLoss = Math.round(surplus / effectiveLossRate);
+      }
+    }
+
+    const riskLevel = decayRate > 50 ? 'high' : decayRate > 20 ? 'medium' : 'low';
+
+    return {
+      currentTier,
+      lifetimeEarned: pts.lifetimeEarned,
+      balance: pts.balance,
+      activity: {
+        last7Days: { transactions: earnsLast7.length, pointsEarned: pointsLast7 },
+        last30Days: { transactions: earnsLast30.length, pointsEarned: pointsLast30 },
+        last90Days: { transactions: earnsLast90.length, pointsEarned: pointsLast90 },
+      },
+      decayRate,
+      riskLevel,
+      projectedDaysUntilTierLoss,
+      nextTierDown: currentTier !== 'BRONZE' ? this.getPrevTier(currentTier) : null,
+      surplusAboveCurrentTier: surplus,
+    };
+  }
+
+  private getPrevTier(tier: string): string | null {
+    const tiers = ['BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'DIAMOND'];
+    const idx = tiers.indexOf(tier);
+    if (idx <= 0) return null;
+    return tiers[idx - 1]!;
+  }
+
+  private getPrevTierThreshold(tier: string): number {
+    const prev = this.getPrevTier(tier);
+    if (!prev) return 0;
+    return TIER_THRESHOLDS[prev as keyof typeof TIER_THRESHOLDS] ?? 0;
+  }
+
   private calculateTier(lifetimeEarned: number): string {
     if (lifetimeEarned >= TIER_THRESHOLDS.DIAMOND) return 'DIAMOND';
     if (lifetimeEarned >= TIER_THRESHOLDS.PLATINUM) return 'PLATINUM';

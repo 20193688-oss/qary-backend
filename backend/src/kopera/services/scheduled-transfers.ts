@@ -407,4 +407,82 @@ export class ScheduledTransferService {
 
     return { processed: results.length, results };
   }
+
+  async getFrequencyOptimization(userId: string) {
+    const transfers = await this.prisma.scheduledTransfer.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (transfers.length === 0) {
+      return {
+        totalTransfers: 0,
+        activeTransfers: 0,
+        consolidationOpportunities: [],
+        inactiveButScheduled: [],
+        suggestions: [],
+      };
+    }
+
+    const active = transfers.filter((t: any) => t.status === 'active');
+
+    const recipientMap = new Map<string, any[]>();
+    for (const t of active) {
+      const key = `${(t as any).toUserId}_${t.currency}`;
+      const arr = recipientMap.get(key) ?? [];
+      arr.push(t);
+      recipientMap.set(key, arr);
+    }
+
+    const consolidationOpportunities: any[] = [];
+    for (const [, group] of recipientMap) {
+      if (group.length > 1) {
+        const totalMonthly = group.reduce((s: bigint, t: any) => {
+          const freq = t.frequency;
+          const multiplier = freq === 'daily' ? 30 : freq === 'weekly' ? 4 : freq === 'biweekly' ? 2 : 1;
+          return s + t.amount * BigInt(multiplier);
+        }, BigInt(0));
+        consolidationOpportunities.push({
+          recipientId: (group[0] as any).toUserId,
+          currency: group[0].currency,
+          transferCount: group.length,
+          frequencies: group.map((t: any) => t.frequency),
+          combinedMonthlyAmount: totalMonthly.toString(),
+          transferIds: group.map((t: any) => t.id),
+        });
+      }
+    }
+
+    const inactiveButScheduled = active.filter((t: any) => {
+      return t.executionCount === 0 &&
+        new Date(t.createdAt).getTime() < Date.now() - 7 * 24 * 60 * 60 * 1000;
+    }).map((t: any) => ({
+      id: t.id,
+      toUserId: t.toUserId,
+      amount: t.amount.toString(),
+      currency: t.currency,
+      frequency: t.frequency,
+      daysSinceCreated: Math.round((Date.now() - new Date(t.createdAt).getTime()) / (24 * 60 * 60 * 1000)),
+    }));
+
+    const suggestions: string[] = [];
+    if (consolidationOpportunities.length > 0) {
+      suggestions.push(`${consolidationOpportunities.length} recipient(s) have multiple scheduled transfers that could be consolidated`);
+    }
+    if (inactiveButScheduled.length > 0) {
+      suggestions.push(`${inactiveButScheduled.length} transfer(s) are scheduled but have never executed`);
+    }
+    const dailyTransfers = active.filter((t: any) => t.frequency === 'daily');
+    if (dailyTransfers.length > 0) {
+      suggestions.push(`${dailyTransfers.length} daily transfer(s) could potentially be batched to weekly`);
+    }
+
+    return {
+      totalTransfers: transfers.length,
+      activeTransfers: active.length,
+      consolidationOpportunities,
+      inactiveButScheduled,
+      suggestions,
+    };
+  }
 }

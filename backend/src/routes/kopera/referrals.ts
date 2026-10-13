@@ -75,6 +75,10 @@ export async function registerReferralRoutes(app: FastifyInstance, prisma: Prism
     return svc.getNetworkGrowth(req.auth!.userId);
   });
 
+  app.get('/api/referrals/effectiveness', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getReferralEffectiveness(req.auth!.userId);
+  });
+
   app.get('/api/referrals/validate/:code', async (req) => {
     const { code } = req.params as { code: string };
     return svc.validateCode(code);
