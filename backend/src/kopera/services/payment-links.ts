@@ -672,4 +672,62 @@ export class PaymentLinkService {
       recommendations,
     };
   }
+
+  async getPaymentLinkExpiryAnalysis(userId: string) {
+    const links = await this.prisma.paymentLink.findMany({ where: { userId } });
+
+    if (links.length === 0) {
+      return {
+        totalLinks: 0,
+        expiryScore: 0,
+        expiryLevel: 'no_data' as const,
+        breakdown: { active: 0, expired: 0, expiringSoon: 0 },
+        recommendations: [] as string[],
+      };
+    }
+
+    const now = Date.now();
+    let activeCount = 0;
+    let expiredCount = 0;
+    let expiringSoonCount = 0;
+
+    for (const link of links) {
+      const expiresAt = (link as any).expiresAt ? new Date((link as any).expiresAt).getTime() : null;
+      const status = (link as any).status;
+
+      if (status === 'expired' || status === 'EXPIRED' || (expiresAt && expiresAt < now)) {
+        expiredCount++;
+      } else if (expiresAt && expiresAt - now < 7 * 86400000) {
+        expiringSoonCount++;
+      } else {
+        activeCount++;
+      }
+    }
+
+    const expiredRate = Math.round((expiredCount / links.length) * 100);
+
+    let expiryScore = 0;
+    if (expiredRate > 50) expiryScore += 40;
+    else if (expiredRate > 25) expiryScore += 20;
+    if (expiringSoonCount > 3) expiryScore += 25;
+    else if (expiringSoonCount > 0) expiryScore += 10;
+    expiryScore = Math.min(100, expiryScore);
+
+    const expiryLevel = expiryScore >= 50 ? 'high_expiry'
+      : expiryScore >= 25 ? 'some_expiry' : 'minimal_expiry';
+
+    const recommendations: string[] = [];
+    if (expiredCount > 0) recommendations.push(`${expiredCount} expired link(s) — clean up or regenerate`);
+    if (expiringSoonCount > 0) recommendations.push(`${expiringSoonCount} link(s) expiring within 7 days`);
+    if (expiryLevel === 'minimal_expiry') recommendations.push('Payment link expiry is well-managed');
+
+    return {
+      totalLinks: links.length,
+      expiryScore,
+      expiryLevel,
+      expiredRate,
+      breakdown: { active: activeCount, expired: expiredCount, expiringSoon: expiringSoonCount },
+      recommendations,
+    };
+  }
 }

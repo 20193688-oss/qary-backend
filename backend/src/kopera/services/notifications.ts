@@ -735,4 +735,54 @@ export class NotificationService {
       recommendations,
     };
   }
+
+  async getNotificationDeliveryHealth(userId: string) {
+    const notifications = await this.prisma.notification.findMany({ where: { userId } });
+
+    if (notifications.length === 0) {
+      return {
+        totalNotifications: 0,
+        deliveryScore: 0,
+        deliveryLevel: 'no_data' as const,
+        breakdown: { delivered: 0, failed: 0, pending: 0 },
+        recommendations: [] as string[],
+      };
+    }
+
+    let delivered = 0;
+    let failed = 0;
+    let pending = 0;
+
+    for (const n of notifications) {
+      const status = (n as any).status ?? (n as any).deliveryStatus ?? 'delivered';
+      if (status === 'delivered' || status === 'DELIVERED' || status === 'read' || status === 'READ') delivered++;
+      else if (status === 'failed' || status === 'FAILED') failed++;
+      else pending++;
+    }
+
+    const deliveryRate = Math.round((delivered / notifications.length) * 100);
+    const failureRate = Math.round((failed / notifications.length) * 100);
+
+    let deliveryScore = deliveryRate;
+    if (failureRate > 20) deliveryScore = Math.max(0, deliveryScore - 20);
+    if (pending > notifications.length * 0.3) deliveryScore = Math.max(0, deliveryScore - 10);
+
+    const deliveryLevel = deliveryScore >= 80 ? 'healthy'
+      : deliveryScore >= 50 ? 'degraded' : 'unhealthy';
+
+    const recommendations: string[] = [];
+    if (failed > 0) recommendations.push(`${failed} notification(s) failed delivery — check channels`);
+    if (pending > 5) recommendations.push(`${pending} notification(s) still pending`);
+    if (deliveryLevel === 'healthy') recommendations.push('Notification delivery is performing well');
+
+    return {
+      totalNotifications: notifications.length,
+      deliveryScore,
+      deliveryLevel,
+      deliveryRate,
+      failureRate,
+      breakdown: { delivered, failed, pending },
+      recommendations,
+    };
+  }
 }

@@ -900,6 +900,64 @@ export class LoanService {
     };
   }
 
+  async getLoanPaymentBurden(userId: string) {
+    const loans = await this.prisma.loan.findMany({ where: { userId } });
+
+    if (loans.length === 0) {
+      return {
+        totalLoans: 0,
+        burdenScore: 0,
+        burdenLevel: 'no_data' as const,
+        monthlyObligation: '0',
+        recommendations: [] as string[],
+      };
+    }
+
+    let totalMonthlyPayment = BigInt(0);
+    let totalOutstanding = BigInt(0);
+    let overdueCount = 0;
+
+    for (const loan of loans) {
+      const status = (loan as any).status;
+      if (status === 'DISBURSED' || status === 'ACTIVE' || status === 'active') {
+        const principal = BigInt((loan as any).amount ?? 0);
+        const termMonths = (loan as any).termMonths ?? 12;
+        const monthlyPayment = termMonths > 0 ? principal / BigInt(termMonths) : BigInt(0);
+        totalMonthlyPayment += monthlyPayment;
+        totalOutstanding += principal;
+      }
+      if (status === 'OVERDUE' || status === 'overdue') overdueCount++;
+    }
+
+    const activeCount = loans.filter((l: any) => ['DISBURSED', 'ACTIVE', 'active'].includes(l.status)).length;
+
+    let burdenScore = 0;
+    if (activeCount > 5) burdenScore += 30;
+    else if (activeCount > 2) burdenScore += 15;
+    if (overdueCount > 0) burdenScore += Math.min(40, overdueCount * 20);
+    if (totalOutstanding > BigInt(10000000)) burdenScore += 20;
+    else if (totalOutstanding > BigInt(1000000)) burdenScore += 10;
+    burdenScore = Math.min(100, burdenScore);
+
+    const burdenLevel = burdenScore >= 60 ? 'heavy' : burdenScore >= 30 ? 'moderate' : 'light';
+
+    const recommendations: string[] = [];
+    if (overdueCount > 0) recommendations.push(`${overdueCount} overdue loan(s) — prioritize repayment`);
+    if (activeCount > 3) recommendations.push('Multiple active loans — consider consolidation');
+    if (burdenLevel === 'light') recommendations.push('Loan payment burden is manageable');
+
+    return {
+      totalLoans: loans.length,
+      activeLoans: activeCount,
+      overdueCount,
+      burdenScore,
+      burdenLevel,
+      monthlyObligation: totalMonthlyPayment.toString(),
+      totalOutstanding: totalOutstanding.toString(),
+      recommendations,
+    };
+  }
+
   private getDefaultRate(currency: string): number {
     const rates: Record<string, number> = {
       PEN: 0.18, USD: 0.12, EUR: 0.08, MXN: 0.22, BRL: 0.25,

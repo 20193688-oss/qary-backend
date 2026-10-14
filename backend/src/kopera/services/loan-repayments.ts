@@ -901,4 +901,76 @@ export class LoanRepaymentService {
       recommendations,
     };
   }
+
+  async getRepaymentCompletionForecast(loanId: string) {
+    const repayments = await this.prisma.loanRepayment.findMany({
+      where: { loanId },
+      orderBy: { dueDate: 'asc' },
+    });
+
+    if (repayments.length === 0) {
+      return {
+        totalRepayments: 0,
+        forecastScore: 0,
+        forecastLevel: 'no_data' as const,
+        projectedCompletionDays: 0,
+        recommendations: [] as string[],
+      };
+    }
+
+    let paidCount = 0;
+    let totalDue = BigInt(0);
+    let totalPaid = BigInt(0);
+
+    for (const r of repayments) {
+      totalDue += BigInt((r as any).amount ?? 0);
+      totalPaid += BigInt((r as any).paidAmount ?? 0);
+      if ((r as any).status === 'PAID' || (r as any).paidAt) paidCount++;
+    }
+
+    const completionRate = Math.round((paidCount / repayments.length) * 100);
+    const remainingCount = repayments.length - paidCount;
+
+    const paidRepayments = repayments.filter((r: any) => r.paidAt);
+    let avgDaysBetween = 30;
+    if (paidRepayments.length >= 2) {
+      let totalDays = 0;
+      for (let i = 1; i < paidRepayments.length; i++) {
+        const prev = new Date((paidRepayments[i - 1] as any).paidAt).getTime();
+        const curr = new Date((paidRepayments[i] as any).paidAt).getTime();
+        totalDays += Math.abs(curr - prev) / 86400000;
+      }
+      avgDaysBetween = Math.round(totalDays / (paidRepayments.length - 1));
+    }
+
+    const projectedCompletionDays = remainingCount * Math.max(avgDaysBetween, 1);
+
+    let forecastScore = 50;
+    if (completionRate >= 80) forecastScore += 30;
+    else if (completionRate >= 50) forecastScore += 15;
+    if (projectedCompletionDays < 90) forecastScore += 20;
+    else if (projectedCompletionDays > 365) forecastScore -= 15;
+    forecastScore = Math.max(0, Math.min(100, forecastScore));
+
+    const forecastLevel = forecastScore >= 70 ? 'on_track'
+      : forecastScore >= 40 ? 'at_risk' : 'behind';
+
+    const recommendations: string[] = [];
+    if (remainingCount > 0) recommendations.push(`${remainingCount} repayment(s) remaining — est. ${projectedCompletionDays} days`);
+    if (forecastLevel === 'behind') recommendations.push('Repayment pace is slower than expected');
+    if (forecastLevel === 'on_track') recommendations.push('Repayment is on track for timely completion');
+
+    return {
+      totalRepayments: repayments.length,
+      paidCount,
+      remainingCount,
+      completionRate,
+      totalDue: totalDue.toString(),
+      totalPaid: totalPaid.toString(),
+      projectedCompletionDays,
+      forecastScore,
+      forecastLevel,
+      recommendations,
+    };
+  }
 }
