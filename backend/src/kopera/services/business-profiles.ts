@@ -631,4 +631,49 @@ export class BusinessProfileService {
       recommendations,
     };
   }
+
+  async getBusinessContinuityScore(userId: string) {
+    const profile = await this.prisma.businessProfile.findUnique({ where: { userId } });
+    if (!profile) throw new Error('profile_not_found');
+
+    const checks: { factor: string; status: string; weight: number }[] = [];
+
+    const verified = (profile as any).verified || (profile as any).status === 'verified';
+    checks.push({ factor: 'verification_status', status: verified ? 'strong' : 'weak', weight: 25 });
+
+    const hasPhone = !!(profile as any).phone;
+    const hasEmail = !!(profile as any).email || !!(profile as any).contactEmail;
+    checks.push({ factor: 'contact_info', status: hasPhone && hasEmail ? 'strong' : hasPhone || hasEmail ? 'moderate' : 'weak', weight: 20 });
+
+    const hasAddress = !!(profile as any).address || !!(profile as any).registeredAddress;
+    checks.push({ factor: 'registered_address', status: hasAddress ? 'strong' : 'weak', weight: 15 });
+
+    const hasTaxId = !!(profile as any).taxId || !!(profile as any).registrationNumber;
+    checks.push({ factor: 'tax_registration', status: hasTaxId ? 'strong' : 'weak', weight: 20 });
+
+    const createdAt = new Date((profile as any).createdAt ?? Date.now());
+    const ageMonths = Math.floor((Date.now() - createdAt.getTime()) / (30 * 86400000));
+    checks.push({ factor: 'account_maturity', status: ageMonths >= 12 ? 'strong' : ageMonths >= 3 ? 'moderate' : 'weak', weight: 20 });
+
+    let continuityScore = 0;
+    for (const c of checks) {
+      if (c.status === 'strong') continuityScore += c.weight;
+      else if (c.status === 'moderate') continuityScore += Math.round(c.weight * 0.5);
+    }
+
+    const continuityLevel = continuityScore >= 80 ? 'resilient'
+      : continuityScore >= 50 ? 'moderate' : 'vulnerable';
+
+    const recommendations: string[] = [];
+    const weak = checks.filter(c => c.status === 'weak');
+    for (const w of weak) recommendations.push(`Strengthen ${w.factor.replace(/_/g, ' ')} for better continuity`);
+    if (continuityLevel === 'resilient') recommendations.push('Business continuity posture is strong');
+
+    return {
+      continuityScore,
+      continuityLevel,
+      checks,
+      recommendations,
+    };
+  }
 }

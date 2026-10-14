@@ -617,4 +617,52 @@ export class BeneficiaryService {
       recommendations,
     };
   }
+
+  async getBeneficiaryVerificationStatus(userId: string) {
+    const beneficiaries = await this.prisma.beneficiary.findMany({ where: { userId } });
+
+    if (beneficiaries.length === 0) {
+      return {
+        totalBeneficiaries: 0,
+        verificationScore: 0,
+        verificationLevel: 'no_data' as const,
+        breakdown: { verified: 0, pending: 0, unverified: 0 },
+        recommendations: [] as string[],
+      };
+    }
+
+    let verifiedCount = 0;
+    let pendingCount = 0;
+    let unverifiedCount = 0;
+
+    for (const b of beneficiaries) {
+      const status = (b as any).verificationStatus ?? (b as any).verified ? 'verified' : 'unverified';
+      if (status === 'verified' || (b as any).verified === true) verifiedCount++;
+      else if (status === 'pending') pendingCount++;
+      else unverifiedCount++;
+    }
+
+    const verificationRate = Math.round((verifiedCount / beneficiaries.length) * 100);
+
+    let verificationScore = verificationRate;
+    if (unverifiedCount > beneficiaries.length / 2) verificationScore = Math.max(0, verificationScore - 20);
+    if (pendingCount > 5) verificationScore = Math.max(0, verificationScore - 10);
+
+    const verificationLevel = verificationScore >= 80 ? 'strong'
+      : verificationScore >= 50 ? 'moderate' : 'weak';
+
+    const recommendations: string[] = [];
+    if (unverifiedCount > 0) recommendations.push(`Verify ${unverifiedCount} unverified beneficiary(ies) to improve security`);
+    if (pendingCount > 0) recommendations.push(`${pendingCount} beneficiary(ies) pending verification — follow up`);
+    if (verificationLevel === 'strong') recommendations.push('Beneficiary verification is in good shape');
+
+    return {
+      totalBeneficiaries: beneficiaries.length,
+      verificationScore,
+      verificationLevel,
+      verificationRate,
+      breakdown: { verified: verifiedCount, pending: pendingCount, unverified: unverifiedCount },
+      recommendations,
+    };
+  }
 }
