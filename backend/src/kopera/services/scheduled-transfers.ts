@@ -546,4 +546,86 @@ export class ScheduledTransferService {
       leastReliable: byFrequency.length > 1 ? byFrequency[byFrequency.length - 1].frequency : null,
     };
   }
+
+  async getScheduleConflictAnalysis(userId: string) {
+    const transfers = await this.prisma.scheduledTransfer.findMany({
+      where: { userId, status: { in: ['active', 'paused'] } },
+    });
+
+    if (transfers.length === 0) {
+      return {
+        totalActiveSchedules: 0,
+        conflictDays: [],
+        concentrationRisk: 'none' as const,
+        avgTransfersPerDay: 0,
+        peakDay: null,
+        recommendations: [],
+      };
+    }
+
+    const dayMap = new Map<number, string[]>();
+    for (const t of transfers) {
+      if (!t.nextExecutionDate) continue;
+      const dayOfMonth = new Date(t.nextExecutionDate).getDate();
+      const existing = dayMap.get(dayOfMonth) ?? [];
+      existing.push(t.id);
+      dayMap.set(dayOfMonth, existing);
+    }
+
+    const conflictDays = Array.from(dayMap.entries())
+      .filter(([, ids]) => ids.length > 1)
+      .map(([day, ids]) => ({ day, count: ids.length }))
+      .sort((a, b) => b.count - a.count);
+
+    const totalDaysUsed = dayMap.size;
+    const avgTransfersPerDay = totalDaysUsed > 0
+      ? Math.round((transfers.filter((t) => t.nextExecutionDate).length / totalDaysUsed) * 10) / 10
+      : 0;
+
+    let peakDay: number | null = null;
+    let peakCount = 0;
+    for (const [day, ids] of dayMap) {
+      if (ids.length > peakCount) {
+        peakCount = ids.length;
+        peakDay = day;
+      }
+    }
+
+    const totalWithDate = transfers.filter((t) => t.nextExecutionDate).length;
+    const maxOnOneDay = peakCount;
+    const concentrationRatio = totalWithDate > 0 ? maxOnOneDay / totalWithDate : 0;
+    const concentrationRisk = concentrationRatio > 0.5 ? 'high' as const
+      : concentrationRatio > 0.3 ? 'medium' as const
+      : conflictDays.length > 0 ? 'low' as const
+      : 'none' as const;
+
+    const recommendations: string[] = [];
+    if (concentrationRisk === 'high') {
+      recommendations.push('Spread transfers across different days to reduce liquidity pressure');
+    }
+    if (conflictDays.length > 0) {
+      recommendations.push(`${conflictDays.length} day(s) have multiple transfers scheduled`);
+    }
+
+    const amountByDay = new Map<number, bigint>();
+    for (const t of transfers) {
+      if (!t.nextExecutionDate) continue;
+      const day = new Date(t.nextExecutionDate).getDate();
+      amountByDay.set(day, (amountByDay.get(day) ?? BigInt(0)) + (t.amount ?? BigInt(0)));
+    }
+    const highestAmountDay = Array.from(amountByDay.entries())
+      .sort(([, a], [, b]) => (b > a ? 1 : b < a ? -1 : 0))[0];
+    if (highestAmountDay && highestAmountDay[1] > BigInt(0)) {
+      recommendations.push(`Day ${highestAmountDay[0]} has the highest total amount: ${highestAmountDay[1].toString()}`);
+    }
+
+    return {
+      totalActiveSchedules: transfers.length,
+      conflictDays,
+      concentrationRisk,
+      avgTransfersPerDay,
+      peakDay,
+      recommendations,
+    };
+  }
 }

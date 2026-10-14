@@ -378,6 +378,45 @@ export class PaymentLinkService {
     };
   }
 
+  async getExpirationImpactAnalysis(userId: string) {
+    const links = await this.prisma.paymentLink.findMany({ where: { userId } });
+
+    const expired = links.filter((l) => l.status === 'expired' || (l.expiresAt && l.expiresAt < new Date()));
+    const used = links.filter((l) => l.usedAt !== null && l.usedAt !== undefined);
+    const active = links.filter((l) => l.status === 'active' && !l.usedAt && (!l.expiresAt || l.expiresAt >= new Date()));
+    const deactivated = links.filter((l) => l.status === 'deactivated');
+
+    const usedTimes = used.map((l) => {
+      const created = new Date(l.createdAt).getTime();
+      const usedTime = new Date(l.usedAt!).getTime();
+      return (usedTime - created) / 3600000;
+    }).filter((h) => h >= 0);
+    const avgHoursToUse = usedTimes.length > 0
+      ? Math.round(usedTimes.reduce((s, v) => s + v, 0) / usedTimes.length * 10) / 10
+      : 0;
+
+    const expiredWithAmount = expired.filter((l) => l.amount !== null && l.amount !== undefined);
+    const lostRevenue = expiredWithAmount.reduce((s, l) => s + Number(l.amount), 0);
+
+    const linksWithExpiry = links.filter((l) => l.expiresAt);
+    const usedBeforeExpiry = linksWithExpiry.filter((l) => l.usedAt && l.usedAt <= (l.expiresAt ?? new Date()));
+    const conversionBeforeExpiry = linksWithExpiry.length > 0
+      ? Math.round((usedBeforeExpiry.length / linksWithExpiry.length) * 100)
+      : 0;
+
+    return {
+      totalLinks: links.length,
+      expired: expired.length,
+      used: used.length,
+      active: active.length,
+      deactivated: deactivated.length,
+      expirationRate: links.length > 0 ? Math.round((expired.length / links.length) * 100) : 0,
+      avgHoursToUse,
+      lostRevenue: lostRevenue.toString(),
+      conversionBeforeExpiry,
+    };
+  }
+
   async deactivate(id: string, userId: string) {
     const link = await this.prisma.paymentLink.findUnique({ where: { id } });
     if (!link) throw new Error('link_not_found');

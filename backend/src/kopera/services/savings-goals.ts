@@ -494,4 +494,90 @@ export class SavingsGoalService {
       summary,
     };
   }
+
+  async getSavingsConsistencyScore(userId: string) {
+    const goals = await this.prisma.savingsGoal.findMany({
+      where: { userId, status: 'active' },
+    });
+
+    if (goals.length === 0) {
+      return {
+        totalGoals: 0,
+        overallScore: 0,
+        consistencyLevel: 'none' as const,
+        monthsWithContributions: 0,
+        totalMonthsTracked: 0,
+        goals: [],
+      };
+    }
+
+    const goalDetails = [];
+    let totalMonths = 0;
+    let activeMonths = 0;
+
+    for (const goal of goals) {
+      const contributions = await this.prisma.savingsContribution.findMany({
+        where: { savingsGoalId: goal.id },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      const monthSet = new Set<string>();
+      const amounts: number[] = [];
+      for (const c of contributions) {
+        const d = new Date(c.createdAt);
+        monthSet.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+        amounts.push(Number(c.amount));
+      }
+
+      const firstDate = contributions.length > 0
+        ? new Date(contributions[0]!.createdAt)
+        : new Date(goal.createdAt);
+      const monthsElapsed = Math.max(1, Math.ceil(
+        (Date.now() - firstDate.getTime()) / (30 * 86400000),
+      ));
+
+      const contributionMonths = monthSet.size;
+      const regularity = Math.round((contributionMonths / monthsElapsed) * 100);
+
+      const avg = amounts.length > 0
+        ? amounts.reduce((s, v) => s + v, 0) / amounts.length
+        : 0;
+      const variance = amounts.length > 1
+        ? amounts.reduce((s, v) => s + (v - avg) ** 2, 0) / amounts.length
+        : 0;
+      const cv = avg > 0 ? Math.round((Math.sqrt(variance) / avg) * 100) : 0;
+
+      totalMonths += monthsElapsed;
+      activeMonths += contributionMonths;
+
+      goalDetails.push({
+        goalId: goal.id,
+        goalName: goal.name,
+        totalContributions: contributions.length,
+        contributionMonths,
+        monthsTracked: monthsElapsed,
+        regularity,
+        amountConsistency: Math.max(0, 100 - cv),
+      });
+    }
+
+    const overallScore = totalMonths > 0
+      ? Math.round((activeMonths / totalMonths) * 100)
+      : 0;
+
+    const consistencyLevel = overallScore >= 80 ? 'excellent' as const
+      : overallScore >= 60 ? 'good' as const
+      : overallScore >= 40 ? 'fair' as const
+      : overallScore > 0 ? 'poor' as const
+      : 'none' as const;
+
+    return {
+      totalGoals: goals.length,
+      overallScore,
+      consistencyLevel,
+      monthsWithContributions: activeMonths,
+      totalMonthsTracked: totalMonths,
+      goals: goalDetails,
+    };
+  }
 }
