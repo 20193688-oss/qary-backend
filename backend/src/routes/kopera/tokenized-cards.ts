@@ -95,6 +95,10 @@ export async function registerTokenizedCardRoutes(app: FastifyInstance, prisma: 
     return svc.getCardUtilizationTrend(req.auth!.userId);
   });
 
+  app.get('/api/cards/expiry-risk-matrix', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getCardExpiryRiskMatrix(req.auth!.userId);
+  });
+
   app.get('/api/cards/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const card = await svc.getCard(id);

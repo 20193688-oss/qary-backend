@@ -667,4 +667,54 @@ export class TransactionService {
       recommendations,
     };
   }
+
+  async getTransactionRiskProfile(userId: string) {
+    const txns = await this.prisma.transaction.findMany({ where: { userId } });
+    if (txns.length === 0) {
+      return {
+        totalTransactions: 0,
+        riskScore: 0,
+        riskLevel: 'no_data',
+        largeTransactions: 0,
+        unusualPatterns: 0,
+        recommendations: [],
+      };
+    }
+
+    const amounts = txns.map(t => Number((t as any).amount ?? 0));
+    const mean = amounts.reduce((s, a) => s + a, 0) / amounts.length;
+    const stdDev = Math.sqrt(amounts.reduce((s, a) => s + (a - mean) ** 2, 0) / amounts.length);
+
+    const largeThreshold = mean + 2 * stdDev;
+    const largeTransactions = amounts.filter(a => a > largeThreshold).length;
+
+    const types = txns.map(t => ((t as any).type || '').toUpperCase());
+    const typeSet = new Set(types);
+    const unusualTypes = ['REVERSAL', 'CHARGEBACK', 'DISPUTE', 'REFUND'];
+    const unusualPatterns = types.filter(t => unusualTypes.includes(t)).length;
+
+    let riskScore = 0;
+    if (largeTransactions > 5) riskScore += 30;
+    else if (largeTransactions > 0) riskScore += 15;
+    if (unusualPatterns > 3) riskScore += 35;
+    else if (unusualPatterns > 0) riskScore += 15;
+    if (typeSet.size > 5) riskScore += 10;
+    riskScore = Math.min(100, riskScore);
+
+    const riskLevel = riskScore >= 60 ? 'high' : riskScore >= 30 ? 'moderate' : 'low';
+
+    const recommendations: string[] = [];
+    if (largeTransactions > 0) recommendations.push(`${largeTransactions} transaction(s) significantly above average — review for fraud`);
+    if (unusualPatterns > 0) recommendations.push(`${unusualPatterns} reversal/chargeback transaction(s) detected`);
+    if (riskLevel === 'low') recommendations.push('Transaction patterns appear normal');
+
+    return {
+      totalTransactions: txns.length,
+      riskScore,
+      riskLevel,
+      largeTransactions,
+      unusualPatterns,
+      recommendations,
+    };
+  }
 }

@@ -418,4 +418,56 @@ export class UserProfileService {
       recommendations,
     };
   }
+
+  async getAccountTrustScore(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new Error('user_not_found');
+
+    let trustScore = 0;
+    const factors: Array<{ factor: string; score: number; status: string }> = [];
+
+    const emailVerified = !!(user as any).emailVerified || !!(user as any).emailVerifiedAt;
+    factors.push({ factor: 'email_verified', score: emailVerified ? 20 : 0, status: emailVerified ? 'passed' : 'missing' });
+    trustScore += emailVerified ? 20 : 0;
+
+    const phoneVerified = !!(user as any).phoneVerified || !!(user as any).phoneVerifiedAt;
+    factors.push({ factor: 'phone_verified', score: phoneVerified ? 15 : 0, status: phoneVerified ? 'passed' : 'missing' });
+    trustScore += phoneVerified ? 15 : 0;
+
+    const mfaEnabled = !!(user as any).mfaEnabled;
+    factors.push({ factor: 'mfa_enabled', score: mfaEnabled ? 20 : 0, status: mfaEnabled ? 'passed' : 'missing' });
+    trustScore += mfaEnabled ? 20 : 0;
+
+    const pinSet = !!(user as any).pin || !!(user as any).pinHash;
+    factors.push({ factor: 'pin_set', score: pinSet ? 10 : 0, status: pinSet ? 'passed' : 'missing' });
+    trustScore += pinSet ? 10 : 0;
+
+    const accountAge = Date.now() - new Date((user as any).createdAt || Date.now()).getTime();
+    const ageMonths = Math.floor(accountAge / (30 * 86400000));
+    const ageScore = Math.min(20, ageMonths * 2);
+    factors.push({ factor: 'account_age', score: ageScore, status: `${ageMonths} months` });
+    trustScore += ageScore;
+
+    const profileComplete = !!(user as any).firstName && !!(user as any).lastName;
+    factors.push({ factor: 'profile_complete', score: profileComplete ? 15 : 0, status: profileComplete ? 'passed' : 'incomplete' });
+    trustScore += profileComplete ? 15 : 0;
+
+    trustScore = Math.min(100, trustScore);
+    const trustLevel = trustScore >= 75 ? 'high' : trustScore >= 40 ? 'moderate' : 'low';
+
+    const recommendations: string[] = [];
+    for (const f of factors) {
+      if (f.status === 'missing' || f.status === 'incomplete') {
+        recommendations.push(`Complete ${f.factor.replace(/_/g, ' ')} to improve trust score`);
+      }
+    }
+
+    return {
+      userId,
+      trustScore,
+      trustLevel,
+      factors,
+      recommendations,
+    };
+  }
 }
