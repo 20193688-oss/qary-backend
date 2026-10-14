@@ -563,4 +563,75 @@ export class TokenizedCardService {
       recommendations,
     };
   }
+
+  async getCardUtilizationTrend(userId: string) {
+    const cards = await this.prisma.tokenizedCard.findMany({ where: { userId } });
+
+    if (cards.length === 0) {
+      return {
+        totalCards: 0,
+        activeCards: 0,
+        dormantCards: 0,
+        avgUsageFrequency: 0,
+        cardTrends: [] as { cardId: string; last4: string; status: string; daysSinceLastUse: number | null; usageLevel: string }[],
+        recommendations: [] as string[],
+      };
+    }
+
+    const now = Date.now();
+    let activeCount = 0;
+    let dormantCount = 0;
+    const trends: { cardId: string; last4: string; status: string; daysSinceLastUse: number | null; usageLevel: string }[] = [];
+
+    for (const card of cards) {
+      const status = ((card as any).status || '').toLowerCase();
+      const lastUsed = (card as any).lastUsedAt || (card as any).updatedAt;
+      const daysSinceLastUse = lastUsed
+        ? Math.floor((now - new Date(lastUsed).getTime()) / 86400000)
+        : null;
+
+      let usageLevel: string;
+      if (status === 'frozen' || status === 'expired') {
+        usageLevel = 'inactive';
+      } else if (daysSinceLastUse === null || daysSinceLastUse > 90) {
+        usageLevel = 'dormant';
+        dormantCount++;
+      } else if (daysSinceLastUse > 30) {
+        usageLevel = 'low';
+        activeCount++;
+      } else {
+        usageLevel = 'active';
+        activeCount++;
+      }
+
+      trends.push({
+        cardId: card.id,
+        last4: (card as any).last4 || '****',
+        status,
+        daysSinceLastUse,
+        usageLevel,
+      });
+    }
+
+    const usageDays = trends.filter(t => t.daysSinceLastUse !== null).map(t => t.daysSinceLastUse!);
+    const avgUsageFrequency = usageDays.length > 0
+      ? Number((usageDays.reduce((a, b) => a + b, 0) / usageDays.length).toFixed(1))
+      : 0;
+
+    const recommendations: string[] = [];
+    if (dormantCount > 0) recommendations.push(`${dormantCount} card(s) unused for 90+ days — consider removing them`);
+    if (activeCount === 0 && cards.length > 0) recommendations.push('No actively used cards — verify payment methods are up to date');
+    if (trends.filter(t => t.usageLevel === 'low').length > cards.length * 0.5) {
+      recommendations.push('Over half of cards have low usage — consolidate to fewer cards');
+    }
+
+    return {
+      totalCards: cards.length,
+      activeCards: activeCount,
+      dormantCards: dormantCount,
+      avgUsageFrequency,
+      cardTrends: trends,
+      recommendations,
+    };
+  }
 }

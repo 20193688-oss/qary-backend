@@ -576,6 +576,73 @@ export class TransactionLimitService {
     };
   }
 
+  async getLimitAdjustmentRecommendation(userId: string) {
+    const limits = await this.prisma.transactionLimit.findMany({ where: { userId } });
+
+    if (limits.length === 0) {
+      return {
+        totalLimits: 0,
+        adjustments: [] as { currency: string; limitType: string; currentLimit: string; suggestedLimit: string; reason: string }[],
+        overallUtilization: 0,
+        recommendations: [] as string[],
+      };
+    }
+
+    const adjustments: { currency: string; limitType: string; currentLimit: string; suggestedLimit: string; reason: string }[] = [];
+    let totalUtil = 0;
+
+    for (const l of limits) {
+      const refreshed = this.refreshIfNeeded(l);
+      const maxAmount = BigInt((refreshed as any).maxAmount ?? 0);
+      const currentUsage = BigInt((refreshed as any).currentUsage ?? 0);
+      const utilization = maxAmount > BigInt(0)
+        ? Number(currentUsage * BigInt(100) / maxAmount)
+        : 0;
+      totalUtil += utilization;
+
+      const currency = (refreshed as any).currency || 'USD';
+      const limitType = (refreshed as any).limitType || 'daily';
+
+      if (utilization > 90) {
+        const suggested = maxAmount * BigInt(150) / BigInt(100);
+        adjustments.push({
+          currency,
+          limitType,
+          currentLimit: maxAmount.toString(),
+          suggestedLimit: suggested.toString(),
+          reason: 'Usage consistently near limit — increase recommended',
+        });
+      } else if (utilization < 10 && maxAmount > BigInt(0)) {
+        const suggested = maxAmount * BigInt(50) / BigInt(100);
+        adjustments.push({
+          currency,
+          limitType,
+          currentLimit: maxAmount.toString(),
+          suggestedLimit: suggested.toString(),
+          reason: 'Very low usage — consider reducing limit for tighter control',
+        });
+      }
+    }
+
+    const overallUtilization = limits.length > 0
+      ? Number((totalUtil / limits.length).toFixed(2))
+      : 0;
+
+    const recommendations: string[] = [];
+    const highUtil = adjustments.filter(a => a.reason.includes('increase'));
+    const lowUtil = adjustments.filter(a => a.reason.includes('reducing'));
+    if (highUtil.length > 0) recommendations.push(`${highUtil.length} limit(s) near exhaustion — consider increasing`);
+    if (lowUtil.length > 0) recommendations.push(`${lowUtil.length} limit(s) significantly underused — tighten for better control`);
+    if (adjustments.length === 0) recommendations.push('All limits are within healthy utilization range');
+
+    return {
+      totalLimits: limits.length,
+      adjustments,
+      overallUtilization,
+      recommendations,
+    };
+  }
+
   private refreshIfNeeded(limit: any): any {
     const periodStart = this.periodStart(limit.limitType);
     if (limit.periodStart < periodStart) {

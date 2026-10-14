@@ -600,4 +600,71 @@ export class TransactionService {
       threshold: Math.round(threshold).toString(),
     };
   }
+
+  async getTransactionCorrelationAnalysis(userId: string, currency?: string) {
+    const where: any = { userId };
+    if (currency) where.currency = currency;
+    const txns = await this.prisma.transaction.findMany({ where, orderBy: { createdAt: 'asc' } });
+
+    if (txns.length === 0) {
+      return {
+        totalTransactions: 0,
+        typePairs: [] as { typeA: string; typeB: string; coOccurrence: number; avgGapHours: number }[],
+        dominantFlow: null as string | null,
+        recommendations: [] as string[],
+      };
+    }
+
+    const pairMap = new Map<string, { count: number; totalGap: number }>();
+    const typeCount = new Map<string, number>();
+
+    for (let i = 0; i < txns.length; i++) {
+      const typeA = ((txns[i] as any).type || 'unknown').toUpperCase();
+      typeCount.set(typeA, (typeCount.get(typeA) || 0) + 1);
+
+      if (i + 1 < txns.length) {
+        const typeB = ((txns[i + 1] as any).type || 'unknown').toUpperCase();
+        const key = `${typeA}->${typeB}`;
+        const gap = new Date((txns[i + 1] as any).createdAt).getTime() - new Date((txns[i] as any).createdAt).getTime();
+        const gapHours = gap / 3600000;
+
+        const existing = pairMap.get(key) || { count: 0, totalGap: 0 };
+        existing.count++;
+        existing.totalGap += gapHours;
+        pairMap.set(key, existing);
+      }
+    }
+
+    const typePairs = Array.from(pairMap.entries())
+      .map(([key, data]) => {
+        const [typeA, typeB] = key.split('->');
+        return {
+          typeA: typeA!,
+          typeB: typeB!,
+          coOccurrence: data.count,
+          avgGapHours: Number((data.totalGap / data.count).toFixed(2)),
+        };
+      })
+      .sort((a, b) => b.coOccurrence - a.coOccurrence)
+      .slice(0, 10);
+
+    const sortedTypes = Array.from(typeCount.entries()).sort((a, b) => b[1] - a[1]);
+    const dominantFlow = sortedTypes.length >= 2
+      ? `${sortedTypes[0]![0]} -> ${sortedTypes[1]![0]}`
+      : sortedTypes[0]?.[0] || null;
+
+    const recommendations: string[] = [];
+    if (typePairs.length > 0 && typePairs[0]!.avgGapHours < 1) {
+      recommendations.push(`Frequent ${typePairs[0]!.typeA} -> ${typePairs[0]!.typeB} within 1 hour — consider bundling`);
+    }
+    if (sortedTypes.length === 1) recommendations.push('All transactions are the same type — limited diversification');
+    if (txns.length > 100 && typePairs.length < 3) recommendations.push('Low variety in transaction flow patterns');
+
+    return {
+      totalTransactions: txns.length,
+      typePairs,
+      dominantFlow,
+      recommendations,
+    };
+  }
 }

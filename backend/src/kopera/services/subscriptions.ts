@@ -774,4 +774,61 @@ export class SubscriptionService {
       churnRate,
     };
   }
+
+  async getSubscriptionOverlapAnalysis(userId: string) {
+    const subs = await this.prisma.subscription.findMany({ where: { userId } });
+
+    if (subs.length === 0) {
+      return {
+        totalSubscriptions: 0,
+        activeCount: 0,
+        overlapGroups: [] as { plan: string; count: number; totalCost: string }[],
+        potentialSavings: '0',
+        recommendations: [] as string[],
+      };
+    }
+
+    const active = subs.filter(s => ((s as any).status || '').toLowerCase() === 'active');
+    const planMap = new Map<string, { count: number; totalCost: bigint; ids: string[] }>();
+
+    for (const s of active) {
+      const plan = ((s as any).planName || (s as any).plan || 'unknown').toLowerCase();
+      const cost = (s as any).amount ?? BigInt(0);
+      const existing = planMap.get(plan) || { count: 0, totalCost: BigInt(0), ids: [] };
+      existing.count++;
+      existing.totalCost += BigInt(cost.toString());
+      existing.ids.push(s.id);
+      planMap.set(plan, existing);
+    }
+
+    const overlapGroups = Array.from(planMap.entries())
+      .filter(([, data]) => data.count > 1)
+      .map(([plan, data]) => ({
+        plan,
+        count: data.count,
+        totalCost: data.totalCost.toString(),
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    let potentialSavings = BigInt(0);
+    for (const group of overlapGroups) {
+      const planData = planMap.get(group.plan)!;
+      const avgCost = planData.totalCost / BigInt(planData.count);
+      potentialSavings += planData.totalCost - avgCost;
+    }
+
+    const recommendations: string[] = [];
+    if (overlapGroups.length > 0) recommendations.push(`${overlapGroups.length} plan(s) have duplicate subscriptions — consider consolidating`);
+    if (active.length > 10) recommendations.push('High number of active subscriptions — review for unused services');
+    const cancelled = subs.filter(s => ((s as any).status || '').toLowerCase() === 'cancelled');
+    if (cancelled.length > active.length) recommendations.push('More cancelled than active subscriptions — investigate churn drivers');
+
+    return {
+      totalSubscriptions: subs.length,
+      activeCount: active.length,
+      overlapGroups,
+      potentialSavings: potentialSavings.toString(),
+      recommendations,
+    };
+  }
 }
