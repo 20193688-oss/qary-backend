@@ -664,4 +664,75 @@ export class NotificationService {
 
     return this.prisma.notification.delete({ where: { id } });
   }
+
+  async getNotificationFatigueIndex(userId: string) {
+    const notifications = await this.prisma.notification.findMany({ where: { userId } });
+
+    if (notifications.length === 0) {
+      return {
+        totalNotifications: 0,
+        fatigueLevel: 'no_data' as const,
+        fatigueScore: 0,
+        channelBreakdown: [],
+        recommendations: [],
+      };
+    }
+
+    const channelMap = new Map<string, { count: number; readCount: number }>();
+    let totalRead = 0;
+
+    for (const n of notifications) {
+      const channel = (n as any).channel || (n as any).type || 'general';
+      const isRead = (n as any).readAt != null || (n as any).read === true;
+      if (isRead) totalRead++;
+
+      const existing = channelMap.get(channel);
+      if (existing) {
+        existing.count++;
+        if (isRead) existing.readCount++;
+      } else {
+        channelMap.set(channel, { count: 1, readCount: isRead ? 1 : 0 });
+      }
+    }
+
+    const channelBreakdown = Array.from(channelMap.entries()).map(([channel, data]) => ({
+      channel,
+      count: data.count,
+      readRate: data.count > 0 ? Math.round((data.readCount / data.count) * 100) : 0,
+    })).sort((a, b) => b.count - a.count);
+
+    const overallReadRate = Math.round((totalRead / notifications.length) * 100);
+
+    const now = Date.now();
+    const last7days = notifications.filter(n => now - new Date(n.createdAt).getTime() < 7 * 86400000).length;
+    const dailyAvg = Math.round((last7days / 7) * 10) / 10;
+
+    let fatigueScore = 0;
+    if (dailyAvg > 20) fatigueScore += 40;
+    else if (dailyAvg > 10) fatigueScore += 20;
+    else if (dailyAvg > 5) fatigueScore += 10;
+
+    if (overallReadRate < 30) fatigueScore += 35;
+    else if (overallReadRate < 60) fatigueScore += 15;
+
+    if (channelBreakdown.length > 5) fatigueScore += 15;
+    fatigueScore = Math.min(100, fatigueScore);
+
+    const fatigueLevel = fatigueScore >= 60 ? 'high' : fatigueScore >= 30 ? 'moderate' : 'low';
+
+    const recommendations: string[] = [];
+    if (fatigueScore >= 60) recommendations.push('High notification fatigue — consider reducing frequency');
+    if (overallReadRate < 30) recommendations.push('Low read rate — review notification relevance');
+    if (dailyAvg > 10) recommendations.push('High daily volume — consider batching notifications');
+
+    return {
+      totalNotifications: notifications.length,
+      fatigueLevel,
+      fatigueScore,
+      overallReadRate,
+      dailyAverage: dailyAvg,
+      channelBreakdown: channelBreakdown.slice(0, 10),
+      recommendations,
+    };
+  }
 }

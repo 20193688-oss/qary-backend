@@ -824,4 +824,81 @@ export class LoanRepaymentService {
       recommendations,
     };
   }
+
+  async getRepaymentBehaviorTrend(loanId: string) {
+    const repayments = await this.prisma.loanRepayment.findMany({ where: { loanId } });
+
+    if (repayments.length === 0) {
+      return {
+        totalRepayments: 0,
+        trendDirection: 'no_data' as const,
+        trendScore: 0,
+        monthlyBreakdown: [],
+        recommendations: [],
+      };
+    }
+
+    const monthMap = new Map<string, { count: number; totalPaid: bigint; onTime: number; late: number }>();
+
+    for (const r of repayments) {
+      const date = new Date(r.createdAt);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const existing = monthMap.get(key);
+      const isLate = r.status === 'LATE' || r.status === 'late' || r.status === 'OVERDUE';
+
+      if (existing) {
+        existing.count++;
+        existing.totalPaid += r.paidAmount;
+        if (isLate) existing.late++;
+        else existing.onTime++;
+      } else {
+        monthMap.set(key, {
+          count: 1,
+          totalPaid: r.paidAmount,
+          onTime: isLate ? 0 : 1,
+          late: isLate ? 1 : 0,
+        });
+      }
+    }
+
+    const monthlyBreakdown = Array.from(monthMap.entries())
+      .map(([month, data]) => ({
+        month,
+        count: data.count,
+        totalPaid: data.totalPaid.toString(),
+        onTimeRate: data.count > 0 ? Math.round((data.onTime / data.count) * 100) : 0,
+      }))
+      .sort((a, b) => a.month.localeCompare(b.month));
+
+    const paidCount = repayments.filter(r => r.paidAmount > BigInt(0)).length;
+    const completionRate = Math.round((paidCount / repayments.length) * 100);
+
+    let trendScore = completionRate;
+    const lateCount = repayments.filter(r => r.status === 'LATE' || r.status === 'late' || r.status === 'OVERDUE').length;
+    const lateRate = lateCount / repayments.length;
+    if (lateRate > 0.3) trendScore -= 30;
+    else if (lateRate > 0.1) trendScore -= 15;
+    trendScore = Math.max(0, Math.min(100, trendScore));
+
+    const recentMonths = monthlyBreakdown.slice(-3);
+    const olderMonths = monthlyBreakdown.slice(0, -3);
+    const recentAvg = recentMonths.length > 0 ? recentMonths.reduce((s, m) => s + m.onTimeRate, 0) / recentMonths.length : 0;
+    const olderAvg = olderMonths.length > 0 ? olderMonths.reduce((s, m) => s + m.onTimeRate, 0) / olderMonths.length : recentAvg;
+    const trendDirection = recentAvg > olderAvg + 5 ? 'improving' : recentAvg < olderAvg - 5 ? 'declining' : 'stable';
+
+    const recommendations: string[] = [];
+    if (lateRate > 0.2) recommendations.push('High late payment rate — consider payment reminders');
+    if (trendDirection === 'declining') recommendations.push('Payment behavior is declining — review loan terms');
+    if (completionRate < 50) recommendations.push('Low completion rate — investigate missed payments');
+
+    return {
+      totalRepayments: repayments.length,
+      trendDirection,
+      trendScore,
+      completionRate,
+      lateRate: Math.round(lateRate * 100),
+      monthlyBreakdown,
+      recommendations,
+    };
+  }
 }
