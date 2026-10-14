@@ -628,4 +628,64 @@ export class ScheduledTransferService {
       recommendations,
     };
   }
+
+  async getTransferCurrencyExposure(userId: string) {
+    const transfers = await this.prisma.scheduledTransfer.findMany({
+      where: { userId, status: 'active' },
+    });
+
+    if (transfers.length === 0) {
+      return {
+        totalActiveTransfers: 0,
+        currencies: [],
+        diversificationScore: 0,
+        totalMonthlyVolume: '0',
+        dominantCurrency: null,
+      };
+    }
+
+    const currencyMap = new Map<string, { count: number; volume: bigint }>();
+    for (const t of transfers) {
+      const currency = (t as any).currency || 'USD';
+      const entry = currencyMap.get(currency) || { count: 0, volume: BigInt(0) };
+      entry.count++;
+      entry.volume += BigInt((t as any).amount || 0);
+      currencyMap.set(currency, entry);
+    }
+
+    let totalVolume = BigInt(0);
+    const currencies: { currency: string; count: number; volume: string; share: number }[] = [];
+
+    for (const [currency, data] of currencyMap) {
+      totalVolume += data.volume;
+      currencies.push({
+        currency,
+        count: data.count,
+        volume: data.volume.toString(),
+        share: 0,
+      });
+    }
+
+    for (const c of currencies) {
+      c.share = totalVolume > 0
+        ? Number((BigInt(c.volume) * BigInt(10000) / totalVolume)) / 100
+        : 0;
+    }
+
+    currencies.sort((a, b) => b.share - a.share);
+
+    const shares = currencies.map(c => c.share / 100);
+    const hhi = shares.reduce((sum, s) => sum + s * s, 0);
+    const diversificationScore = currencies.length > 1
+      ? Number(((1 - hhi) * 100).toFixed(2))
+      : 0;
+
+    return {
+      totalActiveTransfers: transfers.length,
+      currencies,
+      diversificationScore,
+      totalMonthlyVolume: totalVolume.toString(),
+      dominantCurrency: currencies[0]?.currency || null,
+    };
+  }
 }

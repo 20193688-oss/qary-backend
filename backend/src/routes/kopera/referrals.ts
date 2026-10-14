@@ -87,6 +87,10 @@ export async function registerReferralRoutes(app: FastifyInstance, prisma: Prism
     return svc.getReferralRetentionAnalysis(req.auth!.userId);
   });
 
+  app.get('/api/referrals/chain-depth', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getReferralChainDepth(req.auth!.userId);
+  });
+
   app.get('/api/referrals/validate/:code', async (req) => {
     const { code } = req.params as { code: string };
     return svc.validateCode(code);
