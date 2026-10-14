@@ -478,6 +478,66 @@ export class NotificationService {
     };
   }
 
+  async getNotificationEngagementReport(userId: string) {
+    const notifications = await this.prisma.notification.findMany({ where: { userId } });
+    if (notifications.length === 0) {
+      return {
+        totalNotifications: 0,
+        readCount: 0,
+        unreadCount: 0,
+        readRate: 0,
+        byChannel: [],
+        avgTimeToReadMs: null,
+      };
+    }
+
+    let readCount = 0;
+    let unreadCount = 0;
+    const readTimes: number[] = [];
+    const channelMap = new Map<string, { total: number; read: number }>();
+
+    for (const n of notifications) {
+      const channel = (n as any).channel || 'in_app';
+      if (!channelMap.has(channel)) channelMap.set(channel, { total: 0, read: 0 });
+      const entry = channelMap.get(channel)!;
+      entry.total++;
+
+      if ((n as any).readAt || (n as any).read) {
+        readCount++;
+        entry.read++;
+        if ((n as any).readAt) {
+          const timeToRead = new Date((n as any).readAt).getTime() - new Date(n.createdAt).getTime();
+          if (timeToRead > 0) readTimes.push(timeToRead);
+        }
+      } else {
+        unreadCount++;
+      }
+    }
+
+    const readRate = Math.round((readCount / notifications.length) * 10000) / 100;
+    const avgTimeToReadMs = readTimes.length > 0
+      ? Math.round(readTimes.reduce((s, t) => s + t, 0) / readTimes.length)
+      : null;
+
+    const byChannel = Array.from(channelMap.entries())
+      .map(([channel, data]) => ({
+        channel,
+        total: data.total,
+        readCount: data.read,
+        readRate: data.total > 0 ? Math.round((data.read / data.total) * 10000) / 100 : 0,
+      }))
+      .sort((a, b) => b.total - a.total);
+
+    return {
+      totalNotifications: notifications.length,
+      readCount,
+      unreadCount,
+      readRate,
+      byChannel,
+      avgTimeToReadMs,
+    };
+  }
+
   async delete(id: string, userId: string) {
     const n = await this.prisma.notification.findUnique({ where: { id } });
     if (!n) throw new Error('notification_not_found');

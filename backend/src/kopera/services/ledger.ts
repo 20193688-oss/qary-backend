@@ -481,4 +481,61 @@ export class LedgerService {
       activityPattern,
     };
   }
+
+  async getLedgerBalanceTrend(walletId: string) {
+    const entries = await this.prisma.ledgerEntry.findMany({
+      where: { walletId },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (entries.length === 0) {
+      return {
+        totalEntries: 0,
+        dataPoints: [],
+        currentBalance: '0',
+        highestBalance: '0',
+        lowestBalance: '0',
+        trend: 'flat',
+      };
+    }
+
+    let runningBalance = BigInt(0);
+    let highest = BigInt(0);
+    let lowest = BigInt(0);
+    const dailyMap = new Map<string, bigint>();
+
+    for (const e of entries) {
+      const amount = e.amount ?? BigInt(0);
+      const direction = (e as any).direction || (e as any).type;
+      if (direction === 'CREDIT' || direction === 'credit') {
+        runningBalance += amount;
+      } else {
+        runningBalance -= amount;
+      }
+
+      if (runningBalance > highest) highest = runningBalance;
+      if (runningBalance < lowest) lowest = runningBalance;
+
+      const day = new Date(e.createdAt).toISOString().slice(0, 10);
+      dailyMap.set(day, runningBalance);
+    }
+
+    const dataPoints = Array.from(dailyMap.entries())
+      .map(([date, balance]) => ({ date, balance: balance.toString() }));
+
+    const firstBalance = BigInt(dataPoints[0].balance);
+    const lastBalance = BigInt(dataPoints[dataPoints.length - 1].balance);
+    const trend = lastBalance > firstBalance ? 'growing'
+      : lastBalance < firstBalance ? 'declining'
+      : 'flat';
+
+    return {
+      totalEntries: entries.length,
+      dataPoints: dataPoints.slice(-30),
+      currentBalance: runningBalance.toString(),
+      highestBalance: highest.toString(),
+      lowestBalance: lowest.toString(),
+      trend,
+    };
+  }
 }
