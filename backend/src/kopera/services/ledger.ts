@@ -335,4 +335,79 @@ export class LedgerService {
       closingBalance: last ? last.balanceAfter : BigInt(0),
     };
   }
+
+  async getBalanceVolatility(walletId: string) {
+    const entries = await this.prisma.ledgerEntry.findMany({
+      where: { walletId },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (entries.length === 0) {
+      return {
+        walletId,
+        totalEntries: 0,
+        avgBalance: '0',
+        stdDev: '0',
+        coefficientOfVariation: 0,
+        volatilityLevel: 'none' as const,
+        largestSwing: null as { amount: string; direction: string; entryType: string } | null,
+        byDay: [] as Array<{ day: string; entries: number; avgBalance: string; range: string }>,
+      };
+    }
+
+    const balances = entries.map(e => Number(e.balanceAfter));
+    const mean = balances.reduce((s, b) => s + b, 0) / balances.length;
+    const variance = balances.reduce((s, b) => s + (b - mean) ** 2, 0) / balances.length;
+    const stdDev = Math.sqrt(variance);
+    const cv = mean !== 0 ? Math.round((stdDev / Math.abs(mean)) * 10000) / 100 : 0;
+
+    const volatilityLevel = cv > 100 ? 'extreme' as const
+      : cv > 50 ? 'high' as const
+      : cv > 20 ? 'moderate' as const
+      : 'low' as const;
+
+    let largestSwing: { amount: string; direction: string; entryType: string } | null = null;
+    let maxSwingAbs = BigInt(0);
+    for (const e of entries) {
+      const swing = e.balanceAfter - e.balanceBefore;
+      const absSwing = swing < BigInt(0) ? -swing : swing;
+      if (absSwing > maxSwingAbs) {
+        maxSwingAbs = absSwing;
+        largestSwing = {
+          amount: absSwing.toString(),
+          direction: swing >= BigInt(0) ? 'increase' : 'decrease',
+          entryType: e.entryType,
+        };
+      }
+    }
+
+    const dayMap = new Map<string, { balances: number[]; count: number }>();
+    for (const e of entries) {
+      const day = new Date(e.createdAt).toISOString().slice(0, 10);
+      const entry = dayMap.get(day) ?? { balances: [], count: 0 };
+      entry.balances.push(Number(e.balanceAfter));
+      entry.count++;
+      dayMap.set(day, entry);
+    }
+
+    const byDay = Array.from(dayMap.entries())
+      .map(([day, data]) => ({
+        day,
+        entries: data.count,
+        avgBalance: Math.round(data.balances.reduce((s, b) => s + b, 0) / data.balances.length).toString(),
+        range: (Math.max(...data.balances) - Math.min(...data.balances)).toString(),
+      }))
+      .sort((a, b) => a.day.localeCompare(b.day));
+
+    return {
+      walletId,
+      totalEntries: entries.length,
+      avgBalance: Math.round(mean).toString(),
+      stdDev: Math.round(stdDev).toString(),
+      coefficientOfVariation: cv,
+      volatilityLevel,
+      largestSwing,
+      byDay,
+    };
+  }
 }

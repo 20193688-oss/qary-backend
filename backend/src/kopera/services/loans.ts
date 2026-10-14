@@ -436,6 +436,70 @@ export class LoanService {
     };
   }
 
+  async getMaturityTimeline(userId: string) {
+    const activeStatuses = new Set(['APPROVED', 'DISBURSED']);
+    const loans = await this.prisma.loan.findMany({ where: { userId } });
+    const active = loans.filter((l: any) => activeStatuses.has(l.status));
+
+    if (active.length === 0) {
+      return {
+        totalActiveLoans: 0,
+        upcomingMaturities: [] as Array<{ month: string; count: number; totalPrincipal: string }>,
+        nearestMaturity: null as { loanId: string; maturityDate: string; daysRemaining: number; principal: string } | null,
+        concentrationRisk: 'none' as const,
+      };
+    }
+
+    const now = Date.now();
+    const loanMaturities: Array<{ loanId: string; maturityDate: Date; principal: bigint }> = [];
+
+    for (const loan of active) {
+      const startDate = (loan as any).disbursedAt ?? loan.createdAt;
+      const maturityDate = new Date(new Date(startDate).getTime());
+      maturityDate.setMonth(maturityDate.getMonth() + loan.termMonths);
+      loanMaturities.push({ loanId: loan.id, maturityDate, principal: loan.principalAmount });
+    }
+
+    loanMaturities.sort((a, b) => a.maturityDate.getTime() - b.maturityDate.getTime());
+
+    const monthMap = new Map<string, { count: number; totalPrincipal: bigint }>();
+    for (const lm of loanMaturities) {
+      const key = `${lm.maturityDate.getFullYear()}-${String(lm.maturityDate.getMonth() + 1).padStart(2, '0')}`;
+      const entry = monthMap.get(key) ?? { count: 0, totalPrincipal: BigInt(0) };
+      entry.count++;
+      entry.totalPrincipal += lm.principal;
+      monthMap.set(key, entry);
+    }
+
+    const upcomingMaturities = Array.from(monthMap.entries())
+      .map(([month, data]) => ({
+        month,
+        count: data.count,
+        totalPrincipal: data.totalPrincipal.toString(),
+      }))
+      .sort((a, b) => a.month.localeCompare(b.month));
+
+    const nearest = loanMaturities[0];
+    const nearestMaturity = nearest ? {
+      loanId: nearest.loanId,
+      maturityDate: nearest.maturityDate.toISOString(),
+      daysRemaining: Math.max(0, Math.ceil((nearest.maturityDate.getTime() - now) / (24 * 60 * 60 * 1000))),
+      principal: nearest.principal.toString(),
+    } : null;
+
+    const maxInMonth = upcomingMaturities.reduce((max, m) => m.count > max ? m.count : max, 0);
+    const concentrationRisk = maxInMonth >= 3 ? 'high' as const
+      : maxInMonth >= 2 ? 'moderate' as const
+      : 'low' as const;
+
+    return {
+      totalActiveLoans: active.length,
+      upcomingMaturities,
+      nearestMaturity,
+      concentrationRisk,
+    };
+  }
+
   async simulate(principalAmount: number, currency: string, termMonths: number, interestRate?: number) {
     const rate = interestRate ?? this.getDefaultRate(currency);
     const { monthlyPayment, totalInterest, tcea } = this.calculateAmortization(

@@ -360,6 +360,53 @@ export class NotificationService {
     });
   }
 
+  async getTypeEffectiveness(userId: string) {
+    const all = await this.prisma.notification.findMany({ where: { userId } });
+
+    if (all.length === 0) {
+      return {
+        totalNotifications: 0,
+        byType: [] as Array<{ type: string; total: number; delivered: number; read: number; deliveryRate: number; readRate: number; avgReadTimeMs: number | null; effectivenessScore: number }>,
+        bestType: null as string | null,
+        worstType: null as string | null,
+      };
+    }
+
+    const typeMap = new Map<string, { total: number; delivered: number; read: number; failed: number; readTimeMs: number; readWithTime: number }>();
+
+    for (const n of all) {
+      const entry = typeMap.get(n.type) ?? { total: 0, delivered: 0, read: 0, failed: 0, readTimeMs: 0, readWithTime: 0 };
+      entry.total++;
+      if (n.deliveredAt) entry.delivered++;
+      if (n.failedAt) entry.failed++;
+      if (n.readAt) {
+        entry.read++;
+        if (n.sentAt) {
+          entry.readTimeMs += new Date(n.readAt).getTime() - new Date(n.sentAt).getTime();
+          entry.readWithTime++;
+        }
+      }
+      typeMap.set(n.type, entry);
+    }
+
+    const byType = Array.from(typeMap.entries()).map(([type, data]) => {
+      const deliveryRate = data.total > 0 ? Math.round((data.delivered / data.total) * 10000) / 100 : 0;
+      const readRate = data.delivered > 0 ? Math.round((data.read / data.delivered) * 10000) / 100 : 0;
+      const failureRate = data.total > 0 ? Math.round((data.failed / data.total) * 10000) / 100 : 0;
+      const avgReadTimeMs = data.readWithTime > 0 ? Math.round(data.readTimeMs / data.readWithTime) : null;
+      const effectivenessScore = Math.round((deliveryRate * 0.4 + readRate * 0.4 + (100 - failureRate) * 0.2) * 100) / 100;
+
+      return { type, total: data.total, delivered: data.delivered, read: data.read, deliveryRate, readRate, avgReadTimeMs, effectivenessScore };
+    }).sort((a, b) => b.effectivenessScore - a.effectivenessScore);
+
+    return {
+      totalNotifications: all.length,
+      byType,
+      bestType: byType[0]?.type ?? null,
+      worstType: byType.length > 1 ? byType[byType.length - 1].type : null,
+    };
+  }
+
   async delete(id: string, userId: string) {
     const n = await this.prisma.notification.findUnique({ where: { id } });
     if (!n) throw new Error('notification_not_found');
