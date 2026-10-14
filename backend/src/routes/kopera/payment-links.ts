@@ -133,6 +133,10 @@ export async function registerPaymentLinkRoutes(app: FastifyInstance, prisma: Pr
     return svc.getPaymentLinkRecurrenceAnalysis(req.auth!.userId);
   });
 
+  app.get('/api/payment-links/revenue-concentration', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getPaymentLinkRevenueConcentration(req.auth!.userId);
+  });
+
   app.get('/api/payment-links/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const link = await svc.getById(id);
