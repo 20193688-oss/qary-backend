@@ -536,4 +536,70 @@ export class PaymentLinkService {
       recommendations,
     };
   }
+
+  async getPaymentLinkRevenueConcentration(userId: string) {
+    const links = await this.prisma.paymentLink.findMany({ where: { userId } });
+    if (links.length === 0) {
+      return {
+        totalLinks: 0,
+        totalRevenue: '0',
+        concentrationScore: 0,
+        topContributors: [],
+        diversificationLevel: 'no_data',
+        recommendations: [],
+      };
+    }
+
+    let totalRevenue = BigInt(0);
+    const linkRevenue: Array<{ id: string; title: string; revenue: bigint; useCount: number }> = [];
+
+    for (const link of links) {
+      const amt = (link as any).amount ?? BigInt(0);
+      const uses = (link as any).useCount ?? ((link as any).status === 'paid' ? 1 : 0);
+      const revenue = amt * BigInt(Math.max(1, uses));
+      totalRevenue += revenue;
+      linkRevenue.push({
+        id: link.id,
+        title: (link as any).title || (link as any).description || 'Untitled',
+        revenue,
+        useCount: uses,
+      });
+    }
+
+    linkRevenue.sort((a, b) => Number(b.revenue - a.revenue));
+
+    let concentrationScore = 0;
+    if (Number(totalRevenue) > 0) {
+      for (const lr of linkRevenue) {
+        const share = Number(lr.revenue) / Number(totalRevenue);
+        concentrationScore += Math.round(share * share * 10000);
+      }
+    }
+    concentrationScore = Math.min(10000, concentrationScore);
+
+    const topContributors = linkRevenue.slice(0, 5).map(lr => ({
+      id: lr.id,
+      title: lr.title,
+      revenue: lr.revenue.toString(),
+      sharePercent: Number(totalRevenue) > 0
+        ? Math.round(Number(lr.revenue * BigInt(10000) / totalRevenue)) / 100
+        : 0,
+    }));
+
+    const diversificationLevel = concentrationScore > 5000 ? 'concentrated'
+      : concentrationScore > 2500 ? 'moderate' : 'diversified';
+
+    const recommendations: string[] = [];
+    if (diversificationLevel === 'concentrated') recommendations.push('Revenue is concentrated in few links — diversify payment channels');
+    if (linkRevenue.length > 0 && linkRevenue[0].useCount === 0) recommendations.push('Top links have low usage — promote them more actively');
+
+    return {
+      totalLinks: links.length,
+      totalRevenue: totalRevenue.toString(),
+      concentrationScore,
+      topContributors,
+      diversificationLevel,
+      recommendations,
+    };
+  }
 }

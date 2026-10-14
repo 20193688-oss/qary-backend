@@ -724,4 +724,59 @@ export class SavingsGoalService {
       recommendations,
     };
   }
+
+  async getSavingsGoalPrioritization(userId: string) {
+    const goals = await this.prisma.savingsGoal.findMany({ where: { userId } });
+    if (goals.length === 0) {
+      return {
+        totalGoals: 0,
+        prioritizedGoals: [],
+        recommendations: [],
+      };
+    }
+
+    const now = Date.now();
+    const scored = goals.map(g => {
+      const target = (g as any).targetAmount ?? BigInt(0);
+      const current = (g as any).currentAmount ?? BigInt(0);
+      const remaining = target - current;
+      const progress = Number(target) > 0 ? Number(current * BigInt(100) / target) : 0;
+      const deadline = (g as any).targetDate ? new Date((g as any).targetDate).getTime() : null;
+      const daysLeft = deadline ? Math.max(0, Math.round((deadline - now) / 86400000)) : null;
+      const status = ((g as any).status || 'active').toLowerCase();
+
+      let urgencyScore = 0;
+      if (status === 'active' || status === 'in_progress') {
+        if (daysLeft !== null && daysLeft <= 30) urgencyScore += 50;
+        else if (daysLeft !== null && daysLeft <= 90) urgencyScore += 30;
+        if (progress < 25) urgencyScore += 30;
+        else if (progress < 50) urgencyScore += 15;
+        if (Number(remaining) > 0) urgencyScore += 10;
+      }
+      urgencyScore = Math.min(100, urgencyScore);
+
+      return {
+        goalId: g.id,
+        name: (g as any).name || 'Unnamed',
+        progress,
+        daysLeft,
+        remaining: remaining.toString(),
+        urgencyScore,
+        priority: urgencyScore >= 60 ? 'high' : urgencyScore >= 30 ? 'medium' : 'low',
+      };
+    });
+
+    scored.sort((a, b) => b.urgencyScore - a.urgencyScore);
+
+    const recommendations: string[] = [];
+    const highPriority = scored.filter(s => s.priority === 'high');
+    if (highPriority.length > 0) recommendations.push(`${highPriority.length} goal(s) need immediate attention`);
+    if (scored.some(s => s.daysLeft !== null && s.daysLeft <= 7)) recommendations.push('Some goals have deadlines within a week');
+
+    return {
+      totalGoals: goals.length,
+      prioritizedGoals: scored,
+      recommendations,
+    };
+  }
 }

@@ -683,4 +683,53 @@ export class ReferralService {
       recommendations,
     };
   }
+
+  async getReferralRevenueAttribution(userId: string) {
+    const referral = await this.prisma.referral.findUnique({ where: { userId } });
+    if (!referral) {
+      return {
+        hasReferralCode: false,
+        totalSignups: 0,
+        activeSignups: 0,
+        estimatedRevenue: '0',
+        revenuePerSignup: '0',
+        attributionLevel: 'none',
+        recommendations: [],
+      };
+    }
+
+    const signups = await this.prisma.referralSignup.findMany({
+      where: { referralId: referral.id },
+    });
+
+    const activeSignups = signups.filter(s => {
+      const status = ((s as any).status || '').toLowerCase();
+      return status === 'active' || status === 'converted' || status === 'completed';
+    }).length;
+
+    const rewardAmount = (referral as any).rewardAmount ?? BigInt(0);
+    const estimatedRevenue = rewardAmount * BigInt(Math.max(1, activeSignups));
+    const revenuePerSignup = signups.length > 0
+      ? estimatedRevenue / BigInt(signups.length)
+      : BigInt(0);
+
+    const attributionLevel = activeSignups >= 10 ? 'high'
+      : activeSignups >= 3 ? 'moderate'
+      : activeSignups >= 1 ? 'low' : 'none';
+
+    const recommendations: string[] = [];
+    if (signups.length === 0) recommendations.push('Share your referral code to start earning rewards');
+    if (activeSignups < signups.length * 0.5) recommendations.push('Encourage referred users to complete onboarding');
+    if (attributionLevel === 'high') recommendations.push('Strong referral performance — consider ambassador program');
+
+    return {
+      hasReferralCode: true,
+      totalSignups: signups.length,
+      activeSignups,
+      estimatedRevenue: estimatedRevenue.toString(),
+      revenuePerSignup: revenuePerSignup.toString(),
+      attributionLevel,
+      recommendations,
+    };
+  }
 }

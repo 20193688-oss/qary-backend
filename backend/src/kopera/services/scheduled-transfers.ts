@@ -752,4 +752,63 @@ export class ScheduledTransferService {
       recommendations,
     };
   }
+
+  async getTransferReliabilityIndex(userId: string) {
+    const transfers = await this.prisma.scheduledTransfer.findMany({ where: { userId } });
+    if (transfers.length === 0) {
+      return {
+        totalTransfers: 0,
+        reliabilityIndex: 100,
+        reliabilityLevel: 'no_data',
+        successRate: 0,
+        failureRate: 0,
+        cancelledRate: 0,
+        recommendations: [],
+      };
+    }
+
+    let successCount = 0;
+    let failedCount = 0;
+    let cancelledCount = 0;
+    let activeCount = 0;
+
+    for (const t of transfers) {
+      const status = ((t as any).status || '').toLowerCase();
+      if (status === 'completed' || status === 'executed') successCount++;
+      else if (status === 'failed') failedCount++;
+      else if (status === 'cancelled') cancelledCount++;
+      else if (status === 'active' || status === 'scheduled' || status === 'pending') activeCount++;
+    }
+
+    const completed = successCount + failedCount;
+    const successRate = completed > 0 ? Math.round((successCount / completed) * 10000) / 100 : 100;
+    const failureRate = completed > 0 ? Math.round((failedCount / completed) * 10000) / 100 : 0;
+    const cancelledRate = transfers.length > 0 ? Math.round((cancelledCount / transfers.length) * 10000) / 100 : 0;
+
+    let reliabilityIndex = 100;
+    if (failureRate > 20) reliabilityIndex -= 40;
+    else if (failureRate > 5) reliabilityIndex -= 20;
+    if (cancelledRate > 30) reliabilityIndex -= 20;
+    else if (cancelledRate > 10) reliabilityIndex -= 10;
+    reliabilityIndex = Math.max(0, reliabilityIndex);
+
+    const reliabilityLevel = reliabilityIndex >= 80 ? 'excellent'
+      : reliabilityIndex >= 50 ? 'fair' : 'poor';
+
+    const recommendations: string[] = [];
+    if (failedCount > 0) recommendations.push('Review failed transfers for insufficient funds or invalid recipients');
+    if (cancelledRate > 20) recommendations.push('High cancellation rate — review if schedules match your needs');
+    if (activeCount > 10) recommendations.push('Many active transfers — review for duplicates or outdated schedules');
+
+    return {
+      totalTransfers: transfers.length,
+      reliabilityIndex,
+      reliabilityLevel,
+      successRate,
+      failureRate,
+      cancelledRate,
+      activeCount,
+      recommendations,
+    };
+  }
 }

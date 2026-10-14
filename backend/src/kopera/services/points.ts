@@ -688,4 +688,54 @@ export class PointsService {
       recommendations,
     };
   }
+
+  async getPointsRedemptionEfficiency(userId: string) {
+    const points = await this.prisma.koperaPoints.findUnique({ where: { userId } });
+    const history = await this.prisma.pointsHistory.findMany({ where: { userId } });
+
+    const totalBalance = points?.balance ?? 0;
+    const totalEarned = history.filter(h => {
+      const t = ((h as any).type || '').toUpperCase();
+      return t === 'EARN' || t === 'CREDIT';
+    }).reduce((s, h) => s + Math.abs((h as any).amount ?? 0), 0);
+
+    const totalRedeemed = history.filter(h => {
+      const t = ((h as any).type || '').toUpperCase();
+      return t === 'REDEEM' || t === 'DEBIT';
+    }).reduce((s, h) => s + Math.abs((h as any).amount ?? 0), 0);
+
+    const redemptionRate = totalEarned > 0
+      ? Math.round((totalRedeemed / totalEarned) * 10000) / 100
+      : 0;
+
+    const unusedPoints = totalBalance;
+    const wasteRisk = totalEarned > 0
+      ? Math.round((unusedPoints / totalEarned) * 10000) / 100
+      : 0;
+
+    let efficiencyScore = 100;
+    if (redemptionRate < 20) efficiencyScore -= 40;
+    else if (redemptionRate < 50) efficiencyScore -= 20;
+    if (wasteRisk > 80) efficiencyScore -= 25;
+    efficiencyScore = Math.max(0, efficiencyScore);
+
+    const efficiencyLevel = efficiencyScore >= 70 ? 'optimal'
+      : efficiencyScore >= 40 ? 'underutilized' : 'wasteful';
+
+    const recommendations: string[] = [];
+    if (redemptionRate < 30) recommendations.push('Redeem accumulated points before they expire');
+    if (unusedPoints > 1000) recommendations.push('You have significant unused points — check available rewards');
+    if (history.length === 0) recommendations.push('Start earning points through eligible transactions');
+
+    return {
+      totalEarned,
+      totalRedeemed,
+      currentBalance: totalBalance,
+      redemptionRate,
+      wasteRisk,
+      efficiencyScore,
+      efficiencyLevel,
+      recommendations,
+    };
+  }
 }
