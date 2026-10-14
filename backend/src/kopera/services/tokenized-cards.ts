@@ -760,4 +760,61 @@ export class TokenizedCardService {
       recommendations,
     };
   }
+
+  async getCardRenewalPlanner(userId: string) {
+    const cards = await this.prisma.tokenizedCard.findMany({ where: { userId } });
+
+    if (cards.length === 0) {
+      return {
+        totalCards: 0,
+        plannerScore: 0,
+        plannerLevel: 'no_data' as const,
+        breakdown: { needsRenewal: 0, upToDate: 0, expiringSoon: 0 },
+        recommendations: [] as string[],
+      };
+    }
+
+    const now = new Date();
+    const threeMonthsOut = new Date(now.getTime() + 90 * 86400000);
+    let needsRenewal = 0;
+    let upToDate = 0;
+    let expiringSoon = 0;
+
+    for (const card of cards) {
+      const expMonth = (card as any).expiryMonth ?? 12;
+      const expYear = (card as any).expiryYear ?? now.getFullYear() + 2;
+      const expiryDate = new Date(expYear, expMonth - 1, 28);
+
+      if (expiryDate < now) {
+        needsRenewal++;
+      } else if (expiryDate < threeMonthsOut) {
+        expiringSoon++;
+      } else {
+        upToDate++;
+      }
+    }
+
+    let plannerScore = 100;
+    const renewalRate = Math.round((needsRenewal / cards.length) * 100);
+    if (needsRenewal > 0) plannerScore -= Math.min(40, needsRenewal * 15);
+    if (expiringSoon > 0) plannerScore -= Math.min(30, expiringSoon * 10);
+    plannerScore = Math.max(0, plannerScore);
+
+    const plannerLevel = plannerScore >= 80 ? 'well_planned'
+      : plannerScore >= 50 ? 'needs_attention' : 'urgent';
+
+    const recommendations: string[] = [];
+    if (needsRenewal > 0) recommendations.push(`${needsRenewal} card(s) expired — renew immediately`);
+    if (expiringSoon > 0) recommendations.push(`${expiringSoon} card(s) expiring within 90 days`);
+    if (plannerLevel === 'well_planned') recommendations.push('All cards are up to date');
+
+    return {
+      totalCards: cards.length,
+      renewalRate,
+      plannerScore,
+      plannerLevel,
+      breakdown: { needsRenewal, upToDate, expiringSoon },
+      recommendations,
+    };
+  }
 }

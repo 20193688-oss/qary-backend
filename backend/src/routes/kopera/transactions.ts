@@ -188,6 +188,10 @@ export async function registerTransactionRoutes(app: FastifyInstance, prisma: Pr
     return svc.getTransactionVelocityMonitor(req.auth!.userId);
   });
 
+  app.get('/api/transaction-history/category-insights', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getTransactionCategoryInsights(req.auth!.userId);
+  });
+
   app.get('/api/transaction-history/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const txn = await svc.getTransaction(id, req.auth!.userId);

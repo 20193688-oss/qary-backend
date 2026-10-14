@@ -764,6 +764,63 @@ export class TransactionLimitService {
     };
   }
 
+  async getLimitUsageTrendAnalysis(userId: string) {
+    const limits = await this.prisma.transactionLimit.findMany({ where: { userId } });
+
+    if (limits.length === 0) {
+      return {
+        totalLimits: 0,
+        trendScore: 0,
+        trendLevel: 'no_data' as const,
+        breakdown: { increasing: 0, stable: 0, decreasing: 0 },
+        recommendations: [] as string[],
+      };
+    }
+
+    let increasing = 0;
+    let stable = 0;
+    let decreasing = 0;
+    let totalUtilization = 0;
+
+    for (const limit of limits) {
+      const refreshed = this.refreshIfNeeded(limit);
+      const usage = Number(refreshed.currentUsage ?? BigInt(0));
+      const max = Number(refreshed.maxAmount ?? BigInt(1));
+      const utilization = max > 0 ? Math.round((usage / max) * 100) : 0;
+      totalUtilization += utilization;
+
+      if (utilization >= 70) increasing++;
+      else if (utilization >= 30) stable++;
+      else decreasing++;
+    }
+
+    const avgUtilization = Math.round(totalUtilization / limits.length);
+
+    let trendScore = 50;
+    if (avgUtilization > 80) trendScore += 30;
+    else if (avgUtilization > 50) trendScore += 15;
+    if (increasing > limits.length * 0.5) trendScore += 20;
+    else if (increasing > 0) trendScore += 10;
+    trendScore = Math.min(100, trendScore);
+
+    const trendLevel = trendScore >= 70 ? 'high_usage'
+      : trendScore >= 40 ? 'moderate_usage' : 'low_usage';
+
+    const recommendations: string[] = [];
+    if (increasing > 0) recommendations.push(`${increasing} limit(s) with high utilization — consider increasing`);
+    if (decreasing > limits.length * 0.5) recommendations.push('Most limits are underutilized — consider lowering');
+    if (trendLevel === 'moderate_usage') recommendations.push('Limit usage is at a balanced level');
+
+    return {
+      totalLimits: limits.length,
+      avgUtilization,
+      trendScore,
+      trendLevel,
+      breakdown: { increasing, stable, decreasing },
+      recommendations,
+    };
+  }
+
   private refreshIfNeeded(limit: any): any {
     const periodStart = this.periodStart(limit.limitType);
     if (limit.periodStart < periodStart) {

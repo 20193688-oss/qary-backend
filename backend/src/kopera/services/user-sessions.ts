@@ -666,4 +666,67 @@ export class UserSessionService {
       recommendations,
     };
   }
+
+  async getSessionRetentionMetrics(userId: string) {
+    const sessions = await this.prisma.userSession.findMany({ where: { userId } });
+
+    if (sessions.length === 0) {
+      return {
+        totalSessions: 0,
+        retentionScore: 0,
+        retentionLevel: 'no_data' as const,
+        avgSessionDuration: 0,
+        recommendations: [] as string[],
+      };
+    }
+
+    let totalDuration = 0;
+    let activeSessions = 0;
+    let expiredSessions = 0;
+    const now = Date.now();
+
+    for (const s of sessions) {
+      const createdAt = new Date((s as any).createdAt).getTime();
+      const expiresAt = (s as any).expiresAt ? new Date((s as any).expiresAt).getTime() : null;
+      const lastActive = (s as any).lastActiveAt ? new Date((s as any).lastActiveAt).getTime() : createdAt;
+
+      const duration = Math.round((lastActive - createdAt) / 60000);
+      totalDuration += Math.max(0, duration);
+
+      if (expiresAt && expiresAt < now) expiredSessions++;
+      else activeSessions++;
+    }
+
+    const avgSessionDuration = Math.round(totalDuration / sessions.length);
+    const returnRate = sessions.length > 1 ? 100 : 0;
+
+    let retentionScore = 0;
+    if (sessions.length >= 10) retentionScore += 30;
+    else if (sessions.length >= 5) retentionScore += 20;
+    else if (sessions.length >= 2) retentionScore += 10;
+    if (avgSessionDuration >= 30) retentionScore += 25;
+    else if (avgSessionDuration >= 10) retentionScore += 15;
+    if (activeSessions > 0) retentionScore += 20;
+    retentionScore += 15;
+    retentionScore = Math.min(100, retentionScore);
+
+    const retentionLevel = retentionScore >= 70 ? 'strong'
+      : retentionScore >= 40 ? 'moderate' : 'weak';
+
+    const recommendations: string[] = [];
+    if (sessions.length <= 2) recommendations.push('Low session count — encourage regular usage');
+    if (avgSessionDuration < 5) recommendations.push('Short sessions — improve onboarding or engagement');
+    if (retentionLevel === 'strong') recommendations.push('Session retention is healthy');
+
+    return {
+      totalSessions: sessions.length,
+      activeSessions,
+      expiredSessions,
+      avgSessionDuration,
+      returnRate,
+      retentionScore,
+      retentionLevel,
+      recommendations,
+    };
+  }
 }

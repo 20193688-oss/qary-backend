@@ -119,6 +119,10 @@ export async function registerUserProfileRoutes(app: FastifyInstance, prisma: Pr
     return svc.getProfileSecurityAudit(req.auth!.userId);
   });
 
+  app.get('/api/profile/data-quality', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getProfileDataQualityCheck(req.auth!.userId);
+  });
+
   app.post('/api/profile/mfa/enable', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const body = z.object({
       secret: z.string().min(1),
