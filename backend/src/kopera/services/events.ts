@@ -329,4 +329,54 @@ export class EventService {
       orderBy: { createdAt: 'asc' },
     });
   }
+
+  async getCorrelationAnalysis(userId: string) {
+    const events = await this.prisma.event.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (events.length < 2) {
+      return {
+        totalEvents: events.length,
+        correlatedPairs: [],
+        topPattern: null,
+      };
+    }
+
+    const windowMs = 5 * 60 * 1000;
+    const pairMap = new Map<string, { count: number; totalGapMs: number }>();
+
+    for (let i = 0; i < events.length - 1; i++) {
+      const a = events[i];
+      for (let j = i + 1; j < events.length; j++) {
+        const b = events[j];
+        const gap = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        if (gap > windowMs) break;
+        if (a.eventType === b.eventType) continue;
+
+        const key = `${a.eventType} -> ${b.eventType}`;
+        const entry = pairMap.get(key) ?? { count: 0, totalGapMs: 0 };
+        entry.count++;
+        entry.totalGapMs += gap;
+        pairMap.set(key, entry);
+      }
+    }
+
+    const correlatedPairs = Array.from(pairMap.entries())
+      .filter(([, v]) => v.count >= 2)
+      .map(([pair, data]) => ({
+        pair,
+        occurrences: data.count,
+        avgGapSeconds: Math.round(data.totalGapMs / data.count / 1000),
+      }))
+      .sort((a, b) => b.occurrences - a.occurrences)
+      .slice(0, 10);
+
+    return {
+      totalEvents: events.length,
+      correlatedPairs,
+      topPattern: correlatedPairs.length > 0 ? correlatedPairs[0] : null,
+    };
+  }
 }

@@ -407,4 +407,93 @@ export class GatewayPaymentService {
       return { gatewayPayment: gp, refundTransaction: refundTxn, amount };
     });
   }
+
+  async getPaymentMethodTrends(userId: string) {
+    const userTxns = await this.prisma.transaction.findMany({ where: { userId } });
+    const txnIds = new Set(userTxns.map((t: any) => t.id));
+    const allPayments = await this.prisma.gatewayPayment.findMany({});
+    const payments = allPayments
+      .filter((p: any) => txnIds.has(p.transactionId))
+      .sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+    if (payments.length === 0) {
+      return {
+        totalPayments: 0,
+        monthlyTrends: [],
+        methodShares: [],
+        fastestGrowing: null,
+        diversityIndex: 0,
+      };
+    }
+
+    const monthMap = new Map<string, Map<string, { count: number; volume: bigint }>>();
+    const methodTotals = new Map<string, { count: number; volume: bigint }>();
+
+    for (const p of payments) {
+      const method = p.paymentMethod ?? 'unknown';
+      const d = new Date(p.createdAt);
+      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+
+      if (!monthMap.has(monthKey)) monthMap.set(monthKey, new Map());
+      const methodMap = monthMap.get(monthKey)!;
+      const mEntry = methodMap.get(method) ?? { count: 0, volume: BigInt(0) };
+      mEntry.count++;
+      mEntry.volume += p.amount;
+      methodMap.set(method, mEntry);
+
+      const tEntry = methodTotals.get(method) ?? { count: 0, volume: BigInt(0) };
+      tEntry.count++;
+      tEntry.volume += p.amount;
+      methodTotals.set(method, tEntry);
+    }
+
+    const monthlyTrends = Array.from(monthMap.entries())
+      .map(([month, methods]) => ({
+        month,
+        methods: Array.from(methods.entries()).map(([method, data]) => ({
+          method,
+          count: data.count,
+          volume: data.volume.toString(),
+        })),
+      }))
+      .sort((a, b) => a.month.localeCompare(b.month));
+
+    const methodShares = Array.from(methodTotals.entries())
+      .map(([method, data]) => ({
+        method,
+        count: data.count,
+        volume: data.volume.toString(),
+        share: Math.round((data.count / payments.length) * 10000) / 100,
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    const shares = methodShares.map((m) => m.share / 100);
+    const diversityIndex = shares.length > 1
+      ? Math.round((1 - shares.reduce((s, p) => s + p * p, 0)) * 10000) / 100
+      : 0;
+
+    let fastestGrowing: string | null = null;
+    if (monthlyTrends.length >= 2) {
+      const first = monthlyTrends[0];
+      const last = monthlyTrends[monthlyTrends.length - 1];
+      let bestGrowth = -Infinity;
+      for (const m of methodShares) {
+        const firstCount = first.methods.find((x) => x.method === m.method)?.count ?? 0;
+        const lastCount = last.methods.find((x) => x.method === m.method)?.count ?? 0;
+        const growth = lastCount - firstCount;
+        if (growth > bestGrowth) {
+          bestGrowth = growth;
+          fastestGrowing = m.method;
+        }
+      }
+    }
+
+    return {
+      totalPayments: payments.length,
+      monthlyTrends,
+      methodShares,
+      fastestGrowing,
+      diversityIndex,
+    };
+  }
 }

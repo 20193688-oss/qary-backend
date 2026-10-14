@@ -85,6 +85,10 @@ export async function registerFxRoutes(app: FastifyInstance, prisma: PrismaClien
     };
   });
 
+  app.get('/api/fx/conversion-frequency', { preHandler: [app.requireAuth] }, async (req) => {
+    return fx.getConversionFrequencyReport(req.auth!.userId);
+  });
+
   app.post('/api/fx/convert', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const body = z.object({
       amount: z.number().positive(),

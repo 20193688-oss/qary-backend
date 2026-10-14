@@ -139,6 +139,10 @@ export async function registerInvoiceRoutes(app: FastifyInstance, prisma: Prisma
     return invoices.getCashFlowProjection(req.auth!.userId);
   });
 
+  app.get('/api/invoices/volume-analysis', { preHandler: [app.requireAuth] }, async (req) => {
+    return invoices.getInvoiceVolumeAnalysis(req.auth!.userId);
+  });
+
   app.get('/api/invoices', { preHandler: [app.requireAuth] }, async (req) => {
     const query = req.query as { status?: string; limit?: string; offset?: string };
     const list = await invoices.listBySender(req.auth!.userId, {

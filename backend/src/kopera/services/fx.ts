@@ -351,6 +351,64 @@ export class FxService {
     };
   }
 
+  async getConversionFrequencyReport(userId: string) {
+    const conversions = await this.prisma.transaction.findMany({
+      where: { userId, type: 'FX_CONVERSION', status: 'COMPLETED' },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (conversions.length === 0) {
+      return {
+        totalConversions: 0,
+        monthlyBuckets: [],
+        avgConversionSize: '0',
+        peakMonth: null,
+        conversionStyle: 'none' as const,
+      };
+    }
+
+    const monthMap = new Map<string, { count: number; totalAmount: bigint }>();
+    let totalAmount = BigInt(0);
+
+    for (const c of conversions) {
+      const d = new Date(c.createdAt);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const entry = monthMap.get(key) ?? { count: 0, totalAmount: BigInt(0) };
+      entry.count++;
+      entry.totalAmount += c.amount;
+      monthMap.set(key, entry);
+      totalAmount += c.amount;
+    }
+
+    const monthlyBuckets = Array.from(monthMap.entries())
+      .map(([month, data]) => ({
+        month,
+        count: data.count,
+        totalAmount: data.totalAmount.toString(),
+      }))
+      .sort((a, b) => a.month.localeCompare(b.month));
+
+    const peakBucket = monthlyBuckets.reduce((best, b) => b.count > best.count ? b : best, monthlyBuckets[0]);
+    const avgConversionSize = conversions.length > 0
+      ? (totalAmount / BigInt(conversions.length)).toString()
+      : '0';
+
+    const counts = monthlyBuckets.map((b) => b.count);
+    const avgPerMonth = counts.reduce((s, c) => s + c, 0) / counts.length;
+    const stdDev = Math.sqrt(counts.reduce((s, c) => s + (c - avgPerMonth) ** 2, 0) / counts.length);
+    const cv = avgPerMonth > 0 ? stdDev / avgPerMonth : 0;
+
+    const conversionStyle = cv > 1 ? 'batched' as const : cv > 0.5 ? 'irregular' as const : 'spread' as const;
+
+    return {
+      totalConversions: conversions.length,
+      monthlyBuckets,
+      avgConversionSize,
+      peakMonth: peakBucket.month,
+      conversionStyle,
+    };
+  }
+
   async storeRate(baseCurrency: string, quoteCurrency: string, bid: number, ask: number, source: string) {
     const mid = (bid + ask) / 2;
     const spread = ask - bid;
