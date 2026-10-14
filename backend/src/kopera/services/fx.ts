@@ -614,4 +614,77 @@ export class FxService {
       },
     });
   }
+
+  async getFxCostOptimization(userId: string) {
+    const conversions = await this.prisma.transaction.findMany({
+      where: { userId, type: 'FX_CONVERSION' },
+    });
+    if (conversions.length === 0) {
+      return {
+        totalConversions: 0,
+        totalFeePaid: '0',
+        avgSpreadCost: 0,
+        potentialSavings: '0',
+        optimizationScore: 100,
+        recommendations: [],
+      };
+    }
+
+    let totalFeePaid = BigInt(0);
+    let totalVolume = BigInt(0);
+    const pairCosts: Record<string, { count: number; totalFee: bigint; totalVolume: bigint }> = {};
+
+    for (const c of conversions) {
+      const fee = (c as any).feeAmount ?? BigInt(0);
+      const amt = c.amount ?? BigInt(0);
+      totalFeePaid += fee;
+      totalVolume += amt;
+
+      const fromCur = (c as any).fromCurrency || c.currency || 'UNK';
+      const toCur = (c as any).toCurrency || 'UNK';
+      const pair = `${fromCur}-${toCur}`;
+      if (!pairCosts[pair]) pairCosts[pair] = { count: 0, totalFee: BigInt(0), totalVolume: BigInt(0) };
+      pairCosts[pair].count++;
+      pairCosts[pair].totalFee += fee;
+      pairCosts[pair].totalVolume += amt;
+    }
+
+    const avgSpreadCost = Number(totalVolume) > 0
+      ? Math.round(Number(totalFeePaid * BigInt(10000) / totalVolume)) / 100
+      : 0;
+
+    const potentialSavings = totalFeePaid / BigInt(5);
+
+    const costlyPairs = Object.entries(pairCosts)
+      .map(([pair, data]) => ({
+        pair,
+        count: data.count,
+        totalFee: data.totalFee.toString(),
+        avgFeePercent: Number(data.totalVolume) > 0
+          ? Math.round(Number(data.totalFee * BigInt(10000) / data.totalVolume)) / 100
+          : 0,
+      }))
+      .sort((a, b) => b.avgFeePercent - a.avgFeePercent);
+
+    let optimizationScore = 100;
+    if (avgSpreadCost > 3) optimizationScore -= 40;
+    else if (avgSpreadCost > 1.5) optimizationScore -= 20;
+    if (conversions.length < 5) optimizationScore -= 10;
+    optimizationScore = Math.max(0, optimizationScore);
+
+    const recommendations: string[] = [];
+    if (avgSpreadCost > 2) recommendations.push('Consider batching small conversions to reduce per-transaction fees');
+    if (costlyPairs.length > 3) recommendations.push('Focus on reducing costs for your most expensive currency pairs');
+    if (conversions.length > 20) recommendations.push('Negotiate better rates based on your conversion volume');
+
+    return {
+      totalConversions: conversions.length,
+      totalFeePaid: totalFeePaid.toString(),
+      avgSpreadCost,
+      potentialSavings: potentialSavings.toString(),
+      optimizationScore,
+      costlyPairs: costlyPairs.slice(0, 5),
+      recommendations,
+    };
+  }
 }

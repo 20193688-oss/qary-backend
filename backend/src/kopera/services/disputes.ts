@@ -623,4 +623,68 @@ export class DisputeService {
       stalledCount,
     };
   }
+
+  async getDisputeResolutionEfficiency(userId: string) {
+    const disputes = await this.prisma.dispute.findMany({ where: { userId } });
+    if (disputes.length === 0) {
+      return {
+        totalDisputes: 0,
+        resolvedCount: 0,
+        resolutionRate: 0,
+        avgResolutionDays: 0,
+        fastestResolutionDays: 0,
+        slowestResolutionDays: 0,
+        efficiencyScore: 100,
+        efficiencyLevel: 'no_data',
+        recommendations: [],
+      };
+    }
+
+    const resolved = disputes.filter(d => {
+      const s = ((d as any).status || '').toLowerCase();
+      return s === 'resolved' || s === 'won' || s === 'lost';
+    });
+
+    const resolutionRate = Math.round((resolved.length / disputes.length) * 10000) / 100;
+
+    const resolutionDays = resolved.map(d => {
+      const created = new Date(d.createdAt).getTime();
+      const resolvedAt = (d as any).resolvedAt ? new Date((d as any).resolvedAt).getTime() : Date.now();
+      return Math.max(1, Math.round((resolvedAt - created) / 86400000));
+    });
+
+    const avgResolutionDays = resolutionDays.length > 0
+      ? Math.round(resolutionDays.reduce((s, d) => s + d, 0) / resolutionDays.length)
+      : 0;
+    const fastestResolutionDays = resolutionDays.length > 0 ? Math.min(...resolutionDays) : 0;
+    const slowestResolutionDays = resolutionDays.length > 0 ? Math.max(...resolutionDays) : 0;
+
+    let efficiencyScore = 100;
+    if (resolutionRate < 50) efficiencyScore -= 30;
+    else if (resolutionRate < 80) efficiencyScore -= 15;
+    if (avgResolutionDays > 30) efficiencyScore -= 25;
+    else if (avgResolutionDays > 14) efficiencyScore -= 10;
+    const pending = disputes.length - resolved.length;
+    if (pending > 5) efficiencyScore -= 20;
+    efficiencyScore = Math.max(0, efficiencyScore);
+
+    const efficiencyLevel = efficiencyScore >= 80 ? 'excellent' : efficiencyScore >= 50 ? 'fair' : 'poor';
+
+    const recommendations: string[] = [];
+    if (resolutionRate < 80) recommendations.push('Increase dispute resolution rate by following up on open cases');
+    if (avgResolutionDays > 14) recommendations.push('Reduce average resolution time by prioritizing older disputes');
+    if (pending > 5) recommendations.push('Address backlog of pending disputes');
+
+    return {
+      totalDisputes: disputes.length,
+      resolvedCount: resolved.length,
+      resolutionRate,
+      avgResolutionDays,
+      fastestResolutionDays,
+      slowestResolutionDays,
+      efficiencyScore,
+      efficiencyLevel,
+      recommendations,
+    };
+  }
 }

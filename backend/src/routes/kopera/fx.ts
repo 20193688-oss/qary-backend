@@ -101,6 +101,10 @@ export async function registerFxRoutes(app: FastifyInstance, prisma: PrismaClien
     return fx.getConversionEfficiencyReport(req.auth!.userId);
   });
 
+  app.get('/api/fx/cost-optimization', { preHandler: [app.requireAuth] }, async (req) => {
+    return fx.getFxCostOptimization(req.auth!.userId);
+  });
+
   app.post('/api/fx/convert', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const body = z.object({
       amount: z.number().positive(),

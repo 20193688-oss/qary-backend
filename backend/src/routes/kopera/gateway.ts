@@ -178,6 +178,10 @@ export async function registerGatewayRoutes(app: FastifyInstance, prisma: Prisma
     return gateway.getPaymentConversionFunnel(req.auth!.userId);
   });
 
+  app.get('/api/gateway/reconciliation-status', { preHandler: [app.requireAuth] }, async (req) => {
+    return gateway.getGatewayReconciliationStatus(req.auth!.userId);
+  });
+
   app.get('/api/gateway/payments/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const gp = await gateway.findById(id);
