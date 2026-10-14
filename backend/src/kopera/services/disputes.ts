@@ -580,4 +580,47 @@ export class DisputeService {
       predictedOutcome,
     };
   }
+
+  async getDisputeAgingReport(userId: string) {
+    const disputes = await this.prisma.dispute.findMany({ where: { userId } });
+    if (disputes.length === 0) {
+      return {
+        totalDisputes: 0,
+        avgAgeDays: 0,
+        oldestAgeDays: 0,
+        ageBuckets: [],
+        stalledCount: 0,
+      };
+    }
+
+    const now = Date.now();
+    const ages = disputes.map(d => {
+      const created = new Date(d.createdAt).getTime();
+      const resolved = (d as any).resolvedAt ? new Date((d as any).resolvedAt).getTime() : now;
+      return { id: d.id, status: (d as any).status || 'open', ageDays: Math.round((resolved - created) / 86400000) };
+    });
+
+    const buckets: Record<string, number> = { '0-7': 0, '8-30': 0, '31-60': 0, '61-90': 0, '90+': 0 };
+    for (const a of ages) {
+      if (a.ageDays <= 7) buckets['0-7']++;
+      else if (a.ageDays <= 30) buckets['8-30']++;
+      else if (a.ageDays <= 60) buckets['31-60']++;
+      else if (a.ageDays <= 90) buckets['61-90']++;
+      else buckets['90+']++;
+    }
+
+    const avgAgeDays = Math.round(ages.reduce((s, a) => s + a.ageDays, 0) / ages.length);
+    const oldestAgeDays = Math.max(...ages.map(a => a.ageDays));
+    const stalledCount = ages.filter(a => a.ageDays > 30 && a.status !== 'resolved' && a.status !== 'won' && a.status !== 'lost').length;
+
+    const ageBuckets = Object.entries(buckets).map(([range, count]) => ({ range, count }));
+
+    return {
+      totalDisputes: disputes.length,
+      avgAgeDays,
+      oldestAgeDays,
+      ageBuckets,
+      stalledCount,
+    };
+  }
 }

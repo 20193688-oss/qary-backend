@@ -498,4 +498,67 @@ export class EventService {
       avgTimeBetweenEvents: Math.round(avgTotalGap / 1000),
     };
   }
+
+  async getEventRetentionAnalysis(userId: string) {
+    const events = await this.prisma.event.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (events.length === 0) {
+      return {
+        totalEvents: 0,
+        activeDays: 0,
+        inactiveDays: 0,
+        longestStreak: 0,
+        currentStreak: 0,
+        retentionRate: 0,
+      };
+    }
+
+    const daySet = new Set<string>();
+    for (const e of events) {
+      const d = new Date(e.createdAt);
+      daySet.add(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`);
+    }
+
+    const firstDay = new Date(events[0].createdAt).getTime();
+    const now = Date.now();
+    const totalDays = Math.max(1, Math.ceil((now - firstDay) / 86400000));
+    const activeDays = daySet.size;
+    const inactiveDays = totalDays - activeDays;
+
+    const sortedDays = Array.from(daySet).map(d => {
+      const [y, m, day] = d.split('-').map(Number);
+      return new Date(y, m, day).getTime();
+    }).sort((a, b) => a - b);
+
+    let longestStreak = 1;
+    let currentStreak = 1;
+    let streak = 1;
+    for (let i = 1; i < sortedDays.length; i++) {
+      const diff = (sortedDays[i] - sortedDays[i - 1]) / 86400000;
+      if (diff <= 1) {
+        streak++;
+        if (streak > longestStreak) longestStreak = streak;
+      } else {
+        streak = 1;
+      }
+    }
+
+    const lastActiveDay = sortedDays[sortedDays.length - 1];
+    const daysSinceLastActive = Math.ceil((now - lastActiveDay) / 86400000);
+    currentStreak = daysSinceLastActive <= 1 ? streak : 0;
+
+    const retentionRate = Math.round((activeDays / totalDays) * 10000) / 100;
+
+    return {
+      totalEvents: events.length,
+      activeDays,
+      inactiveDays,
+      longestStreak,
+      currentStreak,
+      retentionRate,
+    };
+  }
 }

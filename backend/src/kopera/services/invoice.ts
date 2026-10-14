@@ -710,4 +710,65 @@ export class InvoiceService {
       `</Invoice>`,
     ].join('\n');
   }
+
+  async getInvoiceDisputeRiskAnalysis(userId: string) {
+    const invoices = await this.prisma.invoice.findMany({
+      where: { senderId: userId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (invoices.length === 0) {
+      return {
+        totalInvoices: 0,
+        atRiskCount: 0,
+        riskLevel: 'none' as const,
+        riskFactors: [],
+        recommendations: [],
+      };
+    }
+
+    let overdueCount = 0;
+    let highValueCount = 0;
+    let noDescriptionCount = 0;
+    let totalAmount = BigInt(0);
+    const riskFactors: string[] = [];
+    const recommendations: string[] = [];
+
+    for (const inv of invoices) {
+      const amt = (inv as any).totalAmount ?? (inv as any).amount ?? BigInt(0);
+      totalAmount += amt;
+
+      if ((inv as any).status === 'overdue') overdueCount++;
+      if (amt > BigInt(1000000)) highValueCount++;
+      if (!(inv as any).description && !(inv as any).notes) noDescriptionCount++;
+    }
+
+    const overdueRate = Math.round((overdueCount / invoices.length) * 10000) / 100;
+    if (overdueRate > 20) riskFactors.push('high_overdue_rate');
+    if (highValueCount > 0) riskFactors.push('high_value_invoices');
+    if (noDescriptionCount > invoices.length * 0.3) riskFactors.push('missing_descriptions');
+
+    let riskScore = 0;
+    if (overdueRate > 20) riskScore += 30;
+    if (overdueRate > 50) riskScore += 20;
+    if (highValueCount > 3) riskScore += 20;
+    if (noDescriptionCount > invoices.length * 0.5) riskScore += 15;
+
+    const riskLevel = riskScore >= 50 ? 'high' : riskScore >= 25 ? 'medium' : 'low';
+    const atRiskCount = overdueCount + highValueCount;
+
+    if (overdueCount > 0) recommendations.push('Follow up on overdue invoices to reduce dispute risk');
+    if (noDescriptionCount > 0) recommendations.push('Add descriptions to invoices for clarity');
+    if (highValueCount > 0) recommendations.push('Consider payment terms for high-value invoices');
+
+    return {
+      totalInvoices: invoices.length,
+      atRiskCount,
+      riskLevel,
+      riskFactors,
+      recommendations,
+      overdueRate,
+      totalAmount: totalAmount.toString(),
+    };
+  }
 }
