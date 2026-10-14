@@ -88,6 +88,10 @@ export async function registerEventRoutes(app: FastifyInstance, prisma: PrismaCl
     return svc.getEventRetentionCompliance(req.auth!.userId);
   });
 
+  app.get('/api/events/channel-distribution', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getEventChannelDistribution(req.auth!.userId);
+  });
+
   app.get('/api/events/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const event = await svc.getById(id);

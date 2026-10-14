@@ -920,4 +920,69 @@ export class InvoiceService {
       recommendations,
     };
   }
+
+  async getInvoiceAgingSnapshot(userId: string) {
+    const invoices = await this.prisma.invoice.findMany({ where: { senderId: userId } });
+
+    if (invoices.length === 0) {
+      return {
+        totalInvoices: 0,
+        agingScore: 0,
+        agingLevel: 'no_data' as const,
+        buckets: [],
+        recommendations: [] as string[],
+      };
+    }
+
+    const now = Date.now();
+    const buckets = [
+      { label: 'current', min: 0, max: 30, count: 0, totalAmount: BigInt(0) },
+      { label: '31-60 days', min: 31, max: 60, count: 0, totalAmount: BigInt(0) },
+      { label: '61-90 days', min: 61, max: 90, count: 0, totalAmount: BigInt(0) },
+      { label: '90+ days', min: 91, max: Infinity, count: 0, totalAmount: BigInt(0) },
+    ];
+
+    const unpaid = invoices.filter((inv: any) => inv.status !== 'paid' && inv.status !== 'PAID' && inv.status !== 'cancelled' && inv.status !== 'CANCELLED');
+
+    for (const inv of unpaid) {
+      const ageDays = Math.floor((now - new Date((inv as any).createdAt ?? now).getTime()) / 86400000);
+      const bucket = buckets.find(b => ageDays >= b.min && ageDays <= b.max) ?? buckets[buckets.length - 1];
+      bucket.count++;
+      bucket.totalAmount += BigInt((inv as any).amount ?? 0);
+    }
+
+    const result = buckets.map(b => ({
+      label: b.label,
+      count: b.count,
+      totalAmount: b.totalAmount.toString(),
+    }));
+
+    const overdueCount = buckets.filter(b => b.min > 30).reduce((s, b) => s + b.count, 0);
+    const overdueRate = unpaid.length > 0 ? Math.round((overdueCount / unpaid.length) * 100) : 0;
+
+    let agingScore = 0;
+    if (overdueRate > 50) agingScore += 50;
+    else if (overdueRate > 25) agingScore += 25;
+    else if (overdueRate > 10) agingScore += 10;
+    if (buckets[3].count > 0) agingScore += 30;
+    if (buckets[2].count > 0) agingScore += 15;
+    agingScore = Math.min(100, agingScore);
+
+    const agingLevel = agingScore >= 60 ? 'critical' : agingScore >= 30 ? 'warning' : 'healthy';
+
+    const recommendations: string[] = [];
+    if (buckets[3].count > 0) recommendations.push(`${buckets[3].count} invoice(s) over 90 days old — escalate collections`);
+    if (overdueRate > 25) recommendations.push(`${overdueRate}% of unpaid invoices are overdue`);
+    if (agingLevel === 'healthy') recommendations.push('Invoice aging is well-managed');
+
+    return {
+      totalInvoices: invoices.length,
+      unpaidCount: unpaid.length,
+      agingScore,
+      agingLevel,
+      overdueRate,
+      buckets: result,
+      recommendations,
+    };
+  }
 }

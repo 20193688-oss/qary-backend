@@ -701,4 +701,55 @@ export class KycService {
       recommendations,
     };
   }
+
+  async getKycCompletionGaps(userId: string) {
+    const profile = await this.prisma.kycProfile.findUnique({ where: { userId } });
+    if (!profile) throw new Error('kyc_not_found');
+
+    const gaps: { field: string; status: string; priority: string }[] = [];
+
+    const checks = [
+      { field: 'identity_document', key: 'identityDocumentUrl', priority: 'high' },
+      { field: 'proof_of_address', key: 'addressDocumentUrl', priority: 'high' },
+      { field: 'selfie_verification', key: 'selfieUrl', priority: 'medium' },
+      { field: 'tax_id', key: 'taxId', priority: 'medium' },
+      { field: 'date_of_birth', key: 'dateOfBirth', priority: 'low' },
+      { field: 'nationality', key: 'nationality', priority: 'low' },
+    ];
+
+    for (const c of checks) {
+      const value = (profile as any)[c.key];
+      const filled = value != null && value !== '';
+      gaps.push({
+        field: c.field,
+        status: filled ? 'complete' : 'missing',
+        priority: c.priority,
+      });
+    }
+
+    const completedCount = gaps.filter(g => g.status === 'complete').length;
+    const completionRate = Math.round((completedCount / gaps.length) * 100);
+
+    const highMissing = gaps.filter(g => g.status === 'missing' && g.priority === 'high').length;
+    let gapScore = 100 - completionRate;
+    if (highMissing > 0) gapScore = Math.min(100, gapScore + highMissing * 15);
+
+    const gapLevel = gapScore >= 50 ? 'significant_gaps'
+      : gapScore >= 25 ? 'minor_gaps' : 'mostly_complete';
+
+    const recommendations: string[] = [];
+    const missing = gaps.filter(g => g.status === 'missing');
+    for (const m of missing.slice(0, 3)) recommendations.push(`Provide ${m.field.replace(/_/g, ' ')} (${m.priority} priority)`);
+    if (gapLevel === 'mostly_complete') recommendations.push('KYC profile is nearly complete');
+
+    return {
+      completionRate,
+      gapScore,
+      gapLevel,
+      completedFields: completedCount,
+      totalFields: gaps.length,
+      gaps,
+      recommendations,
+    };
+  }
 }

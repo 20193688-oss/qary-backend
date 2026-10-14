@@ -186,6 +186,10 @@ export async function registerGatewayRoutes(app: FastifyInstance, prisma: Prisma
     return gateway.getGatewayLatencyAnalysis(req.auth!.userId);
   });
 
+  app.get('/api/gateway/retry-analysis', { preHandler: [app.requireAuth] }, async (req) => {
+    return gateway.getGatewayRetryAnalysis(req.auth!.userId);
+  });
+
   app.get('/api/gateway/payments/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const gp = await gateway.findById(id);

@@ -834,4 +834,65 @@ export class GatewayPaymentService {
       recommendations,
     };
   }
+
+  async getGatewayRetryAnalysis(userId: string) {
+    const transactions = await this.prisma.transaction.findMany({ where: { userId } });
+    const txnIds = new Set(transactions.map(t => t.id));
+    const allPayments = await this.prisma.gatewayPayment.findMany();
+    const payments = allPayments.filter((p: any) => txnIds.has(p.transactionId));
+
+    if (payments.length === 0) {
+      return {
+        totalPayments: 0,
+        retryScore: 0,
+        retryLevel: 'no_data' as const,
+        retryBreakdown: [],
+        recommendations: [] as string[],
+      };
+    }
+
+    const txnAttempts = new Map<string, number>();
+    for (const p of payments) {
+      const txnId = (p as any).transactionId;
+      txnAttempts.set(txnId, (txnAttempts.get(txnId) ?? 0) + 1);
+    }
+
+    let singleAttempt = 0;
+    let multiAttempt = 0;
+    let maxRetries = 0;
+    for (const count of txnAttempts.values()) {
+      if (count === 1) singleAttempt++;
+      else multiAttempt++;
+      if (count > maxRetries) maxRetries = count;
+    }
+
+    const retryRate = txnAttempts.size > 0 ? Math.round((multiAttempt / txnAttempts.size) * 100) : 0;
+
+    let retryScore = 0;
+    if (retryRate > 30) retryScore += 40;
+    else if (retryRate > 15) retryScore += 20;
+    else if (retryRate > 5) retryScore += 10;
+    if (maxRetries > 5) retryScore += 30;
+    else if (maxRetries > 3) retryScore += 15;
+    retryScore = Math.min(100, retryScore);
+
+    const retryLevel = retryScore >= 50 ? 'high' : retryScore >= 25 ? 'moderate' : 'low';
+
+    const recommendations: string[] = [];
+    if (retryRate > 15) recommendations.push(`${retryRate}% of transactions required retries — investigate gateway issues`);
+    if (maxRetries > 3) recommendations.push(`Some transactions required up to ${maxRetries} attempts`);
+    if (retryLevel === 'low') recommendations.push('Payment retry rate is healthy');
+
+    return {
+      totalPayments: payments.length,
+      uniqueTransactions: txnAttempts.size,
+      retryScore,
+      retryLevel,
+      retryRate,
+      maxRetries,
+      singleAttempt,
+      multiAttempt,
+      recommendations,
+    };
+  }
 }
