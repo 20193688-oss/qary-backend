@@ -379,4 +379,67 @@ export class EventService {
       topPattern: correlatedPairs.length > 0 ? correlatedPairs[0] : null,
     };
   }
+
+  async getEventHeatmap(userId: string) {
+    const events = await this.prisma.event.findMany({ where: { userId } });
+
+    if (events.length === 0) {
+      return {
+        totalEvents: 0,
+        byDayOfWeek: [],
+        byHour: [],
+        peakDay: null,
+        peakHour: null,
+        quietestDay: null,
+        quietestHour: null,
+        weekdayVsWeekend: { weekday: 0, weekend: 0, weekdayPercent: 0 },
+      };
+    }
+
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayCounts = new Array(7).fill(0);
+    const hourCounts = new Array(24).fill(0);
+
+    for (const e of events) {
+      const d = new Date(e.createdAt);
+      dayCounts[d.getUTCDay()]++;
+      hourCounts[d.getUTCHours()]++;
+    }
+
+    const byDayOfWeek = dayNames.map((name, i) => ({
+      day: name,
+      dayIndex: i,
+      count: dayCounts[i],
+      percent: Math.round((dayCounts[i] / events.length) * 10000) / 100,
+    }));
+
+    const byHour = hourCounts.map((count: number, h: number) => ({
+      hour: h,
+      count,
+      percent: Math.round((count / events.length) * 10000) / 100,
+    }));
+
+    const peakDayIdx = dayCounts.indexOf(Math.max(...dayCounts));
+    const quietDayIdx = dayCounts.indexOf(Math.min(...dayCounts));
+    const peakHourIdx = hourCounts.indexOf(Math.max(...hourCounts));
+    const quietHourIdx = hourCounts.indexOf(Math.min(...hourCounts));
+
+    const weekday = dayCounts.slice(1, 6).reduce((s: number, c: number) => s + c, 0);
+    const weekend = dayCounts[0] + dayCounts[6];
+
+    return {
+      totalEvents: events.length,
+      byDayOfWeek,
+      byHour,
+      peakDay: dayNames[peakDayIdx],
+      peakHour: peakHourIdx,
+      quietestDay: dayNames[quietDayIdx],
+      quietestHour: quietHourIdx,
+      weekdayVsWeekend: {
+        weekday,
+        weekend,
+        weekdayPercent: Math.round((weekday / events.length) * 10000) / 100,
+      },
+    };
+  }
 }

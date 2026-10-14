@@ -435,4 +435,85 @@ export class DisputeService {
       byCurrency,
     };
   }
+
+  async getResponseTimeAnalysis(userId: string) {
+    const disputes = await this.prisma.dispute.findMany({ where: { userId } });
+
+    if (disputes.length === 0) {
+      return {
+        totalDisputes: 0,
+        resolvedCount: 0,
+        avgResponseDays: 0,
+        medianResponseDays: 0,
+        fastestDays: 0,
+        slowestDays: 0,
+        bySpeed: [],
+        slaCompliance: 0,
+      };
+    }
+
+    const resolved = disputes.filter(
+      (d) => d.resolvedAt && (d.status === 'WON' || d.status === 'LOST' || d.status === 'ACCEPTED'),
+    );
+
+    if (resolved.length === 0) {
+      const pendingDays = disputes.map((d) => {
+        const ms = Date.now() - new Date(d.createdAt).getTime();
+        return Math.round(ms / 86400000);
+      });
+      return {
+        totalDisputes: disputes.length,
+        resolvedCount: 0,
+        avgResponseDays: 0,
+        medianResponseDays: 0,
+        fastestDays: 0,
+        slowestDays: 0,
+        bySpeed: [
+          { bucket: 'pending', count: disputes.length, avgDaysOpen: Math.round(pendingDays.reduce((s, d) => s + d, 0) / pendingDays.length) },
+        ],
+        slaCompliance: 0,
+      };
+    }
+
+    const responseDays = resolved.map((d) => {
+      const ms = new Date(d.resolvedAt!).getTime() - new Date(d.createdAt).getTime();
+      return Math.max(0, Math.round(ms / 86400000));
+    }).sort((a, b) => a - b);
+
+    const avg = Math.round(responseDays.reduce((s, d) => s + d, 0) / responseDays.length);
+    const median = responseDays[Math.floor(responseDays.length / 2)];
+    const fastest = responseDays[0];
+    const slowest = responseDays[responseDays.length - 1];
+
+    const buckets = [
+      { bucket: 'fast', label: '0-7 days', min: 0, max: 7 },
+      { bucket: 'normal', label: '8-30 days', min: 8, max: 30 },
+      { bucket: 'slow', label: '31-60 days', min: 31, max: 60 },
+      { bucket: 'very_slow', label: '60+ days', min: 61, max: Infinity },
+    ];
+
+    const bySpeed = buckets.map((b) => {
+      const inBucket = responseDays.filter((d) => d >= b.min && d <= b.max);
+      return {
+        bucket: b.bucket,
+        label: b.label,
+        count: inBucket.length,
+        percent: Math.round((inBucket.length / responseDays.length) * 10000) / 100,
+      };
+    }).filter((b) => b.count > 0);
+
+    const within30 = responseDays.filter((d) => d <= 30).length;
+    const slaCompliance = Math.round((within30 / responseDays.length) * 10000) / 100;
+
+    return {
+      totalDisputes: disputes.length,
+      resolvedCount: resolved.length,
+      avgResponseDays: avg,
+      medianResponseDays: median,
+      fastestDays: fastest,
+      slowestDays: slowest,
+      bySpeed,
+      slaCompliance,
+    };
+  }
 }

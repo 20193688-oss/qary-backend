@@ -496,4 +496,90 @@ export class GatewayPaymentService {
       diversityIndex,
     };
   }
+
+  async getFailureAnalysis(userId: string) {
+    const userTxns = await this.prisma.transaction.findMany({ where: { userId } });
+    const txnIds = new Set(userTxns.map((t: any) => t.id));
+    const allPayments = await this.prisma.gatewayPayment.findMany({});
+    const payments = allPayments.filter((p: any) => txnIds.has(p.transactionId));
+
+    if (payments.length === 0) {
+      return {
+        totalPayments: 0,
+        failedCount: 0,
+        failureRate: 0,
+        byReason: [],
+        byMethod: [],
+        recentFailures: [],
+        trend: 'none' as const,
+      };
+    }
+
+    const failed = payments.filter((p: any) => p.status === 'FAILED');
+    const failureRate = Math.round((failed.length / payments.length) * 10000) / 100;
+
+    const reasonMap = new Map<string, number>();
+    for (const p of failed) {
+      const reason = (p as any).failureReason ?? (p as any).errorCode ?? 'unknown';
+      reasonMap.set(reason, (reasonMap.get(reason) ?? 0) + 1);
+    }
+
+    const byReason = Array.from(reasonMap.entries())
+      .map(([reason, count]) => ({
+        reason,
+        count,
+        percent: failed.length > 0 ? Math.round((count / failed.length) * 10000) / 100 : 0,
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    const methodFailMap = new Map<string, { total: number; failed: number }>();
+    for (const p of payments) {
+      const method = (p as any).paymentMethod ?? 'unknown';
+      const entry = methodFailMap.get(method) ?? { total: 0, failed: 0 };
+      entry.total++;
+      if ((p as any).status === 'FAILED') entry.failed++;
+      methodFailMap.set(method, entry);
+    }
+
+    const byMethod = Array.from(methodFailMap.entries())
+      .map(([method, data]) => ({
+        method,
+        total: data.total,
+        failed: data.failed,
+        failureRate: data.total > 0 ? Math.round((data.failed / data.total) * 10000) / 100 : 0,
+      }))
+      .sort((a, b) => b.failureRate - a.failureRate);
+
+    const recentFailures = failed
+      .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 5)
+      .map((p: any) => ({
+        id: p.id,
+        amount: p.amount.toString(),
+        method: p.paymentMethod ?? 'unknown',
+        reason: p.failureReason ?? p.errorCode ?? 'unknown',
+        createdAt: p.createdAt,
+      }));
+
+    const sorted = payments.sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    const half = Math.floor(sorted.length / 2);
+    const firstHalf = sorted.slice(0, half);
+    const secondHalf = sorted.slice(half);
+    const firstRate = firstHalf.length > 0 ? firstHalf.filter((p: any) => p.status === 'FAILED').length / firstHalf.length : 0;
+    const secondRate = secondHalf.length > 0 ? secondHalf.filter((p: any) => p.status === 'FAILED').length / secondHalf.length : 0;
+
+    let trend: 'improving' | 'worsening' | 'stable' | 'none' = 'stable';
+    if (secondRate < firstRate * 0.8) trend = 'improving';
+    else if (secondRate > firstRate * 1.2) trend = 'worsening';
+
+    return {
+      totalPayments: payments.length,
+      failedCount: failed.length,
+      failureRate,
+      byReason,
+      byMethod,
+      recentFailures,
+      trend,
+    };
+  }
 }

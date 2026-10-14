@@ -521,6 +521,82 @@ export class InvoiceService {
     };
   }
 
+  async getPaymentBehaviorAnalysis(senderId: string) {
+    const invoices = await this.prisma.invoice.findMany({ where: { senderId } });
+
+    if (invoices.length === 0) {
+      return {
+        totalInvoices: 0,
+        paidCount: 0,
+        unpaidCount: 0,
+        avgDaysToPay: 0,
+        medianDaysToPay: 0,
+        onTimeRate: 0,
+        byPaymentSpeed: [],
+        overdueAmount: '0',
+      };
+    }
+
+    const paid = invoices.filter((inv) => inv.status === 'PAID' && inv.paidAt);
+    const unpaid = invoices.filter((inv) => inv.status !== 'PAID' && inv.status !== 'CANCELLED');
+
+    const daysToPay = paid.map((inv) => {
+      const ms = new Date(inv.paidAt!).getTime() - new Date(inv.createdAt).getTime();
+      return Math.max(0, Math.round(ms / 86400000));
+    }).sort((a, b) => a - b);
+
+    const avgDays = daysToPay.length > 0
+      ? Math.round(daysToPay.reduce((s, d) => s + d, 0) / daysToPay.length)
+      : 0;
+    const medianDays = daysToPay.length > 0
+      ? daysToPay[Math.floor(daysToPay.length / 2)]
+      : 0;
+
+    const onTime = paid.filter((inv) => {
+      if (!inv.dueDate) return true;
+      return new Date(inv.paidAt!).getTime() <= new Date(inv.dueDate).getTime();
+    });
+    const onTimeRate = paid.length > 0
+      ? Math.round((onTime.length / paid.length) * 10000) / 100
+      : 0;
+
+    const speedBuckets = [
+      { bucket: 'immediate', label: '0-3 days', min: 0, max: 3 },
+      { bucket: 'prompt', label: '4-14 days', min: 4, max: 14 },
+      { bucket: 'standard', label: '15-30 days', min: 15, max: 30 },
+      { bucket: 'slow', label: '31-60 days', min: 31, max: 60 },
+      { bucket: 'very_slow', label: '60+ days', min: 61, max: Infinity },
+    ];
+
+    const byPaymentSpeed = speedBuckets.map((b) => {
+      const inBucket = daysToPay.filter((d) => d >= b.min && d <= b.max);
+      return {
+        bucket: b.bucket,
+        label: b.label,
+        count: inBucket.length,
+        percent: daysToPay.length > 0 ? Math.round((inBucket.length / daysToPay.length) * 10000) / 100 : 0,
+      };
+    }).filter((b) => b.count > 0);
+
+    let overdueAmount = BigInt(0);
+    for (const inv of unpaid) {
+      if (inv.dueDate && new Date(inv.dueDate).getTime() < Date.now()) {
+        overdueAmount += inv.totalAmount;
+      }
+    }
+
+    return {
+      totalInvoices: invoices.length,
+      paidCount: paid.length,
+      unpaidCount: unpaid.length,
+      avgDaysToPay: avgDays,
+      medianDaysToPay: medianDays,
+      onTimeRate,
+      byPaymentSpeed,
+      overdueAmount: overdueAmount.toString(),
+    };
+  }
+
   private getDefaultTaxRate(country: string): number {
     const rates: Record<string, number> = {
       PE: 0.18, // IGV
