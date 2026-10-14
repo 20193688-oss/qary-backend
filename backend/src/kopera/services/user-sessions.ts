@@ -380,4 +380,88 @@ export class UserSessionService {
       recentVsPrior: { last7Days: last7, prior7Days: prior7, trend },
     };
   }
+
+  async getSessionAnomalyDetection(userId: string) {
+    const sessions = await this.prisma.userSession.findMany({ where: { userId } });
+    if (sessions.length === 0) {
+      return {
+        totalSessions: 0,
+        anomalyCount: 0,
+        anomalyRate: 0,
+        riskLevel: 'none' as const,
+        flaggedSessions: [],
+      };
+    }
+
+    const ipCounts = new Map<string, number>();
+    const deviceCounts = new Map<string, number>();
+    const hourCounts = new Array(24).fill(0);
+
+    for (const session of sessions) {
+      const s = session as any;
+      ipCounts.set(s.ip, (ipCounts.get(s.ip) || 0) + 1);
+      if (s.deviceId) deviceCounts.set(s.deviceId, (deviceCounts.get(s.deviceId) || 0) + 1);
+      const hour = new Date(s.createdAt).getUTCHours();
+      hourCounts[hour]++;
+    }
+
+    const totalH = hourCounts.reduce((a, b) => a + b, 0);
+    const avgPerHour = totalH / 24;
+
+    const flaggedSessions: { sessionId: string; reasons: string[]; anomalyScore: number }[] = [];
+
+    for (const session of sessions) {
+      const s = session as any;
+      const reasons: string[] = [];
+      let score = 0;
+
+      const ipCount = ipCounts.get(s.ip) || 0;
+      if (ipCount === 1 && sessions.length > 3) {
+        reasons.push('unique_ip');
+        score += 30;
+      }
+
+      if (s.deviceId) {
+        const devCount = deviceCounts.get(s.deviceId) || 0;
+        if (devCount === 1 && sessions.length > 3) {
+          reasons.push('new_device');
+          score += 25;
+        }
+      }
+
+      const hour = new Date(s.createdAt).getUTCHours();
+      if (hourCounts[hour] <= avgPerHour * 0.3 && sessions.length > 5) {
+        reasons.push('unusual_hour');
+        score += 20;
+      }
+
+      if (s.revokedAt) {
+        const lifetime = new Date(s.revokedAt).getTime() - new Date(s.createdAt).getTime();
+        if (lifetime < 60000) {
+          reasons.push('very_short_session');
+          score += 25;
+        }
+      }
+
+      if (reasons.length > 0) {
+        flaggedSessions.push({ sessionId: s.id, reasons, anomalyScore: Math.min(100, score) });
+      }
+    }
+
+    flaggedSessions.sort((a, b) => b.anomalyScore - a.anomalyScore);
+    const anomalyRate = Math.round((flaggedSessions.length / sessions.length) * 10000) / 100;
+
+    const riskLevel = anomalyRate >= 50 ? 'high'
+      : anomalyRate >= 25 ? 'moderate'
+      : anomalyRate > 0 ? 'low'
+      : 'none';
+
+    return {
+      totalSessions: sessions.length,
+      anomalyCount: flaggedSessions.length,
+      anomalyRate,
+      riskLevel,
+      flaggedSessions: flaggedSessions.slice(0, 10),
+    };
+  }
 }

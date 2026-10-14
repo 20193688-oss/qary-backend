@@ -421,4 +421,63 @@ export class TransactionService {
       byType,
     };
   }
+
+  async getAmountDistribution(userId: string, currency?: string) {
+    const where: Record<string, unknown> = { userId, status: 'COMPLETED' };
+    if (currency) where.currency = currency.toUpperCase();
+    const txns = await this.prisma.transaction.findMany({ where });
+
+    if (txns.length === 0) {
+      return {
+        totalTransactions: 0,
+        buckets: [],
+        percentiles: { p25: '0', p50: '0', p75: '0', p90: '0', p99: '0' },
+        avgAmount: '0',
+        minAmount: '0',
+        maxAmount: '0',
+        outlierCount: 0,
+      };
+    }
+
+    const amounts = txns.map((t: any) => Number(t.amount)).sort((a, b) => a - b);
+    const total = amounts.reduce((s, a) => s + a, 0);
+    const avg = total / amounts.length;
+
+    const bucketDefs = [
+      { label: 'micro', min: 0, max: 1000 },
+      { label: 'small', min: 1000, max: 10000 },
+      { label: 'medium', min: 10000, max: 100000 },
+      { label: 'large', min: 100000, max: 1000000 },
+      { label: 'very_large', min: 1000000, max: Infinity },
+    ];
+
+    const buckets = bucketDefs.map(def => {
+      const inBucket = amounts.filter(a => a >= def.min && a < def.max);
+      return {
+        label: def.label,
+        count: inBucket.length,
+        share: Math.round((inBucket.length / amounts.length) * 10000) / 100,
+        totalAmount: inBucket.reduce((s, a) => s + a, 0).toString(),
+      };
+    });
+
+    const pctl = (p: number) => {
+      const idx = Math.ceil((p / 100) * amounts.length) - 1;
+      return amounts[Math.max(0, idx)].toString();
+    };
+
+    const variance = amounts.reduce((s, a) => s + (a - avg) ** 2, 0) / amounts.length;
+    const stdDev = Math.sqrt(variance);
+    const outlierCount = amounts.filter(a => Math.abs(a - avg) > 3 * stdDev).length;
+
+    return {
+      totalTransactions: amounts.length,
+      buckets,
+      percentiles: { p25: pctl(25), p50: pctl(50), p75: pctl(75), p90: pctl(90), p99: pctl(99) },
+      avgAmount: Math.round(avg).toString(),
+      minAmount: amounts[0].toString(),
+      maxAmount: amounts[amounts.length - 1].toString(),
+      outlierCount,
+    };
+  }
 }
