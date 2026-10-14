@@ -625,4 +625,67 @@ export class LoanRepaymentService {
       reliability,
     };
   }
+
+  async getRepaymentProjection(loanId: string) {
+    const repayments = await this.prisma.loanRepayment.findMany({
+      where: { loanId },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (repayments.length === 0) {
+      return {
+        loanId,
+        totalRepayments: 0,
+        totalPaid: '0',
+        avgPaymentAmount: '0',
+        projectedMonthlyPayment: '0',
+        paymentConsistency: 0,
+        recentPayments: [],
+      };
+    }
+
+    let totalPaid = BigInt(0);
+    const amounts: bigint[] = [];
+
+    for (const r of repayments) {
+      const amount = (r as any).amount ?? BigInt(0);
+      totalPaid += amount;
+      amounts.push(amount);
+    }
+
+    const avgAmount = totalPaid / BigInt(amounts.length);
+
+    const gaps: number[] = [];
+    for (let i = 1; i < repayments.length; i++) {
+      const gap = (new Date(repayments[i].createdAt).getTime() - new Date(repayments[i - 1].createdAt).getTime()) / 86400000;
+      gaps.push(gap);
+    }
+    const avgGap = gaps.length > 0 ? gaps.reduce((s, g) => s + g, 0) / gaps.length : 30;
+
+    const monthlyMultiplier = avgGap > 0 ? 30 / avgGap : 1;
+    const projectedMonthly = BigInt(Math.round(Number(avgAmount) * monthlyMultiplier));
+
+    const amountNumbers = amounts.map(a => Number(a));
+    const mean = amountNumbers.reduce((s, a) => s + a, 0) / amountNumbers.length;
+    const variance = amountNumbers.reduce((s, a) => s + (a - mean) ** 2, 0) / amountNumbers.length;
+    const cv = mean > 0 ? Math.sqrt(variance) / mean : 0;
+    const consistency = Math.max(0, Math.round((1 - cv) * 100));
+
+    const recentPayments = repayments.slice(-5).map(r => ({
+      id: r.id,
+      amount: ((r as any).amount ?? BigInt(0)).toString(),
+      date: r.createdAt,
+      status: (r as any).status || 'completed',
+    }));
+
+    return {
+      loanId,
+      totalRepayments: repayments.length,
+      totalPaid: totalPaid.toString(),
+      avgPaymentAmount: avgAmount.toString(),
+      projectedMonthlyPayment: projectedMonthly.toString(),
+      paymentConsistency: consistency,
+      recentPayments,
+    };
+  }
 }

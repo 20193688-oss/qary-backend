@@ -498,4 +498,56 @@ export class KycService {
       oldestPendingDays,
     };
   }
+
+  async getKycRiskScoring(userId: string) {
+    const kyc = await this.prisma.kycProfile.findUnique({ where: { userId } });
+    if (!kyc) throw new Error('kyc_not_found');
+
+    let riskScore = 50;
+    const factors: { factor: string; impact: number; detail: string }[] = [];
+
+    if ((kyc as any).status === 'approved' || (kyc as any).status === 'verified') {
+      riskScore -= 20;
+      factors.push({ factor: 'verified_identity', impact: -20, detail: 'KYC verified' });
+    } else if ((kyc as any).status === 'pending') {
+      riskScore += 10;
+      factors.push({ factor: 'pending_verification', impact: 10, detail: 'KYC pending review' });
+    } else if ((kyc as any).status === 'rejected') {
+      riskScore += 30;
+      factors.push({ factor: 'rejected_kyc', impact: 30, detail: 'KYC was rejected' });
+    }
+
+    if ((kyc as any).documentType) {
+      riskScore -= 5;
+      factors.push({ factor: 'document_provided', impact: -5, detail: `Document: ${(kyc as any).documentType}` });
+    }
+
+    if ((kyc as any).selfieUrl || (kyc as any).selfie) {
+      riskScore -= 5;
+      factors.push({ factor: 'selfie_provided', impact: -5, detail: 'Selfie verification submitted' });
+    }
+
+    const ageDays = (Date.now() - new Date(kyc.createdAt).getTime()) / 86400000;
+    if (ageDays > 365) {
+      riskScore += 10;
+      factors.push({ factor: 'stale_verification', impact: 10, detail: 'KYC over 1 year old' });
+    }
+
+    if ((kyc as any).riskLevel === 'high' || (kyc as any).riskFlag) {
+      riskScore += 20;
+      factors.push({ factor: 'flagged_risk', impact: 20, detail: 'Risk flag present' });
+    }
+
+    riskScore = Math.max(0, Math.min(100, riskScore));
+    const riskLevel = riskScore >= 70 ? 'high' : riskScore >= 40 ? 'medium' : 'low';
+
+    return {
+      userId,
+      status: (kyc as any).status,
+      riskScore,
+      riskLevel,
+      factors,
+      lastUpdated: (kyc as any).updatedAt || kyc.createdAt,
+    };
+  }
 }

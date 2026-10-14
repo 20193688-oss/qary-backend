@@ -115,6 +115,10 @@ export async function registerLoanRoutes(app: FastifyInstance, prisma: PrismaCli
     return loans.getLoanUtilizationReport(req.auth!.userId);
   });
 
+  app.get('/api/loans/portfolio-risk', { preHandler: [app.requireAuth] }, async (req) => {
+    return loans.getLoanPortfolioRisk(req.auth!.userId);
+  });
+
   app.get('/api/loans', { preHandler: [app.requireAuth] }, async (req) => {
     const list = await loans.listByUser(req.auth!.userId);
     return list.map(serializeLoan);

@@ -579,6 +579,64 @@ export class LoanService {
     };
   }
 
+  async getLoanPortfolioRisk(userId: string) {
+    const loans = await this.prisma.loan.findMany({ where: { userId } });
+    if (loans.length === 0) {
+      return {
+        totalLoans: 0,
+        totalExposure: '0',
+        riskScore: 0,
+        riskLevel: 'none',
+        byRisk: [],
+        diversification: 0,
+      };
+    }
+
+    let totalExposure = BigInt(0);
+    const riskEntries: { loanId: string; amount: string; status: string; risk: string; score: number }[] = [];
+    const currencySet = new Set<string>();
+
+    for (const loan of loans) {
+      const amount = (loan as any).principalAmount || (loan as any).amount || BigInt(0);
+      totalExposure += amount;
+      currencySet.add((loan as any).currency || 'USD');
+
+      let score = 0;
+      const status = (loan as any).status || 'active';
+
+      if (status === 'defaulted') score = 100;
+      else if (status === 'delinquent' || status === 'overdue') score = 75;
+      else if (status === 'active' || status === 'approved') score = 25;
+      else if (status === 'paid' || status === 'completed') score = 0;
+      else score = 50;
+
+      const risk = score >= 75 ? 'high' : score >= 40 ? 'medium' : 'low';
+
+      riskEntries.push({
+        loanId: loan.id,
+        amount: amount.toString(),
+        status,
+        risk,
+        score,
+      });
+    }
+
+    riskEntries.sort((a, b) => b.score - a.score);
+    const avgScore = Math.round(riskEntries.reduce((s, e) => s + e.score, 0) / riskEntries.length);
+    const riskLevel = avgScore >= 60 ? 'high' : avgScore >= 30 ? 'medium' : 'low';
+
+    const diversification = Math.min(100, currencySet.size * 25);
+
+    return {
+      totalLoans: loans.length,
+      totalExposure: totalExposure.toString(),
+      riskScore: avgScore,
+      riskLevel,
+      byRisk: riskEntries,
+      diversification,
+    };
+  }
+
   async simulate(principalAmount: number, currency: string, termMonths: number, interestRate?: number) {
     const rate = interestRate ?? this.getDefaultRate(currency);
     const { monthlyPayment, totalInterest, tcea } = this.calculateAmortization(
