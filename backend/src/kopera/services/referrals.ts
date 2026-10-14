@@ -390,4 +390,78 @@ export class ReferralService {
       totalPointsEarned: referral.totalPointsEarned,
     };
   }
+
+  async getViralityScore(userId: string) {
+    const referral = await this.prisma.referral.findFirst({ where: { referrerId: userId } });
+
+    if (!referral) {
+      return {
+        hasReferralCode: false,
+        viralCoefficient: 0,
+        signupVelocity: 0,
+        rewardConversionRate: 0,
+        viralityScore: 0,
+        viralityLevel: 'none' as const,
+        signupsByMonth: [] as Array<{ month: string; count: number }>,
+      };
+    }
+
+    const signups = await this.prisma.referralSignup.findMany({
+      where: { referralId: referral.id },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const referredUserIds = signups.map((s: any) => s.referredUserId);
+    const secondaryReferrals = referredUserIds.length > 0
+      ? await this.prisma.referral.findMany({})
+      : [];
+    const secondaryCount = secondaryReferrals
+      .filter((r: any) => referredUserIds.includes(r.referrerId) && r.signupCount > 0)
+      .reduce((s: number, r: any) => s + r.signupCount, 0);
+
+    const viralCoefficient = signups.length > 0
+      ? Math.round((secondaryCount / signups.length) * 100) / 100
+      : 0;
+
+    const firstSignup = signups[0];
+    const lastSignup = signups[signups.length - 1];
+    const daySpan = firstSignup && lastSignup
+      ? Math.max(1, (new Date(lastSignup.createdAt).getTime() - new Date(firstSignup.createdAt).getTime()) / (24 * 60 * 60 * 1000))
+      : 1;
+    const signupVelocity = Math.round((signups.length / daySpan) * 100) / 100;
+
+    const rewardConversionRate = referral.signupCount > 0
+      ? Math.round((referral.rewardedCount / referral.signupCount) * 10000) / 100
+      : 0;
+
+    const velocityScore = Math.min(40, signupVelocity * 20);
+    const viralScore = Math.min(30, viralCoefficient * 30);
+    const conversionScore = Math.min(30, rewardConversionRate * 0.3);
+    const viralityScore = Math.round((velocityScore + viralScore + conversionScore) * 100) / 100;
+
+    const viralityLevel = viralityScore >= 60 ? 'high' as const
+      : viralityScore >= 30 ? 'moderate' as const
+      : viralityScore > 0 ? 'low' as const
+      : 'none' as const;
+
+    const monthMap = new Map<string, number>();
+    for (const s of signups) {
+      const d = new Date(s.createdAt);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      monthMap.set(key, (monthMap.get(key) ?? 0) + 1);
+    }
+    const signupsByMonth = Array.from(monthMap.entries())
+      .map(([month, count]) => ({ month, count }))
+      .sort((a, b) => a.month.localeCompare(b.month));
+
+    return {
+      hasReferralCode: true,
+      viralCoefficient,
+      signupVelocity,
+      rewardConversionRate,
+      viralityScore,
+      viralityLevel,
+      signupsByMonth,
+    };
+  }
 }

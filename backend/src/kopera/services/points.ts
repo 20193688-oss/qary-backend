@@ -388,6 +388,80 @@ export class PointsService {
     return tiers[idx - 1]!;
   }
 
+  async getRewardVelocity(userId: string) {
+    const pts = await this.getOrCreate(userId);
+    const history = await this.prisma.pointsHistory.findMany({
+      where: { pointsId: pts.id },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (history.length === 0) {
+      return {
+        totalTransactions: 0,
+        earnVelocity: 0,
+        redeemVelocity: 0,
+        netVelocityPerDay: 0,
+        byWeek: [] as Array<{ week: string; earned: number; redeemed: number; net: number }>,
+        acceleration: 0,
+        trend: 'none' as const,
+      };
+    }
+
+    const weekMap = new Map<string, { earned: number; redeemed: number }>();
+
+    for (const h of history) {
+      const d = new Date(h.createdAt);
+      const weekStart = new Date(d);
+      weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+      const key = weekStart.toISOString().slice(0, 10);
+      const entry = weekMap.get(key) ?? { earned: 0, redeemed: 0 };
+      if (h.type === 'EARN') entry.earned += h.amount;
+      else entry.redeemed += h.amount;
+      weekMap.set(key, entry);
+    }
+
+    const byWeek = Array.from(weekMap.entries())
+      .map(([week, data]) => ({
+        week,
+        earned: data.earned,
+        redeemed: data.redeemed,
+        net: data.earned - data.redeemed,
+      }))
+      .sort((a, b) => a.week.localeCompare(b.week));
+
+    const firstDate = new Date(history[0].createdAt).getTime();
+    const lastDate = new Date(history[history.length - 1].createdAt).getTime();
+    const totalDays = Math.max(1, (lastDate - firstDate) / (24 * 60 * 60 * 1000));
+
+    const totalEarned = history.filter(h => h.type === 'EARN').reduce((s, h) => s + h.amount, 0);
+    const totalRedeemed = history.filter(h => h.type === 'REDEEM').reduce((s, h) => s + h.amount, 0);
+    const earnVelocity = Math.round((totalEarned / totalDays) * 100) / 100;
+    const redeemVelocity = Math.round((totalRedeemed / totalDays) * 100) / 100;
+    const netVelocityPerDay = Math.round(((totalEarned - totalRedeemed) / totalDays) * 100) / 100;
+
+    let acceleration = 0;
+    let trend: 'accelerating' | 'stable' | 'decelerating' | 'none' = 'none';
+    if (byWeek.length >= 4) {
+      const half = Math.floor(byWeek.length / 2);
+      const firstHalfAvg = byWeek.slice(0, half).reduce((s, w) => s + w.net, 0) / half;
+      const secondHalfAvg = byWeek.slice(half).reduce((s, w) => s + w.net, 0) / (byWeek.length - half);
+      acceleration = firstHalfAvg !== 0
+        ? Math.round(((secondHalfAvg - firstHalfAvg) / Math.abs(firstHalfAvg)) * 10000) / 100
+        : 0;
+      trend = acceleration > 10 ? 'accelerating' : acceleration < -10 ? 'decelerating' : 'stable';
+    }
+
+    return {
+      totalTransactions: history.length,
+      earnVelocity,
+      redeemVelocity,
+      netVelocityPerDay,
+      byWeek,
+      acceleration,
+      trend,
+    };
+  }
+
   private getPrevTierThreshold(tier: string): number {
     const prev = this.getPrevTier(tier);
     if (!prev) return 0;

@@ -567,4 +567,93 @@ export class SubscriptionService {
       monthOverMonthChange,
     };
   }
+
+  async getCancellationRisk(userId: string) {
+    const subs = await this.prisma.subscription.findMany({ where: { userId } });
+    const active = subs.filter((s: any) => s.status === 'active');
+
+    if (active.length === 0) {
+      return {
+        totalActive: 0,
+        atRisk: [] as Array<{ subscriptionId: string; planName: string; riskLevel: string; riskScore: number; reasons: string[] }>,
+        safeCount: 0,
+        overallRiskScore: 0,
+      };
+    }
+
+    const cancelled = subs.filter((s: any) => s.status === 'cancelled');
+    const cancelRate = subs.length > 0 ? cancelled.length / subs.length : 0;
+
+    const atRisk: Array<{
+      subscriptionId: string; planName: string; riskLevel: string;
+      riskScore: number; reasons: string[];
+    }> = [];
+    let safeCount = 0;
+
+    for (const s of active) {
+      let riskScore = 0;
+      const reasons: string[] = [];
+
+      const amount = Number(s.amount);
+      const avgAmount = active.reduce((sum, a) => sum + Number(a.amount), 0) / active.length;
+      if (amount > avgAmount * 2) {
+        riskScore += 25;
+        reasons.push('Cost significantly above average');
+      }
+
+      const ageMs = Date.now() - new Date(s.createdAt).getTime();
+      const ageDays = ageMs / (24 * 60 * 60 * 1000);
+      if (ageDays < 30) {
+        riskScore += 20;
+        reasons.push('New subscription (< 30 days)');
+      }
+
+      if (cancelRate > 0.3) {
+        riskScore += 15;
+        reasons.push('High overall cancellation rate');
+      }
+
+      const periodEnd = (s as any).currentPeriodEnd;
+      if (periodEnd) {
+        const daysUntilRenewal = Math.ceil((new Date(periodEnd).getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+        if (daysUntilRenewal <= 7 && daysUntilRenewal > 0) {
+          riskScore += 10;
+          reasons.push('Renewal approaching within 7 days');
+        }
+      }
+
+      if ((s as any).interval === 'monthly') {
+        riskScore += 5;
+        reasons.push('Monthly billing (higher churn than annual)');
+      }
+
+      riskScore = Math.min(100, riskScore);
+
+      if (riskScore >= 30) {
+        const riskLevel = riskScore >= 60 ? 'high' : riskScore >= 40 ? 'moderate' : 'low';
+        atRisk.push({
+          subscriptionId: s.id,
+          planName: (s as any).planName ?? 'unknown',
+          riskLevel,
+          riskScore,
+          reasons,
+        });
+      } else {
+        safeCount++;
+      }
+    }
+
+    atRisk.sort((a, b) => b.riskScore - a.riskScore);
+
+    const overallRiskScore = active.length > 0
+      ? Math.round((atRisk.reduce((s, r) => s + r.riskScore, 0) / active.length) * 100) / 100
+      : 0;
+
+    return {
+      totalActive: active.length,
+      atRisk,
+      safeCount,
+      overallRiskScore,
+    };
+  }
 }

@@ -426,4 +426,72 @@ export class SavingsGoalService {
       avgMomentum,
     };
   }
+
+  async getDeadlineRisk(userId: string) {
+    const goals = await this.prisma.savingsGoal.findMany({
+      where: { userId, status: 'active' },
+    });
+
+    const goalsWithDeadline = goals.filter((g: any) => g.deadline);
+    if (goalsWithDeadline.length === 0) {
+      return {
+        totalActiveGoals: goals.length,
+        goalsWithDeadline: 0,
+        atRisk: [] as Array<{ goalId: string; name: string; riskLevel: string; daysRemaining: number; progressPercent: number; requiredDailyAmount: string }>,
+        onTrack: 0,
+        summary: 'no_deadlines' as const,
+      };
+    }
+
+    const now = Date.now();
+    const atRisk: Array<{
+      goalId: string; name: string; riskLevel: string;
+      daysRemaining: number; progressPercent: number; requiredDailyAmount: string;
+    }> = [];
+    let onTrackCount = 0;
+
+    for (const g of goalsWithDeadline) {
+      const deadline = new Date(g.deadline!).getTime();
+      const daysRemaining = Math.max(0, Math.ceil((deadline - now) / (24 * 60 * 60 * 1000)));
+      const current = Number(g.currentAmount);
+      const target = Number(g.targetAmount);
+      const progressPercent = target > 0 ? Math.round((current / target) * 10000) / 100 : 0;
+      const remaining = Math.max(0, target - current);
+      const requiredDaily = daysRemaining > 0 ? remaining / daysRemaining : remaining;
+
+      const createdAt = new Date(g.createdAt).getTime();
+      const totalDays = Math.max(1, (deadline - createdAt) / (24 * 60 * 60 * 1000));
+      const elapsedDays = Math.max(1, (now - createdAt) / (24 * 60 * 60 * 1000));
+      const expectedProgress = (elapsedDays / totalDays) * 100;
+      const progressGap = expectedProgress - progressPercent;
+
+      let riskLevel: string;
+      if (daysRemaining === 0 && progressPercent < 100) riskLevel = 'overdue';
+      else if (progressGap > 30) riskLevel = 'high';
+      else if (progressGap > 10) riskLevel = 'moderate';
+      else { riskLevel = 'low'; onTrackCount++; continue; }
+
+      atRisk.push({
+        goalId: g.id,
+        name: g.name,
+        riskLevel,
+        daysRemaining,
+        progressPercent,
+        requiredDailyAmount: Math.round(requiredDaily).toString(),
+      });
+    }
+
+    onTrackCount += goalsWithDeadline.length - atRisk.length - onTrackCount;
+    const summary = atRisk.length === 0 ? 'all_on_track' as const
+      : atRisk.some(r => r.riskLevel === 'overdue' || r.riskLevel === 'high') ? 'needs_attention' as const
+      : 'minor_risks' as const;
+
+    return {
+      totalActiveGoals: goals.length,
+      goalsWithDeadline: goalsWithDeadline.length,
+      atRisk,
+      onTrack: onTrackCount,
+      summary,
+    };
+  }
 }
