@@ -83,6 +83,10 @@ export async function registerTokenizedCardRoutes(app: FastifyInstance, prisma: 
     return svc.getTokenLifecycleAnalysis(req.auth!.userId);
   });
 
+  app.get('/api/cards/spending-by-card', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getSpendingByCard(req.auth!.userId);
+  });
+
   app.get('/api/cards/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const card = await svc.getCard(id);

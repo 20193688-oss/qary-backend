@@ -276,4 +276,50 @@ export class UserProfileService {
       recencyScore,
     };
   }
+
+  async getAccountMaturityReport(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new Error('user_not_found');
+
+    const accountAgeDays = Math.ceil((Date.now() - new Date(user.createdAt).getTime()) / 86400000);
+
+    const wallets = await this.prisma.wallet.findMany({ where: { userId } });
+    const loans = await this.prisma.loan.findMany({ where: { userId } });
+    const subs = await this.prisma.subscription.findMany({ where: { userId } });
+    const cards = await this.prisma.tokenizedCard.findMany({ where: { userId } });
+
+    const features = {
+      hasWallet: wallets.length > 0,
+      hasLoan: loans.length > 0,
+      hasSubscription: subs.length > 0,
+      hasCard: cards.length > 0,
+      hasMfa: user.mfaEnabled === true,
+      hasVerifiedEmail: user.emailVerified === true,
+    };
+
+    const featureCount = Object.values(features).filter(Boolean).length;
+    const totalFeatures = Object.keys(features).length;
+    const adoptionRate = Math.round((featureCount / totalFeatures) * 100);
+
+    let maturityLevel: 'new' | 'developing' | 'established' | 'mature';
+    if (accountAgeDays < 30 && featureCount <= 2) maturityLevel = 'new';
+    else if (accountAgeDays < 90 || featureCount <= 3) maturityLevel = 'developing';
+    else if (featureCount <= 4) maturityLevel = 'established';
+    else maturityLevel = 'mature';
+
+    const totalBalance = wallets.reduce((s, w) => s + Number(w.balance), 0);
+
+    return {
+      accountAgeDays,
+      features,
+      featureAdoption: featureCount,
+      totalFeatures,
+      adoptionRate,
+      maturityLevel,
+      totalWalletBalance: totalBalance.toString(),
+      activeLoans: loans.filter((l) => l.status === 'DISBURSED').length,
+      activeSubscriptions: subs.filter((s) => s.status === 'active').length,
+      totalCards: cards.length,
+    };
+  }
 }

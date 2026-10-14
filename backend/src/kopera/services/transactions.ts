@@ -480,4 +480,79 @@ export class TransactionService {
       outlierCount,
     };
   }
+
+  async getPeakActivityAnalysis(userId: string) {
+    const txns = await this.prisma.transaction.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (txns.length === 0) {
+      return {
+        totalTransactions: 0,
+        byHour: Array.from({ length: 24 }, (_, i) => ({ hour: i, count: 0, volume: '0' })),
+        byDayOfWeek: [],
+        peakHour: null,
+        peakDay: null,
+        quietestHour: null,
+        weekdayVsWeekend: { weekday: 0, weekend: 0 },
+      };
+    }
+
+    const hourMap = new Map<number, { count: number; volume: number }>();
+    const dayMap = new Map<number, { count: number; volume: number }>();
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+    for (let h = 0; h < 24; h++) hourMap.set(h, { count: 0, volume: 0 });
+    for (let d = 0; d < 7; d++) dayMap.set(d, { count: 0, volume: 0 });
+
+    for (const txn of txns) {
+      const d = new Date(txn.createdAt);
+      const hour = d.getUTCHours();
+      const day = d.getUTCDay();
+      const amount = Math.abs(Number(txn.amount));
+
+      const hEntry = hourMap.get(hour)!;
+      hEntry.count++;
+      hEntry.volume += amount;
+
+      const dEntry = dayMap.get(day)!;
+      dEntry.count++;
+      dEntry.volume += amount;
+    }
+
+    const byHour = Array.from(hourMap.entries())
+      .map(([hour, data]) => ({ hour, count: data.count, volume: data.volume.toString() }));
+
+    const byDayOfWeek = Array.from(dayMap.entries())
+      .map(([day, data]) => ({ day: dayNames[day]!, dayIndex: day, count: data.count, volume: data.volume.toString() }));
+
+    let peakHour: number | null = null;
+    let peakHourCount = 0;
+    let quietestHour: number | null = null;
+    let quietestCount = Infinity;
+    for (const [hour, data] of hourMap) {
+      if (data.count > peakHourCount) { peakHourCount = data.count; peakHour = hour; }
+      if (data.count < quietestCount) { quietestCount = data.count; quietestHour = hour; }
+    }
+
+    let peakDay: string | null = null;
+    let peakDayCount = 0;
+    for (const [day, data] of dayMap) {
+      if (data.count > peakDayCount) { peakDayCount = data.count; peakDay = dayNames[day]!; }
+    }
+
+    const weekday = [1, 2, 3, 4, 5].reduce((s, d) => s + (dayMap.get(d)?.count ?? 0), 0);
+    const weekend = [0, 6].reduce((s, d) => s + (dayMap.get(d)?.count ?? 0), 0);
+
+    return {
+      totalTransactions: txns.length,
+      byHour,
+      byDayOfWeek,
+      peakHour,
+      peakDay,
+      quietestHour,
+      weekdayVsWeekend: { weekday, weekend },
+    };
+  }
 }
