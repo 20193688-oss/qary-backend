@@ -464,4 +464,78 @@ export class ReferralService {
       signupsByMonth,
     };
   }
+
+  async getReferralRetentionAnalysis(userId: string) {
+    const referral = await this.prisma.referral.findFirst({ where: { referrerId: userId } });
+    if (!referral) {
+      return {
+        hasReferralCode: false,
+        totalSignups: 0,
+        rewardedCount: 0,
+        retentionRate: 0,
+        avgDaysToReward: 0,
+        byMonth: [],
+        retentionTrend: 'none' as const,
+      };
+    }
+
+    const signups = await this.prisma.referralSignup.findMany({
+      where: { referralId: referral.id },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const rewarded = signups.filter((s) => s.rewardedAt !== null && s.rewardedAt !== undefined);
+    const retentionRate = signups.length > 0
+      ? Math.round((rewarded.length / signups.length) * 100)
+      : 0;
+
+    const daysToReward = rewarded.map((s) => {
+      const created = new Date(s.createdAt).getTime();
+      const rewardedTime = new Date(s.rewardedAt!).getTime();
+      return Math.ceil((rewardedTime - created) / 86400000);
+    });
+    const avgDaysToReward = daysToReward.length > 0
+      ? Math.round(daysToReward.reduce((s, v) => s + v, 0) / daysToReward.length)
+      : 0;
+
+    const monthMap = new Map<string, { signups: number; rewarded: number }>();
+    for (const s of signups) {
+      const d = new Date(s.createdAt);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const entry = monthMap.get(key) ?? { signups: 0, rewarded: 0 };
+      entry.signups++;
+      if (s.rewardedAt) entry.rewarded++;
+      monthMap.set(key, entry);
+    }
+    const byMonth = Array.from(monthMap.entries())
+      .map(([month, data]) => ({
+        month,
+        signups: data.signups,
+        rewarded: data.rewarded,
+        rate: data.signups > 0 ? Math.round((data.rewarded / data.signups) * 100) : 0,
+      }))
+      .sort((a, b) => a.month.localeCompare(b.month));
+
+    let retentionTrend: 'improving' | 'declining' | 'stable' | 'none' = 'none';
+    if (byMonth.length >= 2) {
+      const half = Math.floor(byMonth.length / 2);
+      const firstHalf = byMonth.slice(0, half);
+      const secondHalf = byMonth.slice(half);
+      const avgFirst = firstHalf.reduce((s, m) => s + m.rate, 0) / firstHalf.length;
+      const avgSecond = secondHalf.reduce((s, m) => s + m.rate, 0) / secondHalf.length;
+      retentionTrend = avgSecond > avgFirst * 1.1 ? 'improving'
+        : avgSecond < avgFirst * 0.9 ? 'declining'
+        : 'stable';
+    }
+
+    return {
+      hasReferralCode: true,
+      totalSignups: signups.length,
+      rewardedCount: rewarded.length,
+      retentionRate,
+      avgDaysToReward,
+      byMonth,
+      retentionTrend,
+    };
+  }
 }

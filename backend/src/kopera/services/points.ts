@@ -462,6 +462,58 @@ export class PointsService {
     };
   }
 
+  async getPointsEconomyHealth(userId: string) {
+    const account = await this.getOrCreate(userId);
+    const history = await this.prisma.pointsHistory.findMany({
+      where: { pointsId: account.id },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const earned = history.filter((t) => t.type === 'EARN');
+    const redeemed = history.filter((t) => t.type === 'REDEEM');
+
+    const totalEarned = earned.reduce((s, t) => s + t.amount, 0);
+    const totalRedeemed = redeemed.reduce((s, t) => s + Math.abs(t.amount), 0);
+    const earnToBurnRatio = totalRedeemed > 0 ? Math.round((totalEarned / totalRedeemed) * 100) / 100 : totalEarned > 0 ? Infinity : 0;
+
+    const now = Date.now();
+    const thirtyDaysAgo = now - 30 * 86400000;
+    const recentEarned = earned.filter((t) => new Date(t.createdAt).getTime() > thirtyDaysAgo);
+    const recentRedeemed = redeemed.filter((t) => new Date(t.createdAt).getTime() > thirtyDaysAgo);
+    const recentEarnTotal = recentEarned.reduce((s, t) => s + t.amount, 0);
+    const recentRedeemTotal = recentRedeemed.reduce((s, t) => s + Math.abs(t.amount), 0);
+
+    const utilizationRate = totalEarned > 0 ? Math.round((totalRedeemed / totalEarned) * 100) : 0;
+
+    const daysSinceFirst = history.length > 0
+      ? Math.max(1, Math.ceil((now - new Date(history[0]!.createdAt).getTime()) / 86400000))
+      : 0;
+    const accumulationVelocity = daysSinceFirst > 0
+      ? Math.round((account.balance / daysSinceFirst) * 10) / 10
+      : 0;
+
+    let healthStatus: 'healthy' | 'hoarding' | 'depleting' | 'inactive';
+    if (history.length === 0) healthStatus = 'inactive';
+    else if (utilizationRate > 80) healthStatus = 'depleting';
+    else if (utilizationRate < 20 && totalEarned > 1000) healthStatus = 'hoarding';
+    else healthStatus = 'healthy';
+
+    return {
+      currentBalance: account.balance,
+      lifetimeEarned: account.lifetimeEarned,
+      totalEarned,
+      totalRedeemed,
+      earnToBurnRatio: earnToBurnRatio === Infinity ? 'Infinity' : earnToBurnRatio,
+      utilizationRate,
+      accumulationVelocity,
+      recent30Days: {
+        earned: recentEarnTotal,
+        redeemed: recentRedeemTotal,
+      },
+      healthStatus,
+    };
+  }
+
   private getPrevTierThreshold(tier: string): number {
     const prev = this.getPrevTier(tier);
     if (!prev) return 0;

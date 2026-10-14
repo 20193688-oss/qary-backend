@@ -99,6 +99,10 @@ export async function registerSavingsGoalRoutes(app: FastifyInstance, prisma: Pr
     return svc.getDeadlineRisk(req.auth!.userId);
   });
 
+  app.get('/api/savings-goals/consistency-score', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getSavingsConsistencyScore(req.auth!.userId);
+  });
+
   app.get('/api/savings-goals/:id/progress', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     try {

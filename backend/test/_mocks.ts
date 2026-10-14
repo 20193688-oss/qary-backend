@@ -75,6 +75,9 @@ const MODEL_DEFAULTS: Record<string, Record<string, unknown>> = {
     deadline: null,
     completedAt: null,
   },
+  savingsContribution: {
+    amount: BigInt(0),
+  },
   paymentLink: {
     description: null,
     status: 'active',
@@ -294,6 +297,7 @@ export function createInMemoryPrisma(): PrismaClient {
     beneficiary: [],
     scheduledTransfer: [],
     savingsGoal: [],
+    savingsContribution: [],
     paymentLink: [],
     transactionLimit: [],
     referral: [],
@@ -485,6 +489,7 @@ export function createInMemoryPrisma(): PrismaClient {
     beneficiary: model('beneficiary'),
     scheduledTransfer: model('scheduledTransfer'),
     savingsGoal: model('savingsGoal'),
+    savingsContribution: model('savingsContribution'),
     paymentLink: model('paymentLink'),
     transactionLimit: model('transactionLimit'),
     referral: model('referral'),
