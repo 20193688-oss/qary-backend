@@ -642,4 +642,68 @@ export class GatewayPaymentService {
       worstProvider: providers.length > 1 ? providers[providers.length - 1].provider : null,
     };
   }
+
+  async getPaymentConversionFunnel(userId: string) {
+    const txns = await this.prisma.transaction.findMany({ where: { userId } });
+    const txnIds = new Set(txns.map(t => t.id));
+    const allPayments = await this.prisma.gatewayPayment.findMany({});
+    const payments = allPayments.filter((p: any) => txnIds.has(p.transactionId));
+
+    if (payments.length === 0) {
+      return {
+        totalPayments: 0,
+        initiated: 0,
+        authorized: 0,
+        captured: 0,
+        settled: 0,
+        failed: 0,
+        voided: 0,
+        conversionRate: 0,
+        dropoffStage: null,
+      };
+    }
+
+    let initiated = 0, authorized = 0, captured = 0, settled = 0, failed = 0, voided = 0;
+
+    for (const p of payments) {
+      const status = ((p as any).status || '').toLowerCase();
+      initiated++;
+      if (status === 'authorized' || status === 'captured' || status === 'settled') authorized++;
+      if (status === 'captured' || status === 'settled') captured++;
+      if (status === 'settled') settled++;
+      if (status === 'failed') failed++;
+      if (status === 'voided') voided++;
+    }
+
+    const conversionRate = Math.round((settled / initiated) * 10000) / 100;
+
+    let dropoffStage: string | null = null;
+    const stages = [
+      { name: 'authorization', from: initiated, to: authorized },
+      { name: 'capture', from: authorized, to: captured },
+      { name: 'settlement', from: captured, to: settled },
+    ];
+    let maxDrop = 0;
+    for (const s of stages) {
+      if (s.from > 0) {
+        const drop = s.from - s.to;
+        if (drop > maxDrop) {
+          maxDrop = drop;
+          dropoffStage = s.name;
+        }
+      }
+    }
+
+    return {
+      totalPayments: payments.length,
+      initiated,
+      authorized,
+      captured,
+      settled,
+      failed,
+      voided,
+      conversionRate,
+      dropoffStage,
+    };
+  }
 }

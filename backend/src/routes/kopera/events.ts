@@ -76,6 +76,10 @@ export async function registerEventRoutes(app: FastifyInstance, prisma: PrismaCl
     return svc.getEventCorrelationAnalysis(req.auth!.userId);
   });
 
+  app.get('/api/events/retention-analysis', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getEventRetentionAnalysis(req.auth!.userId);
+  });
+
   app.get('/api/events/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const event = await svc.getById(id);

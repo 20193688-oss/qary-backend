@@ -537,6 +537,67 @@ export class FxService {
     };
   }
 
+  async getConversionEfficiencyReport(userId: string) {
+    const conversions = await this.prisma.transaction.findMany({
+      where: { userId, type: 'FX_CONVERSION' },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (conversions.length === 0) {
+      return {
+        totalConversions: 0,
+        totalVolume: '0',
+        totalFees: '0',
+        avgFeePercent: 0,
+        efficiencyScore: 100,
+        byMonth: [],
+      };
+    }
+
+    let totalVolume = BigInt(0);
+    let totalFees = BigInt(0);
+    const byMonth: Record<string, { count: number; volume: bigint; fees: bigint }> = {};
+
+    for (const c of conversions) {
+      const amt = c.amount ?? BigInt(0);
+      const fee = (c as any).feeAmount ?? BigInt(0);
+      totalVolume += amt;
+      totalFees += fee;
+
+      const d = new Date(c.createdAt);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (!byMonth[key]) byMonth[key] = { count: 0, volume: BigInt(0), fees: BigInt(0) };
+      byMonth[key].count++;
+      byMonth[key].volume += amt;
+      byMonth[key].fees += fee;
+    }
+
+    const avgFeePercent = Number(totalVolume) > 0
+      ? Math.round(Number(totalFees * BigInt(10000) / totalVolume)) / 100
+      : 0;
+
+    const efficiencyScore = Math.max(0, Math.round(100 - avgFeePercent * 10));
+
+    const months = Object.entries(byMonth)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-12)
+      .map(([month, data]) => ({
+        month,
+        count: data.count,
+        volume: data.volume.toString(),
+        fees: data.fees.toString(),
+      }));
+
+    return {
+      totalConversions: conversions.length,
+      totalVolume: totalVolume.toString(),
+      totalFees: totalFees.toString(),
+      avgFeePercent,
+      efficiencyScore,
+      byMonth: months,
+    };
+  }
+
   async storeRate(baseCurrency: string, quoteCurrency: string, bid: number, ask: number, source: string) {
     const mid = (bid + ask) / 2;
     const spread = ask - bid;
