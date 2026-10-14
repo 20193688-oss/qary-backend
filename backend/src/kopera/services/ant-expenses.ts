@@ -492,4 +492,66 @@ export class AntExpenseService {
       patterns: patterns.slice(0, 10),
     };
   }
+
+  async getExpenseVelocityReport(userId: string) {
+    const expenses = await this.prisma.antExpense.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (expenses.length === 0) {
+      return {
+        totalExpenses: 0,
+        dailyAverage: 0,
+        weeklyAverage: 0,
+        acceleration: 'none' as const,
+        recentTrend: 'none' as const,
+        periodComparison: null,
+      };
+    }
+
+    const now = Date.now();
+    const thirtyDaysAgo = now - 30 * 86400000;
+    const sixtyDaysAgo = now - 60 * 86400000;
+
+    const recent = expenses.filter(e => new Date(e.createdAt).getTime() >= thirtyDaysAgo);
+    const prior = expenses.filter(e => {
+      const t = new Date(e.createdAt).getTime();
+      return t >= sixtyDaysAgo && t < thirtyDaysAgo;
+    });
+
+    const firstDate = new Date(expenses[0].createdAt).getTime();
+    const totalDays = Math.max(1, (now - firstDate) / 86400000);
+    const dailyAverage = Math.round((expenses.length / totalDays) * 100) / 100;
+    const weeklyAverage = Math.round(dailyAverage * 7 * 100) / 100;
+
+    const recentRate = recent.length / 30;
+    const priorRate = prior.length / 30;
+
+    let acceleration: 'accelerating' | 'decelerating' | 'stable' | 'none' = 'stable';
+    if (priorRate > 0) {
+      const change = (recentRate - priorRate) / priorRate;
+      if (change > 0.2) acceleration = 'accelerating';
+      else if (change < -0.2) acceleration = 'decelerating';
+    }
+
+    const recentTotal = recent.reduce((s, e) => s + (e.amount ?? BigInt(0)), BigInt(0));
+    const priorTotal = prior.reduce((s, e) => s + (e.amount ?? BigInt(0)), BigInt(0));
+
+    const recentTrend = recent.length > prior.length ? 'increasing' as const
+      : recent.length < prior.length ? 'decreasing' as const
+      : 'stable' as const;
+
+    return {
+      totalExpenses: expenses.length,
+      dailyAverage,
+      weeklyAverage,
+      acceleration,
+      recentTrend,
+      periodComparison: {
+        last30Days: { count: recent.length, total: recentTotal.toString() },
+        prior30Days: { count: prior.length, total: priorTotal.toString() },
+      },
+    };
+  }
 }

@@ -515,4 +515,62 @@ export class BankAccountService {
       byAccount,
     };
   }
+
+  async getAccountConsolidationAdvice(userId: string) {
+    const accounts = await this.prisma.bankAccount.findMany({ where: { userId } });
+    if (accounts.length === 0) {
+      return {
+        totalAccounts: 0,
+        canConsolidate: false,
+        duplicateCurrencies: [],
+        recommendations: [],
+      };
+    }
+
+    const byCurrency: Record<string, Array<{ id: string; bankName: string; isDefault: boolean; verified: boolean }>> = {};
+    for (const acct of accounts) {
+      const curr = (acct as any).currency || 'USD';
+      if (!byCurrency[curr]) byCurrency[curr] = [];
+      byCurrency[curr].push({
+        id: acct.id,
+        bankName: (acct as any).bankName || 'Unknown',
+        isDefault: (acct as any).isDefault ?? false,
+        verified: (acct as any).verified ?? (acct as any).status === 'verified',
+      });
+    }
+
+    const duplicateCurrencies: Array<{ currency: string; count: number; accounts: Array<{ id: string; bankName: string; isDefault: boolean }> }> = [];
+    const recommendations: string[] = [];
+
+    for (const [currency, accts] of Object.entries(byCurrency)) {
+      if (accts.length > 1) {
+        duplicateCurrencies.push({
+          currency,
+          count: accts.length,
+          accounts: accts.map(a => ({ id: a.id, bankName: a.bankName, isDefault: a.isDefault })),
+        });
+      }
+    }
+
+    if (duplicateCurrencies.length > 0) {
+      recommendations.push(`${duplicateCurrencies.length} currency(ies) have multiple accounts — consider consolidating`);
+    }
+
+    const unverified = accounts.filter(a => !(a as any).verified && (a as any).status !== 'verified');
+    if (unverified.length > 0) {
+      recommendations.push(`${unverified.length} unverified account(s) — verify or remove`);
+    }
+
+    const noDefault = Object.entries(byCurrency).filter(([, accts]) => !accts.some(a => a.isDefault));
+    if (noDefault.length > 0) {
+      recommendations.push(`${noDefault.length} currency(ies) have no default account set`);
+    }
+
+    return {
+      totalAccounts: accounts.length,
+      canConsolidate: duplicateCurrencies.length > 0,
+      duplicateCurrencies,
+      recommendations,
+    };
+  }
 }
