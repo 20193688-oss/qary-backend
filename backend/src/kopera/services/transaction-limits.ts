@@ -438,6 +438,80 @@ export class TransactionLimitService {
     return new Date(now.getFullYear(), now.getMonth(), 1);
   }
 
+  async getLimitComplianceReport(userId: string) {
+    const limits = await this.prisma.transactionLimit.findMany({ where: { userId } });
+
+    if (limits.length === 0) {
+      return {
+        totalLimits: 0,
+        compliantCount: 0,
+        nearLimitCount: 0,
+        exceededCount: 0,
+        complianceRate: 100,
+        byLimitType: [],
+        recommendations: [],
+      };
+    }
+
+    let compliantCount = 0;
+    let nearLimitCount = 0;
+    let exceededCount = 0;
+
+    const typeMap = new Map<string, { total: number; compliant: number; nearLimit: number; exceeded: number }>();
+
+    for (const limit of limits) {
+      const refreshed = this.refreshIfNeeded(limit);
+      const usage = Number(refreshed.currentUsage);
+      const max = Number(refreshed.maxAmount);
+      const utilization = max > 0 ? (usage / max) * 100 : 0;
+
+      const entry = typeMap.get(limit.limitType) ?? { total: 0, compliant: 0, nearLimit: 0, exceeded: 0 };
+      entry.total++;
+
+      if (utilization > 100) {
+        exceededCount++;
+        entry.exceeded++;
+      } else if (utilization >= 80) {
+        nearLimitCount++;
+        entry.nearLimit++;
+      } else {
+        compliantCount++;
+        entry.compliant++;
+      }
+      typeMap.set(limit.limitType, entry);
+    }
+
+    const byLimitType = Array.from(typeMap.entries()).map(([type, data]) => ({
+      limitType: type,
+      total: data.total,
+      compliant: data.compliant,
+      nearLimit: data.nearLimit,
+      exceeded: data.exceeded,
+    }));
+
+    const complianceRate = limits.length > 0
+      ? Math.round((compliantCount / limits.length) * 100)
+      : 100;
+
+    const recommendations: string[] = [];
+    if (exceededCount > 0) {
+      recommendations.push(`${exceededCount} limit(s) exceeded — review spending patterns`);
+    }
+    if (nearLimitCount > 0) {
+      recommendations.push(`${nearLimitCount} limit(s) near capacity — consider increasing limits`);
+    }
+
+    return {
+      totalLimits: limits.length,
+      compliantCount,
+      nearLimitCount,
+      exceededCount,
+      complianceRate,
+      byLimitType,
+      recommendations,
+    };
+  }
+
   private refreshIfNeeded(limit: any): any {
     const periodStart = this.periodStart(limit.limitType);
     if (limit.periodStart < periodStart) {

@@ -656,4 +656,63 @@ export class SubscriptionService {
       overallRiskScore,
     };
   }
+
+  async getPlanPopularity(userId: string) {
+    const subs = await this.prisma.subscription.findMany({ where: { userId } });
+
+    if (subs.length === 0) {
+      return {
+        totalSubscriptions: 0,
+        activePlans: 0,
+        byPlan: [],
+        mostUsedPlan: null,
+        avgDurationDays: 0,
+        planSwitchCount: 0,
+      };
+    }
+
+    const planMap = new Map<string, { count: number; active: number; totalSpent: number; durations: number[] }>();
+    const active = subs.filter((s) => s.status === 'active' || s.status === 'trialing');
+
+    for (const s of subs) {
+      const plan = s.planId ?? s.planName ?? 'unknown';
+      const entry = planMap.get(plan) ?? { count: 0, active: 0, totalSpent: 0, durations: [] };
+      entry.count++;
+      if (s.status === 'active' || s.status === 'trialing') entry.active++;
+      entry.totalSpent += Number(s.amount ?? 0);
+      const start = new Date(s.currentPeriodStart ?? s.createdAt).getTime();
+      const end = s.cancelledAt ? new Date(s.cancelledAt).getTime() : Date.now();
+      entry.durations.push(Math.ceil((end - start) / 86400000));
+      planMap.set(plan, entry);
+    }
+
+    const byPlan = Array.from(planMap.entries())
+      .map(([plan, data]) => ({
+        plan,
+        count: data.count,
+        active: data.active,
+        totalSpent: data.totalSpent.toString(),
+        avgDurationDays: data.durations.length > 0
+          ? Math.round(data.durations.reduce((s, v) => s + v, 0) / data.durations.length)
+          : 0,
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    const allDurations = Array.from(planMap.values()).flatMap((d) => d.durations);
+    const avgDurationDays = allDurations.length > 0
+      ? Math.round(allDurations.reduce((s, v) => s + v, 0) / allDurations.length)
+      : 0;
+
+    const cancelled = subs.filter((s) => s.status === 'cancelled' || s.status === 'expired');
+    const planSwitchCount = Math.max(0, cancelled.length);
+
+    return {
+      totalSubscriptions: subs.length,
+      activePlans: active.length,
+      byPlan,
+      mostUsedPlan: byPlan[0]?.plan ?? null,
+      avgDurationDays,
+      planSwitchCount,
+    };
+  }
 }

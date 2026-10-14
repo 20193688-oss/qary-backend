@@ -426,6 +426,62 @@ export class TokenizedCardService {
     };
   }
 
+  async getSpendingByCard(userId: string) {
+    const cards = await this.prisma.tokenizedCard.findMany({ where: { userId } });
+
+    if (cards.length === 0) {
+      return {
+        totalCards: 0,
+        cardsWithTransactions: 0,
+        byCard: [],
+        mostUsedCard: null,
+        totalSpent: '0',
+      };
+    }
+
+    const allTxns = await this.prisma.transaction.findMany({ where: { userId } });
+
+    const cardSpend = new Map<string, { count: number; total: number; lastUsed: Date | null }>();
+    for (const card of cards) {
+      cardSpend.set(card.id, { count: 0, total: 0, lastUsed: null });
+    }
+
+    for (const txn of allTxns) {
+      const cardId = (txn as any).tokenizedCardId ?? (txn as any).cardId;
+      if (cardId && cardSpend.has(cardId)) {
+        const entry = cardSpend.get(cardId)!;
+        entry.count++;
+        entry.total += Number(txn.amount);
+        const txnDate = new Date(txn.createdAt);
+        if (!entry.lastUsed || txnDate > entry.lastUsed) entry.lastUsed = txnDate;
+      }
+    }
+
+    const byCard = cards.map((card) => {
+      const spend = cardSpend.get(card.id)!;
+      return {
+        cardId: card.id,
+        lastFour: card.lastFour,
+        network: card.network,
+        status: card.status,
+        transactionCount: spend.count,
+        totalSpent: spend.total.toString(),
+        lastUsed: spend.lastUsed,
+      };
+    }).sort((a, b) => b.transactionCount - a.transactionCount);
+
+    const cardsWithTransactions = byCard.filter((c) => c.transactionCount > 0).length;
+    const totalSpent = byCard.reduce((s, c) => s + Number(c.totalSpent), 0);
+
+    return {
+      totalCards: cards.length,
+      cardsWithTransactions,
+      byCard,
+      mostUsedCard: byCard[0]?.transactionCount > 0 ? byCard[0].lastFour : null,
+      totalSpent: totalSpent.toString(),
+    };
+  }
+
   async removeCard(id: string, userId: string) {
     const card = await this.prisma.tokenizedCard.findUnique({ where: { id } });
     if (!card) throw new Error('card_not_found');
