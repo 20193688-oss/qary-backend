@@ -332,6 +332,94 @@ export class TransactionLimitService {
     };
   }
 
+  async getLimitExhaustionForecast(userId: string) {
+    const limits = await this.prisma.transactionLimit.findMany({ where: { userId } });
+    if (limits.length === 0) {
+      return {
+        totalLimits: 0,
+        forecasts: [],
+        criticalCount: 0,
+        warningCount: 0,
+        safeCount: 0,
+        overallRisk: 'none' as const,
+      };
+    }
+
+    const now = Date.now();
+    const forecasts: {
+      currency: string;
+      limitType: string;
+      maxAmount: string;
+      currentUsage: string;
+      utilizationPercent: number;
+      projectedExhaustionHours: number | null;
+      riskLevel: string;
+    }[] = [];
+
+    let criticalCount = 0;
+    let warningCount = 0;
+    let safeCount = 0;
+
+    for (const limit of limits) {
+      const l = limit as any;
+      const max = Number(l.maxAmount);
+      const usage = Number(l.currentUsage);
+      const utilization = max > 0 ? Math.round((usage / max) * 10000) / 100 : 0;
+
+      const periodStart = new Date(l.periodStart || l.createdAt).getTime();
+      const elapsedHours = Math.max(1, (now - periodStart) / 3600000);
+      const usageRate = usage / elapsedHours;
+
+      let projectedExhaustionHours: number | null = null;
+      if (usageRate > 0 && usage < max) {
+        const remaining = max - usage;
+        projectedExhaustionHours = Math.round((remaining / usageRate) * 10) / 10;
+      } else if (usage >= max) {
+        projectedExhaustionHours = 0;
+      }
+
+      let riskLevel: string;
+      if (utilization >= 95 || projectedExhaustionHours === 0) {
+        riskLevel = 'critical';
+        criticalCount++;
+      } else if (utilization >= 75 || (projectedExhaustionHours !== null && projectedExhaustionHours < 24)) {
+        riskLevel = 'warning';
+        warningCount++;
+      } else {
+        riskLevel = 'safe';
+        safeCount++;
+      }
+
+      forecasts.push({
+        currency: l.currency,
+        limitType: l.limitType,
+        maxAmount: l.maxAmount.toString(),
+        currentUsage: l.currentUsage.toString(),
+        utilizationPercent: utilization,
+        projectedExhaustionHours,
+        riskLevel,
+      });
+    }
+
+    forecasts.sort((a, b) => {
+      const order: Record<string, number> = { critical: 0, warning: 1, safe: 2 };
+      return (order[a.riskLevel] ?? 3) - (order[b.riskLevel] ?? 3);
+    });
+
+    const overallRisk = criticalCount > 0 ? 'critical'
+      : warningCount > 0 ? 'warning'
+      : 'safe';
+
+    return {
+      totalLimits: limits.length,
+      forecasts,
+      criticalCount,
+      warningCount,
+      safeCount,
+      overallRisk,
+    };
+  }
+
   async removeLimit(userId: string, currency: string, limitType: string) {
     const limit = await this.prisma.transactionLimit.findFirst({
       where: { userId, currency: currency.toUpperCase(), limitType: limitType.toLowerCase() },

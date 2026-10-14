@@ -343,6 +343,89 @@ export class TokenizedCardService {
     };
   }
 
+  async getTokenLifecycleAnalysis(userId: string) {
+    const cards = await this.prisma.tokenizedCard.findMany({ where: { userId } });
+    if (cards.length === 0) {
+      return {
+        totalCards: 0,
+        byStatus: { active: 0, expired: 0, frozen: 0 },
+        avgAgeDays: 0,
+        avgMonthsUntilExpiry: 0,
+        turnoverRate: 0,
+        lifecycleHealth: 'none' as const,
+        expiringWithin90Days: [],
+      };
+    }
+
+    const now = Date.now();
+    const nowDate = new Date();
+    const currentMonth = nowDate.getMonth() + 1;
+    const currentYear = nowDate.getFullYear();
+
+    let activeCount = 0;
+    let expiredCount = 0;
+    let frozenCount = 0;
+    let totalAgeDays = 0;
+    let totalMonthsUntilExpiry = 0;
+    let activeWithExpiry = 0;
+    const expiringWithin90Days: { last4: string; network: string; expiryMonth: number; expiryYear: number; daysUntilExpiry: number }[] = [];
+
+    for (const card of cards) {
+      const c = card as any;
+      const ageDays = Math.floor((now - new Date(c.createdAt).getTime()) / 86400000);
+      totalAgeDays += ageDays;
+
+      if (c.frozen) {
+        frozenCount++;
+      } else {
+        const expiryDate = new Date(c.expiryYear, c.expiryMonth - 1, 28);
+        if (expiryDate < nowDate) {
+          expiredCount++;
+        } else {
+          activeCount++;
+          const monthsUntil = (c.expiryYear - currentYear) * 12 + (c.expiryMonth - currentMonth);
+          totalMonthsUntilExpiry += monthsUntil;
+          activeWithExpiry++;
+
+          const daysUntilExpiry = Math.floor((expiryDate.getTime() - now) / 86400000);
+          if (daysUntilExpiry <= 90) {
+            expiringWithin90Days.push({
+              last4: c.last4,
+              network: c.network,
+              expiryMonth: c.expiryMonth,
+              expiryYear: c.expiryYear,
+              daysUntilExpiry,
+            });
+          }
+        }
+      }
+    }
+
+    const avgAgeDays = Math.round(totalAgeDays / cards.length);
+    const avgMonthsUntilExpiry = activeWithExpiry > 0
+      ? Math.round((totalMonthsUntilExpiry / activeWithExpiry) * 10) / 10
+      : 0;
+    const turnoverRate = Math.round(((expiredCount + frozenCount) / cards.length) * 10000) / 100;
+
+    const activeRatio = activeCount / cards.length;
+    const lifecycleHealth = activeRatio >= 0.8 ? 'healthy'
+      : activeRatio >= 0.5 ? 'fair'
+      : activeRatio > 0 ? 'needs_attention'
+      : 'critical';
+
+    expiringWithin90Days.sort((a, b) => a.daysUntilExpiry - b.daysUntilExpiry);
+
+    return {
+      totalCards: cards.length,
+      byStatus: { active: activeCount, expired: expiredCount, frozen: frozenCount },
+      avgAgeDays,
+      avgMonthsUntilExpiry,
+      turnoverRate,
+      lifecycleHealth,
+      expiringWithin90Days,
+    };
+  }
+
   async removeCard(id: string, userId: string) {
     const card = await this.prisma.tokenizedCard.findUnique({ where: { id } });
     if (!card) throw new Error('card_not_found');

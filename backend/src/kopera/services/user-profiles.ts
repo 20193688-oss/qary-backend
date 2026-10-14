@@ -213,4 +213,67 @@ export class UserProfileService {
       totalChecks: checks.length,
     };
   }
+
+  async getEngagementProfile(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new Error('user_not_found');
+    const u = user as any;
+
+    const now = Date.now();
+    const accountAgeDays = Math.floor((now - new Date(u.createdAt).getTime()) / 86400000);
+    const daysSinceLastLogin = u.lastLoginAt
+      ? Math.floor((now - new Date(u.lastLoginAt).getTime()) / 86400000)
+      : accountAgeDays;
+
+    const completenessChecks = [
+      { field: 'name', filled: !!u.name },
+      { field: 'phone', filled: !!u.phone },
+      { field: 'avatarUrl', filled: !!u.avatarUrl },
+      { field: 'mfaEnabled', filled: !!u.mfaEnabled },
+      { field: 'kycStatus', filled: u.kycStatus === 'VERIFIED' },
+      { field: 'locale', filled: !!u.locale },
+      { field: 'timezone', filled: !!u.timezone },
+    ];
+    const completedFields = completenessChecks.filter(c => c.filled).length;
+    const profileCompleteness = Math.round((completedFields / completenessChecks.length) * 100);
+
+    const sessions = await this.prisma.userSession.findMany({ where: { userId } });
+    const distinctDevices = new Set(sessions.map((s: any) => s.deviceId)).size;
+    const loginCount = sessions.length;
+
+    let recencyScore = 0;
+    if (daysSinceLastLogin <= 1) recencyScore = 100;
+    else if (daysSinceLastLogin <= 7) recencyScore = 80;
+    else if (daysSinceLastLogin <= 30) recencyScore = 50;
+    else if (daysSinceLastLogin <= 90) recencyScore = 20;
+
+    const loginsPerMonth = accountAgeDays > 0
+      ? Math.round((loginCount / accountAgeDays) * 30 * 10) / 10
+      : loginCount;
+
+    const engagementScore = Math.round(
+      0.35 * recencyScore +
+      0.30 * profileCompleteness +
+      0.20 * Math.min(100, loginsPerMonth * 10) +
+      0.15 * Math.min(100, distinctDevices * 33)
+    );
+
+    const engagementLevel = engagementScore >= 70 ? 'highly_engaged'
+      : engagementScore >= 45 ? 'engaged'
+      : engagementScore >= 20 ? 'casual'
+      : 'dormant';
+
+    return {
+      engagementScore,
+      engagementLevel,
+      profileCompleteness,
+      completenessChecks: completenessChecks.map(c => ({ field: c.field, filled: c.filled })),
+      accountAgeDays,
+      daysSinceLastLogin,
+      loginCount,
+      loginsPerMonth,
+      distinctDevices,
+      recencyScore,
+    };
+  }
 }
