@@ -488,4 +488,79 @@ export class TokenizedCardService {
     if (card.userId !== userId) throw new Error('forbidden');
     return this.prisma.tokenizedCard.delete({ where: { id } });
   }
+
+  async getCardFraudRiskAssessment(userId: string) {
+    const cards = await this.prisma.tokenizedCard.findMany({ where: { userId } });
+    if (cards.length === 0) {
+      return {
+        totalCards: 0,
+        overallRiskScore: 0,
+        riskLevel: 'none',
+        cardRisks: [],
+        recommendations: [],
+      };
+    }
+
+    const now = new Date();
+    const recommendations: string[] = [];
+    const cardRisks: { cardId: string; last4: string; riskScore: number; factors: string[] }[] = [];
+
+    for (const card of cards) {
+      let score = 0;
+      const factors: string[] = [];
+
+      if ((card as any).frozen) {
+        score += 10;
+        factors.push('card_frozen');
+      }
+
+      const expMonth = (card as any).expiryMonth || 12;
+      const expYear = (card as any).expiryYear || now.getFullYear() + 1;
+      const expiryDate = new Date(expYear, expMonth - 1);
+      if (expiryDate < now) {
+        score += 30;
+        factors.push('expired');
+      } else {
+        const monthsToExpiry = (expiryDate.getTime() - now.getTime()) / (30 * 86400000);
+        if (monthsToExpiry < 2) {
+          score += 15;
+          factors.push('expiring_soon');
+        }
+      }
+
+      if (!(card as any).holderName) {
+        score += 5;
+        factors.push('missing_holder_name');
+      }
+
+      if (!(card as any).country) {
+        score += 10;
+        factors.push('unknown_country');
+      }
+
+      cardRisks.push({
+        cardId: card.id,
+        last4: (card as any).last4 || '****',
+        riskScore: Math.min(100, score),
+        factors,
+      });
+    }
+
+    const avgScore = cardRisks.reduce((s, c) => s + c.riskScore, 0) / cardRisks.length;
+    const overallRiskScore = Math.round(avgScore);
+    const riskLevel = overallRiskScore >= 50 ? 'high' : overallRiskScore >= 25 ? 'medium' : 'low';
+
+    const expired = cardRisks.filter(c => c.factors.includes('expired'));
+    if (expired.length > 0) recommendations.push(`${expired.length} expired card(s) should be removed`);
+    const frozen = cardRisks.filter(c => c.factors.includes('card_frozen'));
+    if (frozen.length > 0) recommendations.push(`${frozen.length} frozen card(s) need review`);
+
+    return {
+      totalCards: cards.length,
+      overallRiskScore,
+      riskLevel,
+      cardRisks,
+      recommendations,
+    };
+  }
 }

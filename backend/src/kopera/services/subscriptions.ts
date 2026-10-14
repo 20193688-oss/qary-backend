@@ -715,4 +715,63 @@ export class SubscriptionService {
       planSwitchCount,
     };
   }
+
+  async getSubscriptionLifetimeValue(userId: string) {
+    const subs = await this.prisma.subscription.findMany({ where: { userId } });
+    if (subs.length === 0) {
+      return {
+        totalSubscriptions: 0,
+        totalSpent: '0',
+        avgSubscriptionValue: '0',
+        avgDurationMonths: 0,
+        estimatedLifetimeValue: '0',
+        churnRate: 0,
+      };
+    }
+
+    let totalSpent = BigInt(0);
+    const durations: number[] = [];
+    let cancelledCount = 0;
+
+    for (const s of subs) {
+      const amount = BigInt((s as any).amount || 0);
+      const start = new Date(s.createdAt).getTime();
+      const end = (s as any).cancelledAt
+        ? new Date((s as any).cancelledAt).getTime()
+        : Date.now();
+      const months = Math.max(1, Math.round((end - start) / (30 * 86400000)));
+      durations.push(months);
+      totalSpent += amount * BigInt(months);
+      if ((s as any).status === 'cancelled') cancelledCount++;
+    }
+
+    const avgDuration = durations.length > 0
+      ? Number((durations.reduce((a, b) => a + b, 0) / durations.length).toFixed(1))
+      : 0;
+
+    const avgValue = subs.length > 0
+      ? totalSpent / BigInt(subs.length)
+      : BigInt(0);
+
+    const churnRate = subs.length > 0
+      ? Number((cancelledCount / subs.length).toFixed(4))
+      : 0;
+
+    const avgMonthlySpend = durations.length > 0
+      ? totalSpent / BigInt(Math.round(durations.reduce((a, b) => a + b, 0)))
+      : BigInt(0);
+
+    const estimatedLifetimeValue = churnRate > 0
+      ? avgMonthlySpend * BigInt(Math.round(1 / churnRate))
+      : totalSpent;
+
+    return {
+      totalSubscriptions: subs.length,
+      totalSpent: totalSpent.toString(),
+      avgSubscriptionValue: avgValue.toString(),
+      avgDurationMonths: avgDuration,
+      estimatedLifetimeValue: estimatedLifetimeValue.toString(),
+      churnRate,
+    };
+  }
 }
