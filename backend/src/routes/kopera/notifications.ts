@@ -76,6 +76,10 @@ export async function registerNotificationRoutes(app: FastifyInstance, prisma: P
     return notifications.getTypeEffectiveness(req.auth!.userId);
   });
 
+  app.get('/api/notifications/delivery-latency', { preHandler: [app.requireAuth] }, async (req) => {
+    return notifications.getDeliveryLatencyReport(req.auth!.userId);
+  });
+
   app.get('/api/notifications/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const n = await notifications.getById(id);

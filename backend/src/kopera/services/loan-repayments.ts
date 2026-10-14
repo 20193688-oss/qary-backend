@@ -545,4 +545,84 @@ export class LoanRepaymentService {
       pattern,
     };
   }
+
+  async getRepaymentStreakAnalysis(loanId: string) {
+    const repayments = await this.prisma.loanRepayment.findMany({
+      where: { loanId },
+      orderBy: { installment: 'asc' },
+    });
+
+    if (repayments.length === 0) {
+      return {
+        loanId,
+        totalInstallments: 0,
+        onTimeCount: 0,
+        lateCount: 0,
+        currentStreak: 0,
+        longestStreak: 0,
+        streakType: 'none' as const,
+        onTimeRate: 0,
+        reliability: 'unknown' as const,
+      };
+    }
+
+    let currentStreak = 0;
+    let longestStreak = 0;
+    let currentStreakType: 'on_time' | 'late' | 'none' = 'none';
+    let onTimeCount = 0;
+    let lateCount = 0;
+
+    for (const r of repayments) {
+      if (r.status !== 'PAID') continue;
+
+      const isOnTime = r.paidAt && r.dueDate
+        ? new Date(r.paidAt).getTime() <= new Date(r.dueDate).getTime()
+        : r.status === 'PAID';
+
+      if (isOnTime) {
+        onTimeCount++;
+        if (currentStreakType === 'on_time') {
+          currentStreak++;
+        } else {
+          currentStreak = 1;
+          currentStreakType = 'on_time';
+        }
+      } else {
+        lateCount++;
+        if (currentStreakType === 'late') {
+          currentStreak++;
+        } else {
+          currentStreak = 1;
+          currentStreakType = 'late';
+        }
+      }
+
+      if (currentStreakType === 'on_time' && currentStreak > longestStreak) {
+        longestStreak = currentStreak;
+      }
+    }
+
+    const paidCount = onTimeCount + lateCount;
+    const onTimeRate = paidCount > 0
+      ? Math.round((onTimeCount / paidCount) * 10000) / 100
+      : 0;
+
+    const reliability = onTimeRate >= 90 ? 'excellent' as const
+      : onTimeRate >= 70 ? 'good' as const
+      : onTimeRate >= 50 ? 'fair' as const
+      : paidCount > 0 ? 'poor' as const
+      : 'unknown' as const;
+
+    return {
+      loanId,
+      totalInstallments: repayments.length,
+      onTimeCount,
+      lateCount,
+      currentStreak,
+      longestStreak,
+      streakType: currentStreakType,
+      onTimeRate,
+      reliability,
+    };
+  }
 }

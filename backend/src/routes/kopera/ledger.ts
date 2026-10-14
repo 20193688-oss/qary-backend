@@ -111,6 +111,16 @@ export async function registerLedgerRoutes(app: FastifyInstance, prisma: PrismaC
     return svc.getBalanceVolatility(walletId);
   });
 
+  app.get('/api/ledger/:walletId/entry-frequency', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { walletId } = req.params as { walletId: string };
+
+    const wallet = await prisma.wallet.findUnique({ where: { id: walletId } });
+    if (!wallet) return reply.code(404).send({ error: 'wallet_not_found' });
+    if (wallet.userId !== req.auth!.userId) return reply.code(403).send({ error: 'forbidden' });
+
+    return svc.getEntryFrequencyAnalysis(walletId);
+  });
+
   app.get('/api/ledger/:walletId', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { walletId } = req.params as { walletId: string };
 

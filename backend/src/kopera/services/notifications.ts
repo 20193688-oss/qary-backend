@@ -407,6 +407,77 @@ export class NotificationService {
     };
   }
 
+  async getDeliveryLatencyReport(userId: string) {
+    const all = await this.prisma.notification.findMany({ where: { userId } });
+
+    if (all.length === 0) {
+      return {
+        totalNotifications: 0,
+        deliveredCount: 0,
+        avgLatencyMs: 0,
+        medianLatencyMs: 0,
+        p95LatencyMs: 0,
+        byChannel: [],
+        slaCompliance: 0,
+      };
+    }
+
+    const delivered = all.filter((n) => n.deliveredAt && n.sentAt);
+    const latencies = delivered.map((n) => {
+      return Math.max(0, new Date(n.deliveredAt!).getTime() - new Date(n.sentAt!).getTime());
+    }).sort((a, b) => a - b);
+
+    const avgLatencyMs = latencies.length > 0
+      ? Math.round(latencies.reduce((s, l) => s + l, 0) / latencies.length)
+      : 0;
+    const medianLatencyMs = latencies.length > 0
+      ? latencies[Math.floor(latencies.length / 2)]
+      : 0;
+    const p95LatencyMs = latencies.length > 0
+      ? latencies[Math.floor(latencies.length * 0.95)]
+      : 0;
+
+    const channelMap = new Map<string, { total: number; delivered: number; latencies: number[] }>();
+    for (const n of all) {
+      const channel = n.channel ?? 'unknown';
+      const entry = channelMap.get(channel) ?? { total: 0, delivered: 0, latencies: [] };
+      entry.total++;
+      if (n.deliveredAt && n.sentAt) {
+        entry.delivered++;
+        entry.latencies.push(Math.max(0, new Date(n.deliveredAt).getTime() - new Date(n.sentAt).getTime()));
+      }
+      channelMap.set(channel, entry);
+    }
+
+    const byChannel = Array.from(channelMap.entries())
+      .map(([channel, data]) => ({
+        channel,
+        total: data.total,
+        delivered: data.delivered,
+        deliveryRate: data.total > 0 ? Math.round((data.delivered / data.total) * 10000) / 100 : 0,
+        avgLatencyMs: data.latencies.length > 0
+          ? Math.round(data.latencies.reduce((s, l) => s + l, 0) / data.latencies.length)
+          : 0,
+      }))
+      .sort((a, b) => b.total - a.total);
+
+    const slaThresholdMs = 60000;
+    const withinSla = latencies.filter((l) => l <= slaThresholdMs).length;
+    const slaCompliance = latencies.length > 0
+      ? Math.round((withinSla / latencies.length) * 10000) / 100
+      : 0;
+
+    return {
+      totalNotifications: all.length,
+      deliveredCount: delivered.length,
+      avgLatencyMs,
+      medianLatencyMs,
+      p95LatencyMs,
+      byChannel,
+      slaCompliance,
+    };
+  }
+
   async delete(id: string, userId: string) {
     const n = await this.prisma.notification.findUnique({ where: { id } });
     if (!n) throw new Error('notification_not_found');

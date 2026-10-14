@@ -111,6 +111,10 @@ export async function registerLoanRoutes(app: FastifyInstance, prisma: PrismaCli
     return loans.getMaturityTimeline(req.auth!.userId);
   });
 
+  app.get('/api/loans/utilization-report', { preHandler: [app.requireAuth] }, async (req) => {
+    return loans.getLoanUtilizationReport(req.auth!.userId);
+  });
+
   app.get('/api/loans', { preHandler: [app.requireAuth] }, async (req) => {
     const list = await loans.listByUser(req.auth!.userId);
     return list.map(serializeLoan);
