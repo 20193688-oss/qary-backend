@@ -654,4 +654,74 @@ export class LedgerService {
       auditLevel,
     };
   }
+
+  async getLedgerReconciliationGaps(walletId: string) {
+    const entries = await this.prisma.ledgerEntry.findMany({ where: { walletId } });
+
+    if (entries.length === 0) {
+      return {
+        totalEntries: 0,
+        gapLevel: 'no_data' as const,
+        gapScore: 0,
+        gaps: [],
+        recommendations: [],
+      };
+    }
+
+    const sorted = [...entries].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+    const gaps: { index: number; daysBetween: number; fromDate: string; toDate: string }[] = [];
+    let runningBalance = BigInt(0);
+    let balanceMismatches = 0;
+
+    for (let i = 0; i < sorted.length; i++) {
+      const entry = sorted[i];
+      const entryType = (entry as any).type || (entry as any).direction;
+      if (entryType === 'CREDIT' || entryType === 'credit') {
+        runningBalance += entry.amount;
+      } else {
+        runningBalance -= entry.amount;
+      }
+
+      if (i > 0) {
+        const daysBetween = Math.floor(
+          (new Date(entry.createdAt).getTime() - new Date(sorted[i - 1].createdAt).getTime()) / 86400000
+        );
+        if (daysBetween > 30) {
+          gaps.push({
+            index: i,
+            daysBetween,
+            fromDate: sorted[i - 1].createdAt.toISOString(),
+            toDate: entry.createdAt.toISOString(),
+          });
+        }
+      }
+
+      if ((entry as any).balance !== undefined && BigInt((entry as any).balance) !== runningBalance) {
+        balanceMismatches++;
+      }
+    }
+
+    let gapScore = 100;
+    if (gaps.length > 5) gapScore -= 40;
+    else if (gaps.length > 0) gapScore -= gaps.length * 8;
+    if (balanceMismatches > 0) gapScore -= Math.min(30, balanceMismatches * 10);
+    gapScore = Math.max(0, gapScore);
+
+    const gapLevel = gapScore >= 70 ? 'clean' : gapScore >= 40 ? 'gaps_detected' : 'significant_gaps';
+
+    const recommendations: string[] = [];
+    if (gaps.length > 0) recommendations.push(`${gaps.length} gap(s) of 30+ days detected in ledger`);
+    if (balanceMismatches > 0) recommendations.push(`${balanceMismatches} balance mismatch(es) found`);
+
+    return {
+      totalEntries: entries.length,
+      gapLevel,
+      gapScore,
+      gapCount: gaps.length,
+      balanceMismatches,
+      gaps: gaps.slice(0, 10),
+      recommendations,
+    };
+  }
 }

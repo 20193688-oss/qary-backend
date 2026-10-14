@@ -834,6 +834,72 @@ export class LoanService {
     };
   }
 
+  async getLoanConcentrationRisk(userId: string) {
+    const loans = await this.prisma.loan.findMany({ where: { userId } });
+
+    if (loans.length === 0) {
+      return {
+        totalLoans: 0,
+        riskLevel: 'no_data' as const,
+        concentrationScore: 0,
+        currencyBreakdown: [],
+        statusBreakdown: {},
+        recommendations: [],
+      };
+    }
+
+    const currencyMap = new Map<string, { count: number; totalAmount: bigint }>();
+    const statusBreakdown: Record<string, number> = {};
+
+    for (const loan of loans) {
+      const cur = loan.currency;
+      const existing = currencyMap.get(cur);
+      if (existing) {
+        existing.count++;
+        existing.totalAmount += loan.amount;
+      } else {
+        currencyMap.set(cur, { count: 1, totalAmount: loan.amount });
+      }
+      const status = loan.status || 'unknown';
+      statusBreakdown[status] = (statusBreakdown[status] || 0) + 1;
+    }
+
+    const totalAmount = loans.reduce((s, l) => s + l.amount, BigInt(0));
+    const currencyBreakdown = Array.from(currencyMap.entries()).map(([currency, data]) => {
+      const share = totalAmount > BigInt(0)
+        ? Number((data.totalAmount * BigInt(10000)) / totalAmount) / 100
+        : 0;
+      return {
+        currency,
+        count: data.count,
+        totalAmount: data.totalAmount.toString(),
+        sharePercent: Math.round(share * 100) / 100,
+      };
+    }).sort((a, b) => b.sharePercent - a.sharePercent);
+
+    const hhi = currencyBreakdown.reduce((s, c) => s + (c.sharePercent ** 2), 0);
+    const concentrationScore = Math.round(hhi);
+
+    const riskLevel = concentrationScore > 5000 ? 'high' : concentrationScore > 2500 ? 'moderate' : 'low';
+
+    const activeCount = (statusBreakdown['ACTIVE'] || 0) + (statusBreakdown['active'] || 0) + (statusBreakdown['DISBURSED'] || 0);
+    const recommendations: string[] = [];
+    if (riskLevel === 'high') recommendations.push('Loan portfolio is concentrated in a single currency');
+    if (activeCount > 5) recommendations.push('Multiple active loans — monitor debt-to-income ratio');
+    if (currencyBreakdown.length === 1) recommendations.push('All loans in one currency — consider diversification');
+
+    return {
+      totalLoans: loans.length,
+      riskLevel,
+      concentrationScore,
+      totalDebt: totalAmount.toString(),
+      activeLoans: activeCount,
+      currencyBreakdown,
+      statusBreakdown,
+      recommendations,
+    };
+  }
+
   private getDefaultRate(currency: string): number {
     const rates: Record<string, number> = {
       PEN: 0.18, USD: 0.12, EUR: 0.08, MXN: 0.22, BRL: 0.25,

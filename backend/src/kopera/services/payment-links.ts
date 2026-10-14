@@ -602,4 +602,74 @@ export class PaymentLinkService {
       recommendations,
     };
   }
+
+  async getPaymentLinkConversionFunnel(userId: string) {
+    const links = await this.prisma.paymentLink.findMany({ where: { userId } });
+
+    if (links.length === 0) {
+      return {
+        totalLinks: 0,
+        funnelHealth: 'no_data' as const,
+        conversionScore: 0,
+        stages: {},
+        recommendations: [],
+      };
+    }
+
+    const stages: Record<string, number> = {
+      created: links.length,
+      viewed: 0,
+      started: 0,
+      completed: 0,
+      expired: 0,
+    };
+
+    for (const link of links) {
+      const status = link.status?.toLowerCase() || '';
+      const useCount = (link as any).useCount || 0;
+
+      if (useCount > 0 || status === 'completed' || status === 'paid' || status === 'active') {
+        stages.viewed++;
+      }
+      if (status === 'completed' || status === 'paid') {
+        stages.started++;
+        stages.completed++;
+      } else if (status === 'active' && useCount > 0) {
+        stages.started++;
+      }
+      if (status === 'expired') {
+        stages.expired++;
+      }
+    }
+
+    const conversionRate = links.length > 0
+      ? Math.round((stages.completed / links.length) * 100)
+      : 0;
+
+    const viewRate = links.length > 0
+      ? Math.round((stages.viewed / links.length) * 100)
+      : 0;
+
+    let conversionScore = conversionRate;
+    if (stages.expired > links.length * 0.3) conversionScore -= 20;
+    if (viewRate < 50) conversionScore -= 15;
+    conversionScore = Math.max(0, Math.min(100, conversionScore));
+
+    const funnelHealth = conversionScore >= 60 ? 'healthy' : conversionScore >= 30 ? 'needs_improvement' : 'poor';
+
+    const recommendations: string[] = [];
+    if (conversionRate < 30) recommendations.push('Low conversion rate — optimize payment link presentation');
+    if (stages.expired > 3) recommendations.push('Many expired links — consider longer expiry periods');
+    if (viewRate < 50) recommendations.push('Low view rate — improve link distribution');
+
+    return {
+      totalLinks: links.length,
+      funnelHealth,
+      conversionScore,
+      conversionRate,
+      viewRate,
+      stages,
+      recommendations,
+    };
+  }
 }
