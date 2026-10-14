@@ -175,6 +175,11 @@ export async function registerTransactionRoutes(app: FastifyInstance, prisma: Pr
     return svc.getTransactionAnomalyDetection(req.auth!.userId, query.currency);
   });
 
+  app.get('/api/transaction-history/correlation-analysis', { preHandler: [app.requireAuth] }, async (req) => {
+    const query = req.query as { currency?: string };
+    return svc.getTransactionCorrelationAnalysis(req.auth!.userId, query.currency);
+  });
+
   app.get('/api/transaction-history/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const txn = await svc.getTransaction(id, req.auth!.userId);

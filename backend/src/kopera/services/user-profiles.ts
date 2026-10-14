@@ -367,4 +367,55 @@ export class UserProfileService {
       missingFields: missing,
     };
   }
+
+  async getProfileRiskIndicators(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new Error('user_not_found');
+
+    const indicators: { indicator: string; severity: 'high' | 'medium' | 'low'; detail: string }[] = [];
+
+    if (!(user as any).mfaEnabled) {
+      indicators.push({ indicator: 'no_mfa', severity: 'high', detail: 'Multi-factor authentication is not enabled' });
+    }
+
+    if (!(user as any).emailVerified && !(user as any).email) {
+      indicators.push({ indicator: 'no_verified_email', severity: 'high', detail: 'No verified email address on file' });
+    }
+
+    if (!(user as any).pinHash) {
+      indicators.push({ indicator: 'no_pin', severity: 'medium', detail: 'Transaction PIN is not set' });
+    }
+
+    const accountAge = Date.now() - new Date(user.createdAt).getTime();
+    if (accountAge < 7 * 86400000) {
+      indicators.push({ indicator: 'new_account', severity: 'low', detail: 'Account is less than 7 days old' });
+    }
+
+    if ((user as any).status === 'suspended' || (user as any).status === 'deactivated') {
+      indicators.push({ indicator: 'account_inactive', severity: 'high', detail: `Account status is ${(user as any).status}` });
+    }
+
+    if (!(user as any).firstName && !(user as any).lastName) {
+      indicators.push({ indicator: 'incomplete_identity', severity: 'medium', detail: 'Name information is missing' });
+    }
+
+    const highCount = indicators.filter(i => i.severity === 'high').length;
+    const mediumCount = indicators.filter(i => i.severity === 'medium').length;
+    const riskScore = Math.min(100, highCount * 30 + mediumCount * 15);
+    const riskLevel = riskScore >= 60 ? 'high' : riskScore >= 30 ? 'medium' : 'low';
+
+    const recommendations: string[] = [];
+    if (highCount > 0) recommendations.push('Address high-severity indicators immediately');
+    if (indicators.some(i => i.indicator === 'no_mfa')) recommendations.push('Enable MFA for account security');
+    if (indicators.some(i => i.indicator === 'no_pin')) recommendations.push('Set a transaction PIN for payment authorization');
+
+    return {
+      userId,
+      totalIndicators: indicators.length,
+      riskScore,
+      riskLevel,
+      indicators,
+      recommendations,
+    };
+  }
 }
