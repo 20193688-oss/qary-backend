@@ -580,4 +580,66 @@ export class SavingsGoalService {
       goals: goalDetails,
     };
   }
+
+  async getSavingsGoalCorrelation(userId: string) {
+    const goals = await this.prisma.savingsGoal.findMany({ where: { userId } });
+    if (goals.length === 0) {
+      return {
+        totalGoals: 0,
+        activeGoals: 0,
+        completedGoals: 0,
+        avgProgress: 0,
+        totalSaved: '0',
+        totalTarget: '0',
+        overallProgress: 0,
+        goalPairs: [],
+      };
+    }
+
+    const active = goals.filter((g: any) => g.status === 'active');
+    const completed = goals.filter((g: any) => g.status === 'completed');
+
+    let totalSaved = BigInt(0);
+    let totalTarget = BigInt(0);
+    const progresses: number[] = [];
+
+    for (const g of goals) {
+      const current = BigInt((g as any).currentAmount || 0);
+      const target = BigInt((g as any).targetAmount || 1);
+      totalSaved += current;
+      totalTarget += target;
+      const pct = target > 0 ? Number((current * BigInt(10000)) / target) / 100 : 0;
+      progresses.push(pct);
+    }
+
+    const avgProgress = progresses.length > 0
+      ? Number((progresses.reduce((a, b) => a + b, 0) / progresses.length).toFixed(2))
+      : 0;
+
+    const overallProgress = totalTarget > 0
+      ? Number((totalSaved * BigInt(10000) / totalTarget)) / 100
+      : 0;
+
+    const goalPairs: { goal1: string; goal2: string; progressDiff: number }[] = [];
+    for (let i = 0; i < Math.min(goals.length, 10); i++) {
+      for (let j = i + 1; j < Math.min(goals.length, 10); j++) {
+        goalPairs.push({
+          goal1: (goals[i] as any).name || goals[i]!.id,
+          goal2: (goals[j] as any).name || goals[j]!.id,
+          progressDiff: Number(Math.abs(progresses[i]! - progresses[j]!).toFixed(2)),
+        });
+      }
+    }
+
+    return {
+      totalGoals: goals.length,
+      activeGoals: active.length,
+      completedGoals: completed.length,
+      avgProgress,
+      totalSaved: totalSaved.toString(),
+      totalTarget: totalTarget.toString(),
+      overallProgress: Number(overallProgress.toFixed(2)),
+      goalPairs,
+    };
+  }
 }

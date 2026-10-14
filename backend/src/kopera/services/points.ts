@@ -514,6 +514,80 @@ export class PointsService {
     };
   }
 
+  async getPointsSeasonalityAnalysis(userId: string) {
+    const points = await this.prisma.koperaPoints.findFirst({ where: { userId } });
+    if (!points) {
+      return {
+        totalTransactions: 0,
+        byMonth: [],
+        peakEarningMonth: null,
+        peakRedemptionMonth: null,
+        seasonalTrend: 'insufficient_data',
+      };
+    }
+
+    const history = await this.prisma.pointsHistory.findMany({
+      where: { pointsId: points.id },
+    });
+
+    if (history.length === 0) {
+      return {
+        totalTransactions: 0,
+        byMonth: [],
+        peakEarningMonth: null,
+        peakRedemptionMonth: null,
+        seasonalTrend: 'insufficient_data',
+      };
+    }
+
+    const monthMap = new Map<number, { earned: number; redeemed: number; count: number }>();
+    for (const h of history) {
+      const month = new Date(h.createdAt).getMonth();
+      const entry = monthMap.get(month) || { earned: 0, redeemed: 0, count: 0 };
+      entry.count++;
+      const amt = Number((h as any).amount || 0);
+      if ((h as any).type === 'EARN') {
+        entry.earned += amt;
+      } else {
+        entry.redeemed += Math.abs(amt);
+      }
+      monthMap.set(month, entry);
+    }
+
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const byMonth = Array.from(monthMap.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([m, data]) => ({
+        month: months[m],
+        monthIndex: m,
+        earned: data.earned,
+        redeemed: data.redeemed,
+        net: data.earned - data.redeemed,
+        transactionCount: data.count,
+      }));
+
+    let peakEarningMonth: string | null = null;
+    let maxEarned = 0;
+    let peakRedemptionMonth: string | null = null;
+    let maxRedeemed = 0;
+
+    for (const b of byMonth) {
+      if (b.earned > maxEarned) { maxEarned = b.earned; peakEarningMonth = b.month!; }
+      if (b.redeemed > maxRedeemed) { maxRedeemed = b.redeemed; peakRedemptionMonth = b.month!; }
+    }
+
+    const totalNet = byMonth.reduce((s, b) => s + b.net, 0);
+    const seasonalTrend = totalNet > 0 ? 'earning_dominant' : totalNet < 0 ? 'redemption_dominant' : 'balanced';
+
+    return {
+      totalTransactions: history.length,
+      byMonth,
+      peakEarningMonth,
+      peakRedemptionMonth,
+      seasonalTrend,
+    };
+  }
+
   private getPrevTierThreshold(tier: string): number {
     const prev = this.getPrevTier(tier);
     if (!prev) return 0;

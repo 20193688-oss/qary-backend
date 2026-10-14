@@ -538,4 +538,70 @@ export class ReferralService {
       retentionTrend,
     };
   }
+
+  async getReferralChainDepth(userId: string) {
+    const referral = await this.prisma.referral.findFirst({ where: { userId } });
+    if (!referral) {
+      return {
+        hasReferralCode: false,
+        totalSignups: 0,
+        chainDepth: 0,
+        signupsByStatus: [],
+        avgSignupsPerDay: 0,
+        conversionFunnel: { signed_up: 0, rewarded: 0, rate: 0 },
+      };
+    }
+
+    const signups = await this.prisma.referralSignup.findMany({
+      where: { referralId: referral.id },
+    });
+
+    if (signups.length === 0) {
+      return {
+        hasReferralCode: true,
+        totalSignups: 0,
+        chainDepth: 0,
+        signupsByStatus: [],
+        avgSignupsPerDay: 0,
+        conversionFunnel: { signed_up: 0, rewarded: 0, rate: 0 },
+      };
+    }
+
+    const statusMap = new Map<string, number>();
+    for (const s of signups) {
+      const st = (s as any).status || 'signed_up';
+      statusMap.set(st, (statusMap.get(st) || 0) + 1);
+    }
+
+    const signedUp = signups.length;
+    const rewarded = signups.filter((s: any) => s.rewardedAt !== null).length;
+
+    const sorted = [...signups].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    const firstDate = new Date(sorted[0]!.createdAt).getTime();
+    const lastDate = new Date(sorted[sorted.length - 1]!.createdAt).getTime();
+    const daySpan = Math.max(1, (lastDate - firstDate) / 86400000);
+    const avgSignupsPerDay = Number((signups.length / daySpan).toFixed(4));
+
+    let chainDepth = 1;
+    for (const s of signups) {
+      const childReferral = await this.prisma.referral.findFirst({ where: { userId: (s as any).referredUserId } });
+      if (childReferral) {
+        const childSignups = await this.prisma.referralSignup.findMany({ where: { referralId: childReferral.id } });
+        if (childSignups.length > 0) chainDepth = Math.max(chainDepth, 2);
+      }
+    }
+
+    return {
+      hasReferralCode: true,
+      totalSignups: signups.length,
+      chainDepth,
+      signupsByStatus: Array.from(statusMap.entries()).map(([status, count]) => ({ status, count })),
+      avgSignupsPerDay,
+      conversionFunnel: {
+        signed_up: signedUp,
+        rewarded,
+        rate: Number((rewarded / signedUp).toFixed(4)),
+      },
+    };
+  }
 }

@@ -428,4 +428,56 @@ export class PaymentLinkService {
       data: { status: 'deactivated' },
     });
   }
+
+  async getPaymentLinkAbandonmentAnalysis(userId: string) {
+    const links = await this.prisma.paymentLink.findMany({ where: { userId } });
+    if (links.length === 0) {
+      return {
+        totalLinks: 0,
+        abandonedCount: 0,
+        abandonmentRate: 0,
+        usedCount: 0,
+        avgTimesToUsed: '0',
+        byStatus: [],
+        abandonedValue: '0',
+      };
+    }
+
+    const abandoned = links.filter((l: any) => l.timesUsed === 0 && l.status !== 'deactivated');
+    const used = links.filter((l: any) => l.timesUsed > 0);
+    const deactivated = links.filter((l: any) => l.status === 'deactivated');
+
+    const statusMap = new Map<string, number>();
+    for (const l of links) {
+      const s = (l as any).status || 'unknown';
+      statusMap.set(s, (statusMap.get(s) || 0) + 1);
+    }
+
+    let abandonedValue = BigInt(0);
+    for (const l of abandoned) {
+      abandonedValue += BigInt((l as any).amount || 0);
+    }
+
+    const usageTimes: number[] = [];
+    for (const l of used) {
+      if ((l as any).lastUsedAt && l.createdAt) {
+        const diff = new Date((l as any).lastUsedAt).getTime() - new Date(l.createdAt).getTime();
+        if (diff > 0) usageTimes.push(diff);
+      }
+    }
+    const avgTimeToUsed = usageTimes.length > 0
+      ? Math.round(usageTimes.reduce((a, b) => a + b, 0) / usageTimes.length / 3600000)
+      : 0;
+
+    return {
+      totalLinks: links.length,
+      abandonedCount: abandoned.length,
+      abandonmentRate: Number((abandoned.length / links.length).toFixed(4)),
+      usedCount: used.length,
+      deactivatedCount: deactivated.length,
+      avgTimeToUsedHours: avgTimeToUsed,
+      byStatus: Array.from(statusMap.entries()).map(([status, count]) => ({ status, count })),
+      abandonedValue: abandonedValue.toString(),
+    };
+  }
 }
