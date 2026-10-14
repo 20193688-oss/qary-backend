@@ -455,4 +455,64 @@ export class BankAccountService {
       recommendation,
     };
   }
+
+  async getAccountUtilizationReport(userId: string) {
+    const accounts = await this.prisma.bankAccount.findMany({ where: { userId } });
+    if (accounts.length === 0) {
+      return {
+        totalAccounts: 0,
+        activelyUsed: 0,
+        underutilized: 0,
+        dormant: 0,
+        utilizationRate: 0,
+        byAccount: [],
+      };
+    }
+
+    const now = Date.now();
+    const thirtyDaysAgo = now - 30 * 86400000;
+    const ninetyDaysAgo = now - 90 * 86400000;
+
+    const byAccount: { accountId: string; bankName: string; currency: string; status: string; utilizationLevel: string }[] = [];
+    let activelyUsed = 0;
+    let underutilized = 0;
+    let dormant = 0;
+
+    for (const acct of accounts) {
+      const lastActivity = (acct as any).updatedAt || acct.createdAt;
+      const lastMs = new Date(lastActivity).getTime();
+      const verified = (acct as any).verified || (acct as any).status === 'verified';
+
+      let utilizationLevel: string;
+      if (lastMs >= thirtyDaysAgo && verified) {
+        utilizationLevel = 'active';
+        activelyUsed++;
+      } else if (lastMs >= ninetyDaysAgo) {
+        utilizationLevel = 'underutilized';
+        underutilized++;
+      } else {
+        utilizationLevel = 'dormant';
+        dormant++;
+      }
+
+      byAccount.push({
+        accountId: acct.id,
+        bankName: (acct as any).bankName || 'Unknown',
+        currency: (acct as any).currency || 'USD',
+        status: (acct as any).status || (verified ? 'verified' : 'unverified'),
+        utilizationLevel,
+      });
+    }
+
+    const utilizationRate = Math.round((activelyUsed / accounts.length) * 10000) / 100;
+
+    return {
+      totalAccounts: accounts.length,
+      activelyUsed,
+      underutilized,
+      dormant,
+      utilizationRate,
+      byAccount,
+    };
+  }
 }

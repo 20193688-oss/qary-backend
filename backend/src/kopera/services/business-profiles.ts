@@ -383,6 +383,68 @@ export class BusinessProfileService {
     };
   }
 
+  async getDocumentExpiryTracker(userId: string) {
+    const profile = await this.prisma.businessProfile.findUnique({ where: { userId } });
+    if (!profile) throw new Error('profile_not_found');
+
+    const now = Date.now();
+    const fields: { name: string; field: string }[] = [
+      { name: 'Business Registration', field: 'registrationExpiry' },
+      { name: 'Tax Certificate', field: 'taxCertExpiry' },
+      { name: 'License', field: 'licenseExpiry' },
+      { name: 'Insurance', field: 'insuranceExpiry' },
+      { name: 'Compliance Certificate', field: 'complianceExpiry' },
+    ];
+
+    const documents: { name: string; expiryDate: Date | null; status: string; daysUntilExpiry: number | null }[] = [];
+    let expiredCount = 0;
+    let expiringCount = 0;
+    let validCount = 0;
+    let unknownCount = 0;
+
+    for (const f of fields) {
+      const expiry = (profile as any)[f.field];
+      if (!expiry) {
+        documents.push({ name: f.name, expiryDate: null, status: 'unknown', daysUntilExpiry: null });
+        unknownCount++;
+        continue;
+      }
+
+      const expiryDate = new Date(expiry);
+      const daysUntil = Math.round((expiryDate.getTime() - now) / 86400000);
+
+      let status: string;
+      if (daysUntil < 0) {
+        status = 'expired';
+        expiredCount++;
+      } else if (daysUntil <= 30) {
+        status = 'expiring_soon';
+        expiringCount++;
+      } else {
+        status = 'valid';
+        validCount++;
+      }
+
+      documents.push({ name: f.name, expiryDate, status, daysUntilExpiry: daysUntil });
+    }
+
+    const urgency = expiredCount > 0 ? 'critical'
+      : expiringCount > 0 ? 'warning'
+      : 'good';
+
+    return {
+      userId,
+      businessName: (profile as any).businessName || (profile as any).companyName || null,
+      totalDocuments: fields.length,
+      validCount,
+      expiringCount,
+      expiredCount,
+      unknownCount,
+      urgency,
+      documents,
+    };
+  }
+
   async reject(userId: string, reason: string) {
     const profile = await this.prisma.businessProfile.findUnique({ where: { userId } });
     if (!profile) throw new Error('profile_not_found');

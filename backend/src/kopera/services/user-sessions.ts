@@ -464,4 +464,65 @@ export class UserSessionService {
       flaggedSessions: flaggedSessions.slice(0, 10),
     };
   }
+
+  async getSessionDeviceFingerprinting(userId: string) {
+    const sessions = await this.prisma.userSession.findMany({ where: { userId } });
+    if (sessions.length === 0) {
+      return {
+        totalSessions: 0,
+        uniqueDevices: 0,
+        uniqueIPs: 0,
+        deviceBreakdown: [],
+        ipBreakdown: [],
+        sharingRisk: 'none',
+      };
+    }
+
+    const deviceMap = new Map<string, { count: number; lastSeen: Date; ips: Set<string> }>();
+    const ipMap = new Map<string, { count: number; lastSeen: Date; devices: Set<string> }>();
+
+    for (const s of sessions) {
+      const device = (s as any).userAgent || (s as any).deviceName || 'unknown';
+      const ip = s.ip || 'unknown';
+
+      if (!deviceMap.has(device)) {
+        deviceMap.set(device, { count: 0, lastSeen: s.createdAt, ips: new Set() });
+      }
+      const dEntry = deviceMap.get(device)!;
+      dEntry.count++;
+      if (s.createdAt > dEntry.lastSeen) dEntry.lastSeen = s.createdAt;
+      dEntry.ips.add(ip);
+
+      if (!ipMap.has(ip)) {
+        ipMap.set(ip, { count: 0, lastSeen: s.createdAt, devices: new Set() });
+      }
+      const iEntry = ipMap.get(ip)!;
+      iEntry.count++;
+      if (s.createdAt > iEntry.lastSeen) iEntry.lastSeen = s.createdAt;
+      iEntry.devices.add(device);
+    }
+
+    const deviceBreakdown = Array.from(deviceMap.entries())
+      .map(([device, d]) => ({ device, sessionCount: d.count, uniqueIPs: d.ips.size, lastSeen: d.lastSeen }))
+      .sort((a, b) => b.sessionCount - a.sessionCount);
+
+    const ipBreakdown = Array.from(ipMap.entries())
+      .map(([ip, d]) => ({ ip, sessionCount: d.count, uniqueDevices: d.devices.size, lastSeen: d.lastSeen }))
+      .sort((a, b) => b.sessionCount - a.sessionCount);
+
+    const maxDevicesPerIp = Math.max(...ipBreakdown.map(i => i.uniqueDevices));
+    const sharingRisk = maxDevicesPerIp >= 5 ? 'high'
+      : maxDevicesPerIp >= 3 ? 'moderate'
+      : maxDevicesPerIp >= 2 ? 'low'
+      : 'none';
+
+    return {
+      totalSessions: sessions.length,
+      uniqueDevices: deviceMap.size,
+      uniqueIPs: ipMap.size,
+      deviceBreakdown: deviceBreakdown.slice(0, 10),
+      ipBreakdown: ipBreakdown.slice(0, 10),
+      sharingRisk,
+    };
+  }
 }

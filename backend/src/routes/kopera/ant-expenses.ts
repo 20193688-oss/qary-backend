@@ -147,6 +147,10 @@ export async function registerAntExpenseRoutes(app: FastifyInstance, prisma: Pri
     return svc.getSeasonalPattern(req.auth!.userId);
   });
 
+  app.get('/api/ant-expenses/recurring-detection', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getRecurringExpenseDetection(req.auth!.userId);
+  });
+
   app.get('/api/ant-expenses/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const expense = await svc.getById(id);

@@ -79,6 +79,10 @@ export async function registerUserSessionRoutes(app: FastifyInstance, prisma: Pr
     return svc.getSessionAnomalyDetection(req.auth!.userId);
   });
 
+  app.get('/api/sessions/device-fingerprinting', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getSessionDeviceFingerprinting(req.auth!.userId);
+  });
+
   app.get('/api/sessions/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const session = await svc.getSession(id, req.auth!.userId);

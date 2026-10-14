@@ -366,4 +366,80 @@ export class BeneficiaryService {
       recommendation,
     };
   }
+
+  async getBeneficiaryTrustScore(userId: string) {
+    const beneficiaries = await this.prisma.beneficiary.findMany({ where: { userId } });
+    if (beneficiaries.length === 0) {
+      return {
+        totalBeneficiaries: 0,
+        avgTrustScore: 0,
+        highTrust: 0,
+        mediumTrust: 0,
+        lowTrust: 0,
+        scores: [],
+      };
+    }
+
+    const now = Date.now();
+    const scores: { beneficiaryId: string; name: string; trustScore: number; trustLevel: string; factors: string[] }[] = [];
+
+    for (const b of beneficiaries) {
+      let score = 0;
+      const factors: string[] = [];
+
+      const ageDays = (now - new Date(b.createdAt).getTime()) / 86400000;
+      if (ageDays > 365) { score += 30; factors.push('long_standing'); }
+      else if (ageDays > 90) { score += 20; factors.push('established'); }
+      else if (ageDays > 30) { score += 10; factors.push('recent'); }
+      else { score += 5; factors.push('new'); }
+
+      if ((b as any).verified || (b as any).status === 'verified') {
+        score += 25;
+        factors.push('verified');
+      }
+
+      if ((b as any).bankAccountNumber || (b as any).accountNumber) {
+        score += 15;
+        factors.push('has_account_details');
+      }
+
+      if ((b as any).lastTransferAt) {
+        const daysSinceTransfer = (now - new Date((b as any).lastTransferAt).getTime()) / 86400000;
+        if (daysSinceTransfer < 30) { score += 20; factors.push('recently_used'); }
+        else if (daysSinceTransfer < 90) { score += 10; factors.push('used_recently'); }
+      }
+
+      if ((b as any).email || (b as any).phone) {
+        score += 10;
+        factors.push('has_contact_info');
+      }
+
+      score = Math.min(100, score);
+      const trustLevel = score >= 70 ? 'high' : score >= 40 ? 'medium' : 'low';
+
+      scores.push({
+        beneficiaryId: b.id,
+        name: (b as any).name || (b as any).nickName || 'Unknown',
+        trustScore: score,
+        trustLevel,
+        factors,
+      });
+    }
+
+    scores.sort((a, b) => b.trustScore - a.trustScore);
+
+    const avgTrustScore = Math.round(scores.reduce((s, sc) => s + sc.trustScore, 0) / scores.length);
+    const highTrust = scores.filter(s => s.trustLevel === 'high').length;
+    const mediumTrust = scores.filter(s => s.trustLevel === 'medium').length;
+    const lowTrust = scores.filter(s => s.trustLevel === 'low').length;
+
+    return {
+      totalBeneficiaries: beneficiaries.length,
+      avgTrustScore,
+      highTrust,
+      mediumTrust,
+      lowTrust,
+      scores,
+    };
+  }
 }
