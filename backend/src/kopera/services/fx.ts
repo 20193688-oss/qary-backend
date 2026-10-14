@@ -409,6 +409,72 @@ export class FxService {
     };
   }
 
+  async getRateVolatilityReport(userId: string) {
+    const conversions = await this.prisma.transaction.findMany({
+      where: { userId, type: 'FX_CONVERSION', status: 'COMPLETED' },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (conversions.length === 0) {
+      return {
+        totalConversions: 0,
+        pairs: [],
+        mostVolatile: null,
+        mostStable: null,
+        overallVolatility: 'none' as const,
+      };
+    }
+
+    const pairMap = new Map<string, { amounts: bigint[]; dates: Date[] }>();
+    for (const c of conversions) {
+      const pair = (c as any).fxPair ?? `${c.currency}-USD`;
+      const entry = pairMap.get(pair) ?? { amounts: [], dates: [] };
+      entry.amounts.push(c.amount);
+      entry.dates.push(new Date(c.createdAt));
+      pairMap.set(pair, entry);
+    }
+
+    const pairs = Array.from(pairMap.entries()).map(([pair, data]) => {
+      const amounts = data.amounts.map((a) => Number(a));
+      const avg = amounts.reduce((s, a) => s + a, 0) / amounts.length;
+      const variance = amounts.reduce((s, a) => s + (a - avg) ** 2, 0) / amounts.length;
+      const stdDev = Math.sqrt(variance);
+      const cv = avg > 0 ? Math.round((stdDev / avg) * 10000) / 100 : 0;
+      const min = Math.min(...amounts);
+      const max = Math.max(...amounts);
+      const range = max - min;
+
+      let volatility: 'high' | 'medium' | 'low' = 'low';
+      if (cv > 50) volatility = 'high';
+      else if (cv > 20) volatility = 'medium';
+
+      return {
+        pair,
+        conversions: data.amounts.length,
+        avgAmount: Math.round(avg).toString(),
+        minAmount: BigInt(min).toString(),
+        maxAmount: BigInt(max).toString(),
+        range: BigInt(range).toString(),
+        coefficientOfVariation: cv,
+        volatility,
+      };
+    }).sort((a, b) => b.coefficientOfVariation - a.coefficientOfVariation);
+
+    const mostVolatile = pairs[0]?.pair ?? null;
+    const mostStable = pairs[pairs.length - 1]?.pair ?? null;
+
+    const avgCV = pairs.reduce((s, p) => s + p.coefficientOfVariation, 0) / pairs.length;
+    const overallVolatility = avgCV > 50 ? 'high' as const : avgCV > 20 ? 'medium' as const : 'low' as const;
+
+    return {
+      totalConversions: conversions.length,
+      pairs,
+      mostVolatile,
+      mostStable,
+      overallVolatility,
+    };
+  }
+
   async storeRate(baseCurrency: string, quoteCurrency: string, bid: number, ask: number, source: string) {
     const mid = (bid + ask) / 2;
     const spread = ask - bid;
