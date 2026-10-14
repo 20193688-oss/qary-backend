@@ -776,6 +776,64 @@ export class LoanService {
     };
   }
 
+  async getLoanAffordabilityCheck(userId: string) {
+    const loans = await this.prisma.loan.findMany({ where: { userId } });
+    if (loans.length === 0) {
+      return {
+        totalLoans: 0,
+        totalMonthlyPayment: '0',
+        totalDebt: '0',
+        affordabilityScore: 100,
+        affordabilityLevel: 'no_data',
+        recommendations: [],
+      };
+    }
+
+    let totalDebt = BigInt(0);
+    let totalMonthlyPayment = BigInt(0);
+    let activeCount = 0;
+
+    for (const loan of loans) {
+      const status = ((loan as any).status || '').toLowerCase();
+      if (status === 'active' || status === 'disbursed' || status === 'approved') {
+        activeCount++;
+        const principal = (loan as any).principalAmount ?? (loan as any).amount ?? BigInt(0);
+        const remaining = (loan as any).remainingAmount ?? principal;
+        totalDebt += remaining;
+
+        const term = (loan as any).termMonths ?? 12;
+        const monthlyPayment = remaining / BigInt(Math.max(1, term));
+        totalMonthlyPayment += monthlyPayment;
+      }
+    }
+
+    let affordabilityScore = 100;
+    if (activeCount > 3) affordabilityScore -= 25;
+    else if (activeCount > 1) affordabilityScore -= 10;
+    if (Number(totalDebt) > 10000000) affordabilityScore -= 30;
+    else if (Number(totalDebt) > 1000000) affordabilityScore -= 15;
+    if (Number(totalMonthlyPayment) > 500000) affordabilityScore -= 20;
+    affordabilityScore = Math.max(0, affordabilityScore);
+
+    const affordabilityLevel = affordabilityScore >= 70 ? 'comfortable'
+      : affordabilityScore >= 40 ? 'stretched' : 'overextended';
+
+    const recommendations: string[] = [];
+    if (activeCount > 3) recommendations.push('Consider consolidating multiple loans to simplify payments');
+    if (affordabilityLevel === 'overextended') recommendations.push('Review spending and consider debt restructuring');
+    if (affordabilityLevel === 'stretched') recommendations.push('Avoid taking on additional debt until current loans are reduced');
+
+    return {
+      totalLoans: loans.length,
+      activeLoans: activeCount,
+      totalMonthlyPayment: totalMonthlyPayment.toString(),
+      totalDebt: totalDebt.toString(),
+      affordabilityScore,
+      affordabilityLevel,
+      recommendations,
+    };
+  }
+
   private getDefaultRate(currency: string): number {
     const rates: Record<string, number> = {
       PEN: 0.18, USD: 0.12, EUR: 0.08, MXN: 0.22, BRL: 0.25,

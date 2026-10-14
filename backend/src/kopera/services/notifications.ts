@@ -592,6 +592,71 @@ export class NotificationService {
     };
   }
 
+  async getNotificationResponseMetrics(userId: string) {
+    const notifications = await this.prisma.notification.findMany({ where: { userId } });
+    if (notifications.length === 0) {
+      return {
+        totalNotifications: 0,
+        readCount: 0,
+        unreadCount: 0,
+        readRate: 0,
+        avgResponseMinutes: 0,
+        responseLevel: 'no_data',
+        byChannel: [],
+        recommendations: [],
+      };
+    }
+
+    let readCount = 0;
+    let totalResponseMs = 0;
+    const byChannel: Record<string, { total: number; read: number }> = {};
+
+    for (const n of notifications) {
+      const channel = (n as any).channel || (n as any).type || 'default';
+      if (!byChannel[channel]) byChannel[channel] = { total: 0, read: 0 };
+      byChannel[channel].total++;
+
+      if ((n as any).readAt) {
+        readCount++;
+        byChannel[channel].read++;
+        const responseTime = new Date((n as any).readAt).getTime() - new Date(n.createdAt).getTime();
+        totalResponseMs += Math.max(0, responseTime);
+      }
+    }
+
+    const unreadCount = notifications.length - readCount;
+    const readRate = Math.round((readCount / notifications.length) * 10000) / 100;
+    const avgResponseMinutes = readCount > 0 ? Math.round(totalResponseMs / readCount / 60000) : 0;
+
+    const responseLevel = readRate >= 80 ? 'responsive'
+      : readRate >= 50 ? 'moderate' : readRate > 0 ? 'low' : 'unresponsive';
+
+    const channelBreakdown = Object.entries(byChannel)
+      .map(([channel, data]) => ({
+        channel,
+        total: data.total,
+        read: data.read,
+        readRate: Math.round((data.read / data.total) * 10000) / 100,
+      }))
+      .sort((a, b) => b.total - a.total);
+
+    const recommendations: string[] = [];
+    if (readRate < 50) recommendations.push('Review notification preferences to reduce noise');
+    if (unreadCount > 20) recommendations.push('Clear unread notifications backlog');
+    if (avgResponseMinutes > 1440) recommendations.push('Enable push notifications for faster response');
+
+    return {
+      totalNotifications: notifications.length,
+      readCount,
+      unreadCount,
+      readRate,
+      avgResponseMinutes,
+      responseLevel,
+      byChannel: channelBreakdown,
+      recommendations,
+    };
+  }
+
   async delete(id: string, userId: string) {
     const n = await this.prisma.notification.findUnique({ where: { id } });
     if (!n) throw new Error('notification_not_found');

@@ -369,4 +369,13 @@ export async function registerKycRoutes(app: FastifyInstance, prisma: PrismaClie
       verifiedAt: biz.verifiedAt,
     };
   });
+
+  app.get('/api/kyc/document-integrity', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    try {
+      return await kyc.getKycDocumentIntegrity(req.auth!.userId);
+    } catch (e: any) {
+      if (e.message === 'kyc_not_found') return reply.code(404).send({ error: e.message });
+      throw e;
+    }
+  });
 }

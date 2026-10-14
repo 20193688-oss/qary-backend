@@ -592,4 +592,48 @@ export class KycService {
       timeline: events,
     };
   }
+
+  async getKycDocumentIntegrity(userId: string) {
+    const kyc = await this.prisma.kycProfile.findUnique({ where: { userId } });
+    if (!kyc) throw new Error('kyc_not_found');
+
+    const checks: Array<{ field: string; status: string; severity: string }> = [];
+
+    const hasDoc = !!(kyc as any).documentFrontUrl;
+    checks.push({ field: 'document_front', status: hasDoc ? 'present' : 'missing', severity: hasDoc ? 'ok' : 'high' });
+
+    const hasBack = !!(kyc as any).documentBackUrl;
+    checks.push({ field: 'document_back', status: hasBack ? 'present' : 'missing', severity: hasBack ? 'ok' : 'medium' });
+
+    const hasSelfie = !!(kyc as any).selfieUrl;
+    checks.push({ field: 'selfie', status: hasSelfie ? 'present' : 'missing', severity: hasSelfie ? 'ok' : 'high' });
+
+    const hasDocType = !!(kyc as any).documentType;
+    checks.push({ field: 'document_type', status: hasDocType ? 'present' : 'missing', severity: hasDocType ? 'ok' : 'medium' });
+
+    const hasDocNumber = !!(kyc as any).documentNumber;
+    checks.push({ field: 'document_number', status: hasDocNumber ? 'present' : 'missing', severity: hasDocNumber ? 'ok' : 'high' });
+
+    const passedChecks = checks.filter(c => c.severity === 'ok').length;
+    const integrityScore = Math.round((passedChecks / checks.length) * 100);
+
+    const highIssues = checks.filter(c => c.severity === 'high').length;
+    const mediumIssues = checks.filter(c => c.severity === 'medium').length;
+    const integrityLevel = highIssues > 0 ? 'incomplete' : mediumIssues > 0 ? 'partial' : 'complete';
+
+    const recommendations: string[] = [];
+    if (!hasDoc) recommendations.push('Upload front of identity document');
+    if (!hasSelfie) recommendations.push('Upload selfie for identity verification');
+    if (!hasDocNumber) recommendations.push('Provide document number');
+
+    return {
+      userId,
+      integrityScore,
+      integrityLevel,
+      totalChecks: checks.length,
+      passedChecks,
+      checks,
+      recommendations,
+    };
+  }
 }

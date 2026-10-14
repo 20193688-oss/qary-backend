@@ -88,6 +88,10 @@ export async function registerNotificationRoutes(app: FastifyInstance, prisma: P
     return notifications.getNotificationPriorityAnalysis(req.auth!.userId);
   });
 
+  app.get('/api/notifications/response-metrics', { preHandler: [app.requireAuth] }, async (req) => {
+    return notifications.getNotificationResponseMetrics(req.auth!.userId);
+  });
+
   app.get('/api/notifications/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const n = await notifications.getById(id);
