@@ -583,4 +583,52 @@ export class BusinessProfileService {
       data: { status: 'REJECTED', rejectedReason: reason },
     });
   }
+
+  async getBusinessRegulatoryReadiness(userId: string) {
+    const profile = await this.prisma.businessProfile.findUnique({ where: { userId } });
+    if (!profile) throw new Error('profile_not_found');
+
+    const checks: Array<{ check: string; passed: boolean; weight: number; detail: string }> = [];
+
+    const hasName = !!(profile as any).businessName;
+    checks.push({ check: 'business_name', passed: hasName, weight: 10, detail: hasName ? 'Registered' : 'Missing' });
+
+    const hasRegNumber = !!(profile as any).registrationNumber;
+    checks.push({ check: 'registration_number', passed: hasRegNumber, weight: 15, detail: hasRegNumber ? 'Provided' : 'Missing' });
+
+    const hasTaxId = !!(profile as any).taxId || !!(profile as any).taxNumber;
+    checks.push({ check: 'tax_identification', passed: hasTaxId, weight: 15, detail: hasTaxId ? 'Provided' : 'Missing' });
+
+    const hasAddress = !!(profile as any).address || !!(profile as any).businessAddress;
+    checks.push({ check: 'business_address', passed: hasAddress, weight: 10, detail: hasAddress ? 'Provided' : 'Missing' });
+
+    const isVerified = ((profile as any).status || '').toUpperCase() === 'VERIFIED';
+    checks.push({ check: 'verification_status', passed: isVerified, weight: 20, detail: isVerified ? 'Verified' : (profile as any).status || 'Pending' });
+
+    const hasScreening = !!(profile as any).screeningResult || !!(profile as any).riskScore;
+    checks.push({ check: 'screening_completed', passed: hasScreening, weight: 15, detail: hasScreening ? 'Completed' : 'Not done' });
+
+    const hasIndustry = !!(profile as any).industry || !!(profile as any).businessType;
+    checks.push({ check: 'industry_classification', passed: hasIndustry, weight: 15, detail: hasIndustry ? 'Classified' : 'Missing' });
+
+    const totalWeight = checks.reduce((s, c) => s + c.weight, 0);
+    const passedWeight = checks.filter(c => c.passed).reduce((s, c) => s + c.weight, 0);
+    const readinessScore = Math.round((passedWeight / totalWeight) * 100);
+    const readinessLevel = readinessScore >= 80 ? 'ready' : readinessScore >= 50 ? 'partial' : 'not_ready';
+
+    const recommendations: string[] = [];
+    for (const c of checks) {
+      if (!c.passed) recommendations.push(`Complete ${c.check.replace(/_/g, ' ')} (${c.weight}% of readiness)`);
+    }
+
+    return {
+      userId,
+      readinessScore,
+      readinessLevel,
+      checks,
+      passedChecks: checks.filter(c => c.passed).length,
+      totalChecks: checks.length,
+      recommendations,
+    };
+  }
 }

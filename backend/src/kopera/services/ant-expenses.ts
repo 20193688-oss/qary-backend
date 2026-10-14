@@ -616,4 +616,59 @@ export class AntExpenseService {
       recommendations,
     };
   }
+
+  async getExpenseCategoryMigration(userId: string) {
+    const expenses = await this.prisma.antExpense.findMany({ where: { userId } });
+    if (expenses.length === 0) {
+      return {
+        totalExpenses: 0,
+        categories: [],
+        migrationTrend: 'no_data',
+        stabilityScore: 0,
+        recommendations: [],
+      };
+    }
+
+    const categoryMap: Record<string, { count: number; total: bigint; earliest: Date; latest: Date }> = {};
+    for (const e of expenses) {
+      const cat = (e as any).category || 'uncategorized';
+      const amt = BigInt((e as any).amount ?? 0);
+      const date = new Date((e as any).createdAt || Date.now());
+      if (!categoryMap[cat]) {
+        categoryMap[cat] = { count: 0, total: BigInt(0), earliest: date, latest: date };
+      }
+      categoryMap[cat].count++;
+      categoryMap[cat].total += amt;
+      if (date < categoryMap[cat].earliest) categoryMap[cat].earliest = date;
+      if (date > categoryMap[cat].latest) categoryMap[cat].latest = date;
+    }
+
+    const categories = Object.entries(categoryMap).map(([name, data]) => ({
+      name,
+      count: data.count,
+      totalAmount: data.total.toString(),
+      sharePercent: Math.round((data.count / expenses.length) * 10000) / 100,
+      activeDays: Math.max(1, Math.round((data.latest.getTime() - data.earliest.getTime()) / 86400000)),
+    }));
+
+    categories.sort((a, b) => b.count - a.count);
+
+    const uniqueCategories = Object.keys(categoryMap).length;
+    const stabilityScore = Math.min(100, Math.round((1 / Math.max(1, uniqueCategories)) * 100 + (expenses.length > 5 ? 30 : 0) + (uniqueCategories <= 3 ? 20 : 0)));
+
+    const migrationTrend = uniqueCategories > 5 ? 'diversifying'
+      : uniqueCategories <= 2 ? 'concentrated' : 'stable';
+
+    const recommendations: string[] = [];
+    if (migrationTrend === 'diversifying') recommendations.push('Expenses are spread across many categories — consolidate where possible');
+    if (categories.length > 0 && categories[0].sharePercent > 60) recommendations.push(`${categories[0].name} dominates spending — review for optimization`);
+
+    return {
+      totalExpenses: expenses.length,
+      categories,
+      migrationTrend,
+      stabilityScore,
+      recommendations,
+    };
+  }
 }
