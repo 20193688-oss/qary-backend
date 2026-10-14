@@ -516,4 +516,68 @@ export class DisputeService {
       slaCompliance,
     };
   }
+
+  async getDisputeOutcomePredictor(userId: string) {
+    const disputes = await this.prisma.dispute.findMany({ where: { userId } });
+    if (disputes.length === 0) {
+      return {
+        totalDisputes: 0,
+        resolvedCount: 0,
+        winRate: 0,
+        avgResolutionDays: 0,
+        byCategory: [],
+        predictedOutcome: null,
+      };
+    }
+
+    const resolved = disputes.filter((d: any) => d.status === 'resolved' || d.status === 'closed' || d.status === 'won' || d.status === 'lost');
+    const won = resolved.filter((d: any) => d.status === 'won' || d.resolution === 'accepted' || d.resolution === 'refunded');
+    const winRate = resolved.length > 0 ? Math.round((won.length / resolved.length) * 10000) / 100 : 0;
+
+    const resolutionDays: number[] = [];
+    for (const d of resolved) {
+      const resolvedAt = (d as any).resolvedAt || (d as any).updatedAt;
+      if (resolvedAt) {
+        const days = (new Date(resolvedAt).getTime() - new Date(d.createdAt).getTime()) / 86400000;
+        resolutionDays.push(days);
+      }
+    }
+    const avgResolutionDays = resolutionDays.length > 0
+      ? Math.round((resolutionDays.reduce((s, d) => s + d, 0) / resolutionDays.length) * 10) / 10
+      : 0;
+
+    const categoryMap = new Map<string, { total: number; won: number; totalAmount: bigint }>();
+    for (const d of disputes) {
+      const cat = (d as any).category || (d as any).reason || 'uncategorized';
+      if (!categoryMap.has(cat)) categoryMap.set(cat, { total: 0, won: 0, totalAmount: BigInt(0) });
+      const entry = categoryMap.get(cat)!;
+      entry.total++;
+      if (d.status === 'won' || (d as any).resolution === 'accepted') entry.won++;
+      entry.totalAmount += (d as any).amount ?? BigInt(0);
+    }
+
+    const byCategory = Array.from(categoryMap.entries())
+      .map(([category, data]) => ({
+        category,
+        count: data.total,
+        winRate: data.total > 0 ? Math.round((data.won / data.total) * 10000) / 100 : 0,
+        totalAmount: data.totalAmount.toString(),
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    const pending = disputes.filter((d: any) => d.status === 'open' || d.status === 'pending' || d.status === 'under_review');
+    let predictedOutcome: string | null = null;
+    if (pending.length > 0) {
+      predictedOutcome = winRate >= 60 ? 'likely_favorable' : winRate >= 40 ? 'uncertain' : 'likely_unfavorable';
+    }
+
+    return {
+      totalDisputes: disputes.length,
+      resolvedCount: resolved.length,
+      winRate,
+      avgResolutionDays,
+      byCategory,
+      predictedOutcome,
+    };
+  }
 }

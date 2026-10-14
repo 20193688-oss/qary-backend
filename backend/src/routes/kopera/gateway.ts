@@ -170,6 +170,10 @@ export async function registerGatewayRoutes(app: FastifyInstance, prisma: Prisma
     return gateway.getFailureAnalysis(req.auth!.userId);
   });
 
+  app.get('/api/gateway/provider-benchmark', { preHandler: [app.requireAuth] }, async (req) => {
+    return gateway.getProviderPerformanceBenchmark(req.auth!.userId);
+  });
+
   app.get('/api/gateway/payments/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const gp = await gateway.findById(id);
