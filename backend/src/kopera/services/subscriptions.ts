@@ -957,4 +957,68 @@ export class SubscriptionService {
       recommendations,
     };
   }
+
+  async getSubscriptionRenewalForecast(userId: string) {
+    const subs = await this.prisma.subscription.findMany({ where: { userId } });
+
+    if (subs.length === 0) {
+      return {
+        totalSubscriptions: 0,
+        forecastScore: 0,
+        forecastLevel: 'no_data' as const,
+        breakdown: { renewable: 0, atRisk: 0, expired: 0 },
+        recommendations: [] as string[],
+      };
+    }
+
+    const now = Date.now();
+    let renewable = 0;
+    let atRisk = 0;
+    let expired = 0;
+    let totalMonthly = BigInt(0);
+
+    for (const s of subs) {
+      const status = (s as any).status;
+      const nextBilling = (s as any).nextBillingDate ? new Date((s as any).nextBillingDate).getTime() : null;
+      const amount = BigInt((s as any).amount ?? 0);
+
+      if (status === 'cancelled' || status === 'CANCELLED' || status === 'expired' || status === 'EXPIRED') {
+        expired++;
+      } else if (status === 'past_due' || status === 'PAST_DUE' || (nextBilling && nextBilling < now)) {
+        atRisk++;
+        totalMonthly += amount;
+      } else {
+        renewable++;
+        totalMonthly += amount;
+      }
+    }
+
+    const renewalRate = Math.round((renewable / subs.length) * 100);
+    const atRiskRate = Math.round((atRisk / subs.length) * 100);
+
+    let forecastScore = renewalRate;
+    if (atRiskRate > 30) forecastScore = Math.max(0, forecastScore - 25);
+    else if (atRiskRate > 10) forecastScore = Math.max(0, forecastScore - 10);
+    if (expired > subs.length * 0.5) forecastScore = Math.max(0, forecastScore - 20);
+    forecastScore = Math.max(0, Math.min(100, forecastScore));
+
+    const forecastLevel = forecastScore >= 70 ? 'healthy'
+      : forecastScore >= 40 ? 'caution' : 'at_risk';
+
+    const recommendations: string[] = [];
+    if (atRisk > 0) recommendations.push(`${atRisk} subscription(s) at risk — update payment methods`);
+    if (expired > 0) recommendations.push(`${expired} expired subscription(s) — consider reactivation`);
+    if (forecastLevel === 'healthy') recommendations.push('Subscription renewals are on track');
+
+    return {
+      totalSubscriptions: subs.length,
+      renewalRate,
+      atRiskRate,
+      forecastScore,
+      forecastLevel,
+      projectedMonthlyRevenue: totalMonthly.toString(),
+      breakdown: { renewable, atRisk, expired },
+      recommendations,
+    };
+  }
 }

@@ -862,4 +862,68 @@ export class SavingsGoalService {
       recommendations,
     };
   }
+
+  async getSavingsGoalMomentumTracker(userId: string) {
+    const goals = await this.prisma.savingsGoal.findMany({ where: { userId } });
+
+    if (goals.length === 0) {
+      return {
+        totalGoals: 0,
+        momentumScore: 0,
+        momentumLevel: 'no_data' as const,
+        breakdown: { accelerating: 0, steady: 0, stalled: 0 },
+        recommendations: [] as string[],
+      };
+    }
+
+    let accelerating = 0;
+    let steady = 0;
+    let stalled = 0;
+
+    for (const g of goals) {
+      const current = Number((g as any).currentAmount ?? 0);
+      const target = Number((g as any).targetAmount ?? 1);
+      const progress = target > 0 ? current / target : 0;
+      const createdAt = new Date((g as any).createdAt).getTime();
+      const daysSinceCreation = Math.max(1, (Date.now() - createdAt) / 86400000);
+      const dailyRate = progress / daysSinceCreation;
+
+      if (dailyRate > 0.01) accelerating++;
+      else if (dailyRate > 0.002) steady++;
+      else stalled++;
+    }
+
+    let momentumScore = 0;
+    const acceleratingRate = Math.round((accelerating / goals.length) * 100);
+    if (acceleratingRate >= 60) momentumScore += 40;
+    else if (acceleratingRate >= 30) momentumScore += 20;
+    const stalledRate = Math.round((stalled / goals.length) * 100);
+    if (stalledRate < 20) momentumScore += 30;
+    else if (stalledRate < 50) momentumScore += 15;
+    if (goals.length >= 3) momentumScore += 15;
+    else if (goals.length >= 1) momentumScore += 10;
+    momentumScore += 15;
+    momentumScore = Math.min(100, momentumScore);
+
+    const momentumLevel = momentumScore >= 70 ? 'strong'
+      : momentumScore >= 40 ? 'moderate' : 'weak';
+
+    const recommendations: string[] = [];
+    if (stalled > 0) recommendations.push(`${stalled} goal(s) stalled — consider increasing contributions`);
+    if (accelerating > 0) recommendations.push(`${accelerating} goal(s) progressing rapidly`);
+    if (momentumLevel === 'strong') recommendations.push('Savings momentum is healthy across goals');
+
+    return {
+      totalGoals: goals.length,
+      accelerating,
+      steady,
+      stalled,
+      acceleratingRate,
+      stalledRate,
+      momentumScore,
+      momentumLevel,
+      breakdown: { accelerating, steady, stalled },
+      recommendations,
+    };
+  }
 }

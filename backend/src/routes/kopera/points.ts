@@ -68,6 +68,10 @@ export async function registerPointsRoutes(app: FastifyInstance, prisma: PrismaC
     return points.getPointsExpiryRisk(req.auth!.userId);
   });
 
+  app.get('/api/points/accumulation-trend', { preHandler: [app.requireAuth] }, async (req) => {
+    return points.getPointsAccumulationTrend(req.auth!.userId);
+  });
+
   app.get('/api/points/history', { preHandler: [app.requireAuth] }, async (req) => {
     const query = req.query as { limit?: string; offset?: string; type?: string };
     return points.getHistory(req.auth!.userId, {
