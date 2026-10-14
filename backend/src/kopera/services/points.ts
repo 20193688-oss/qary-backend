@@ -804,4 +804,77 @@ export class PointsService {
       recommendations,
     };
   }
+
+  async getPointsAccumulationTrend(userId: string) {
+    const history = await this.prisma.pointsHistory.findMany({ where: { userId } });
+
+    if (history.length === 0) {
+      return {
+        totalTransactions: 0,
+        trendScore: 0,
+        trendLevel: 'no_data' as const,
+        monthlyBreakdown: [] as { month: string; earned: number; spent: number; net: number }[],
+        recommendations: [] as string[],
+      };
+    }
+
+    const monthMap = new Map<string, { earned: number; spent: number }>();
+
+    for (const h of history) {
+      const date = new Date((h as any).createdAt);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      if (!monthMap.has(key)) monthMap.set(key, { earned: 0, spent: 0 });
+      const bucket = monthMap.get(key)!;
+
+      const type = (h as any).type ?? (h as any).action ?? 'earn';
+      const pts = Math.abs((h as any).points ?? (h as any).amount ?? 0);
+
+      if (type === 'earn' || type === 'EARN' || type === 'credit') bucket.earned += pts;
+      else if (type === 'redeem' || type === 'REDEEM' || type === 'debit') bucket.spent += pts;
+    }
+
+    const monthlyBreakdown = Array.from(monthMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([month, data]) => ({ month, earned: data.earned, spent: data.spent, net: data.earned - data.spent }));
+
+    const activeMonths = monthlyBreakdown.length;
+    const totalEarned = monthlyBreakdown.reduce((s, m) => s + m.earned, 0);
+    const avgMonthlyEarning = activeMonths > 0 ? Math.round(totalEarned / activeMonths) : 0;
+
+    let growing = 0;
+    for (let i = 1; i < monthlyBreakdown.length; i++) {
+      if (monthlyBreakdown[i].earned > monthlyBreakdown[i - 1].earned) growing++;
+    }
+    const growthRate = monthlyBreakdown.length > 1
+      ? Math.round((growing / (monthlyBreakdown.length - 1)) * 100) : 0;
+
+    let trendScore = 0;
+    if (growthRate >= 60) trendScore += 40;
+    else if (growthRate >= 30) trendScore += 20;
+    if (activeMonths >= 6) trendScore += 25;
+    else if (activeMonths >= 3) trendScore += 15;
+    if (avgMonthlyEarning >= 100) trendScore += 20;
+    else if (avgMonthlyEarning >= 30) trendScore += 10;
+    trendScore += 15;
+    trendScore = Math.min(100, trendScore);
+
+    const trendLevel = trendScore >= 70 ? 'growing'
+      : trendScore >= 40 ? 'stable' : 'declining';
+
+    const recommendations: string[] = [];
+    if (growthRate < 30) recommendations.push('Points earning is slowing — explore more earning opportunities');
+    if (activeMonths < 3) recommendations.push('Limited history — keep earning to build a trend');
+    if (trendLevel === 'growing') recommendations.push('Points accumulation trend is positive');
+
+    return {
+      totalTransactions: history.length,
+      activeMonths,
+      avgMonthlyEarning,
+      growthRate,
+      trendScore,
+      trendLevel,
+      monthlyBreakdown,
+      recommendations,
+    };
+  }
 }

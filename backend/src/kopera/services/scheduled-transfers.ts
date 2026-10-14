@@ -875,4 +875,60 @@ export class ScheduledTransferService {
       recommendations,
     };
   }
+
+  async getTransferFailureAnalysis(userId: string) {
+    const transfers = await this.prisma.scheduledTransfer.findMany({ where: { userId } });
+
+    if (transfers.length === 0) {
+      return {
+        totalTransfers: 0,
+        failureScore: 0,
+        failureLevel: 'no_data' as const,
+        breakdown: { completed: 0, failed: 0, pending: 0, cancelled: 0 },
+        recommendations: [] as string[],
+      };
+    }
+
+    let completed = 0;
+    let failed = 0;
+    let pending = 0;
+    let cancelled = 0;
+
+    for (const t of transfers) {
+      const status = (t as any).status ?? 'active';
+      if (status === 'completed' || status === 'COMPLETED' || status === 'executed' || status === 'EXECUTED') completed++;
+      else if (status === 'failed' || status === 'FAILED') failed++;
+      else if (status === 'cancelled' || status === 'CANCELLED') cancelled++;
+      else pending++;
+    }
+
+    const failureRate = Math.round((failed / transfers.length) * 100);
+    const completionRate = Math.round((completed / transfers.length) * 100);
+
+    let failureScore = 0;
+    if (failureRate > 30) failureScore += 40;
+    else if (failureRate > 10) failureScore += 20;
+    if (cancelled > transfers.length * 0.25) failureScore += 25;
+    else if (cancelled > 0) failureScore += 10;
+    if (pending > transfers.length * 0.4) failureScore += 20;
+    failureScore = Math.min(100, failureScore);
+
+    const failureLevel = failureScore >= 50 ? 'high'
+      : failureScore >= 25 ? 'moderate' : 'low';
+
+    const recommendations: string[] = [];
+    if (failed > 0) recommendations.push(`${failed} transfer(s) failed — check account balances and limits`);
+    if (cancelled > 0) recommendations.push(`${cancelled} transfer(s) cancelled — review scheduling`);
+    if (failureLevel === 'low') recommendations.push('Scheduled transfers are executing reliably');
+
+    return {
+      totalTransfers: transfers.length,
+      failureRate,
+      completionRate,
+      failureScore,
+      failureLevel,
+      breakdown: { completed, failed, pending, cancelled },
+      recommendations,
+    };
+  }
 }

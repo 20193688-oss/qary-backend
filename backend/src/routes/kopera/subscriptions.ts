@@ -149,6 +149,10 @@ export async function registerSubscriptionRoutes(app: FastifyInstance, prisma: P
     return subscriptions.getSubscriptionValueScore(req.auth!.userId);
   });
 
+  app.get('/api/subscriptions/renewal-forecast', { preHandler: [app.requireAuth] }, async (req) => {
+    return subscriptions.getSubscriptionRenewalForecast(req.auth!.userId);
+  });
+
   app.get('/api/subscriptions/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const sub = await subscriptions.getById(id);

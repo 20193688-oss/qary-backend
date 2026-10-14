@@ -799,4 +799,66 @@ export class ReferralService {
       recommendations,
     };
   }
+
+  async getReferralConversionPipeline(userId: string) {
+    const referrals = await this.prisma.referral.findMany({ where: { userId } });
+
+    if (referrals.length === 0) {
+      return {
+        totalReferrals: 0,
+        pipelineScore: 0,
+        pipelineLevel: 'no_data' as const,
+        stages: { invited: 0, signedUp: 0, active: 0, rewarded: 0 },
+        recommendations: [] as string[],
+      };
+    }
+
+    let invited = 0;
+    let signedUp = 0;
+    let active = 0;
+    let rewarded = 0;
+
+    for (const r of referrals) {
+      const status = (r as any).status ?? 'active';
+      const sc = (r as any).signupCount ?? 0;
+      const rc = (r as any).rewardedCount ?? 0;
+
+      invited++;
+      if (sc > 0) signedUp += sc;
+      if (status === 'active' || status === 'ACTIVE') active++;
+      if (rc > 0) rewarded += rc;
+    }
+
+    const signupRate = invited > 0 ? Math.round((signedUp / invited) * 100) : 0;
+    const rewardRate = signedUp > 0 ? Math.round((rewarded / signedUp) * 100) : 0;
+
+    let pipelineScore = 0;
+    if (signupRate >= 50) pipelineScore += 30;
+    else if (signupRate >= 20) pipelineScore += 15;
+    if (rewardRate >= 50) pipelineScore += 30;
+    else if (rewardRate >= 20) pipelineScore += 15;
+    if (active >= 3) pipelineScore += 20;
+    else if (active >= 1) pipelineScore += 10;
+    if (referrals.length >= 5) pipelineScore += 20;
+    else if (referrals.length >= 2) pipelineScore += 10;
+    pipelineScore = Math.min(100, pipelineScore);
+
+    const pipelineLevel = pipelineScore >= 70 ? 'strong'
+      : pipelineScore >= 40 ? 'developing' : 'nascent';
+
+    const recommendations: string[] = [];
+    if (signedUp === 0) recommendations.push('No sign-ups yet — share referral links more broadly');
+    if (signupRate < 20) recommendations.push('Low sign-up rate — consider offering incentives');
+    if (pipelineLevel === 'strong') recommendations.push('Referral pipeline is performing well');
+
+    return {
+      totalReferrals: referrals.length,
+      signupRate,
+      rewardRate,
+      pipelineScore,
+      pipelineLevel,
+      stages: { invited, signedUp, active, rewarded },
+      recommendations,
+    };
+  }
 }
