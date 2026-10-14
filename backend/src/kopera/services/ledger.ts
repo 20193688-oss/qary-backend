@@ -724,4 +724,73 @@ export class LedgerService {
       recommendations,
     };
   }
+
+  async getLedgerBalanceValidation(walletId: string) {
+    const entries = await this.prisma.ledgerEntry.findMany({
+      where: { walletId },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (entries.length === 0) {
+      return {
+        totalEntries: 0,
+        validationScore: 0,
+        validationLevel: 'no_data' as const,
+        issues: [],
+        recommendations: [] as string[],
+      };
+    }
+
+    const issues: { type: string; severity: string; entryIndex: number }[] = [];
+    let runningBalance = BigInt(0);
+
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i] as any;
+      const amount = BigInt(e.amount ?? 0);
+
+      if (e.type === 'credit' || e.type === 'CREDIT') runningBalance += amount;
+      else runningBalance -= amount;
+
+      if (runningBalance < BigInt(0) && (e.type === 'debit' || e.type === 'DEBIT')) {
+        issues.push({ type: 'negative_balance', severity: 'high', entryIndex: i });
+      }
+
+      if (amount === BigInt(0)) {
+        issues.push({ type: 'zero_amount', severity: 'medium', entryIndex: i });
+      }
+    }
+
+    const duplicateRefs = new Map<string, number>();
+    for (const e of entries) {
+      const ref = (e as any).reference;
+      if (ref) duplicateRefs.set(ref, (duplicateRefs.get(ref) ?? 0) + 1);
+    }
+    const dupes = Array.from(duplicateRefs.values()).filter(c => c > 1).length;
+    if (dupes > 0) issues.push({ type: 'duplicate_references', severity: 'medium', entryIndex: -1 });
+
+    let validationScore = 100;
+    const highIssues = issues.filter(i => i.severity === 'high').length;
+    const medIssues = issues.filter(i => i.severity === 'medium').length;
+    validationScore -= Math.min(50, highIssues * 15);
+    validationScore -= Math.min(30, medIssues * 5);
+    validationScore = Math.max(0, validationScore);
+
+    const validationLevel = validationScore >= 80 ? 'valid'
+      : validationScore >= 50 ? 'warnings' : 'invalid';
+
+    const recommendations: string[] = [];
+    if (highIssues > 0) recommendations.push(`${highIssues} high-severity issue(s) found — review immediately`);
+    if (dupes > 0) recommendations.push(`${dupes} duplicate reference(s) detected`);
+    if (validationLevel === 'valid') recommendations.push('Ledger balances are consistent');
+
+    return {
+      totalEntries: entries.length,
+      validationScore,
+      validationLevel,
+      finalBalance: runningBalance.toString(),
+      issueCount: issues.length,
+      issues: issues.slice(0, 10),
+      recommendations,
+    };
+  }
 }
