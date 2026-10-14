@@ -366,4 +366,59 @@ export class KycService {
       data: { riskScore },
     });
   }
+
+  async getVerificationTimeline(userId: string) {
+    const profile = await this.prisma.kycProfile.findUnique({ where: { userId } });
+    if (!profile) throw new Error('kyc_not_found');
+
+    const transitions: Array<{ status: string; timestamp: Date }> = [];
+    transitions.push({ status: 'CREATED', timestamp: profile.createdAt });
+
+    if (profile.status === 'APPROVED' && profile.verifiedAt) {
+      transitions.push({ status: 'VERIFIED', timestamp: profile.verifiedAt });
+    } else if (profile.status === 'REJECTED') {
+      transitions.push({ status: 'REJECTED', timestamp: profile.updatedAt });
+    } else if (profile.status === 'IN_REVIEW') {
+      transitions.push({ status: 'IN_REVIEW', timestamp: profile.updatedAt });
+    }
+
+    transitions.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+
+    const stages: Array<{ from: string; to: string; durationHours: number }> = [];
+    for (let i = 0; i < transitions.length - 1; i++) {
+      const durationMs = transitions[i + 1].timestamp.getTime() - transitions[i].timestamp.getTime();
+      stages.push({
+        from: transitions[i].status,
+        to: transitions[i + 1].status,
+        durationHours: Math.round((durationMs / 3600000) * 100) / 100,
+      });
+    }
+
+    const totalHours = transitions.length >= 2
+      ? Math.round(
+          ((transitions[transitions.length - 1].timestamp.getTime() - transitions[0].timestamp.getTime()) / 3600000) * 100
+        ) / 100
+      : 0;
+
+    const allProfiles = await this.prisma.kycProfile.findMany({
+      where: { verifiedAt: { not: null } },
+    });
+    let systemAvgHours = 0;
+    if (allProfiles.length > 0) {
+      const totalSystemHours = allProfiles.reduce((sum, p) => {
+        return sum + (p.verifiedAt!.getTime() - p.createdAt.getTime()) / 3600000;
+      }, 0);
+      systemAvgHours = Math.round((totalSystemHours / allProfiles.length) * 100) / 100;
+    }
+
+    return {
+      userId,
+      currentStatus: profile.status,
+      transitions,
+      stages,
+      totalHours,
+      systemAvgVerificationHours: systemAvgHours,
+      fasterThanAverage: totalHours > 0 && totalHours < systemAvgHours,
+    };
+  }
 }

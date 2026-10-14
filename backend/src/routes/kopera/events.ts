@@ -64,6 +64,10 @@ export async function registerEventRoutes(app: FastifyInstance, prisma: PrismaCl
     return svc.getAnomalyDetection(req.auth!.userId);
   });
 
+  app.get('/api/events/correlation-analysis', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getCorrelationAnalysis(req.auth!.userId);
+  });
+
   app.get('/api/events/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const event = await svc.getById(id);

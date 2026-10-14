@@ -441,6 +441,86 @@ export class InvoiceService {
     };
   }
 
+  async getInvoiceVolumeAnalysis(senderId: string) {
+    const invoices = await this.prisma.invoice.findMany({ where: { senderId } });
+
+    if (invoices.length === 0) {
+      return {
+        totalInvoices: 0,
+        avgInvoiceValue: '0',
+        monthlyVolume: [],
+        peakMonth: null,
+        currencyDistribution: [],
+        typeDistribution: [],
+        monthOverMonthGrowth: 0,
+      };
+    }
+
+    const monthMap = new Map<string, { count: number; totalAmount: bigint }>();
+    const currencyMap = new Map<string, number>();
+    const typeMap = new Map<string, number>();
+    let totalAmount = BigInt(0);
+
+    for (const inv of invoices) {
+      const d = new Date(inv.createdAt);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const entry = monthMap.get(key) ?? { count: 0, totalAmount: BigInt(0) };
+      entry.count++;
+      entry.totalAmount += inv.totalAmount;
+      monthMap.set(key, entry);
+      totalAmount += inv.totalAmount;
+
+      currencyMap.set(inv.currency, (currencyMap.get(inv.currency) ?? 0) + 1);
+      const invType = (inv as any).type ?? 'STANDARD';
+      typeMap.set(invType, (typeMap.get(invType) ?? 0) + 1);
+    }
+
+    const avgInvoiceValue = (totalAmount / BigInt(invoices.length)).toString();
+
+    const monthlyVolume = Array.from(monthMap.entries())
+      .map(([month, data]) => ({
+        month,
+        count: data.count,
+        totalAmount: data.totalAmount.toString(),
+      }))
+      .sort((a, b) => a.month.localeCompare(b.month));
+
+    const peakMonth = monthlyVolume.reduce((best, m) => m.count > best.count ? m : best, monthlyVolume[0]);
+
+    let monthOverMonthGrowth = 0;
+    if (monthlyVolume.length >= 2) {
+      const last = monthlyVolume[monthlyVolume.length - 1].count;
+      const prev = monthlyVolume[monthlyVolume.length - 2].count;
+      monthOverMonthGrowth = prev > 0 ? Math.round(((last - prev) / prev) * 10000) / 100 : 0;
+    }
+
+    const currencyDistribution = Array.from(currencyMap.entries())
+      .map(([currency, count]) => ({
+        currency,
+        count,
+        share: Math.round((count / invoices.length) * 10000) / 100,
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    const typeDistribution = Array.from(typeMap.entries())
+      .map(([type, count]) => ({
+        type,
+        count,
+        share: Math.round((count / invoices.length) * 10000) / 100,
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    return {
+      totalInvoices: invoices.length,
+      avgInvoiceValue,
+      monthlyVolume,
+      peakMonth: peakMonth.month,
+      currencyDistribution,
+      typeDistribution,
+      monthOverMonthGrowth,
+    };
+  }
+
   private getDefaultTaxRate(country: string): number {
     const rates: Record<string, number> = {
       PE: 0.18, // IGV

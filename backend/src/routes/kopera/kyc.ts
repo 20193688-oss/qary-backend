@@ -99,6 +99,15 @@ export async function registerKycRoutes(app: FastifyInstance, prisma: PrismaClie
     return kyc.getOnboardingFunnel();
   });
 
+  app.get('/api/kyc/verification-timeline', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    try {
+      return await kyc.getVerificationTimeline(req.auth!.userId);
+    } catch (e: any) {
+      if (e.message === 'kyc_not_found') return reply.code(404).send({ error: e.message });
+      throw e;
+    }
+  });
+
   app.get('/api/kyc/all', { preHandler: [app.requireAuth] }, async (req) => {
     const query = req.query as { limit?: string; offset?: string; status?: string };
     const list = await kyc.listAll({

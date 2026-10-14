@@ -162,6 +162,10 @@ export async function registerGatewayRoutes(app: FastifyInstance, prisma: Prisma
     return gateway.getRevenueAnalysis(req.auth!.userId);
   });
 
+  app.get('/api/gateway/payment-method-trends', { preHandler: [app.requireAuth] }, async (req) => {
+    return gateway.getPaymentMethodTrends(req.auth!.userId);
+  });
+
   app.get('/api/gateway/payments/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const gp = await gateway.findById(id);
