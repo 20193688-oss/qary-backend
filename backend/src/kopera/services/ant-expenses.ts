@@ -417,4 +417,79 @@ export class AntExpenseService {
       pattern,
     };
   }
+
+  async getRecurringExpenseDetection(userId: string) {
+    const expenses = await this.prisma.antExpense.findMany({ where: { userId } });
+    if (expenses.length === 0) {
+      return {
+        totalExpenses: 0,
+        recurringCount: 0,
+        oneTimeCount: 0,
+        recurringMonthlyTotal: '0',
+        patterns: [],
+      };
+    }
+
+    const merchantAmounts = new Map<string, { amounts: bigint[]; dates: Date[] }>();
+    for (const e of expenses) {
+      const key = (e as any).merchantName || (e as any).description || 'unknown';
+      if (!merchantAmounts.has(key)) {
+        merchantAmounts.set(key, { amounts: [], dates: [] });
+      }
+      const entry = merchantAmounts.get(key)!;
+      entry.amounts.push((e as any).amount ?? BigInt(0));
+      entry.dates.push(e.createdAt);
+    }
+
+    const patterns: { merchant: string; occurrences: number; avgAmount: string; frequency: string; confidence: number }[] = [];
+    let recurringCount = 0;
+
+    for (const [merchant, data] of merchantAmounts.entries()) {
+      if (data.amounts.length < 2) continue;
+
+      const sorted = data.dates.slice().sort((a, b) => a.getTime() - b.getTime());
+      const gaps: number[] = [];
+      for (let i = 1; i < sorted.length; i++) {
+        gaps.push((sorted[i].getTime() - sorted[i - 1].getTime()) / 86400000);
+      }
+      const avgGap = gaps.reduce((s, g) => s + g, 0) / gaps.length;
+      const gapVariance = gaps.reduce((s, g) => s + (g - avgGap) ** 2, 0) / gaps.length;
+      const gapStdDev = Math.sqrt(gapVariance);
+      const consistency = avgGap > 0 ? Math.max(0, 100 - (gapStdDev / avgGap) * 100) : 0;
+
+      let frequency = 'irregular';
+      if (avgGap <= 10 && consistency > 40) frequency = 'weekly';
+      else if (avgGap <= 20 && consistency > 30) frequency = 'biweekly';
+      else if (avgGap <= 45 && consistency > 25) frequency = 'monthly';
+      else if (avgGap <= 100 && consistency > 20) frequency = 'quarterly';
+
+      if (frequency !== 'irregular' && consistency > 20) {
+        const totalAmount = data.amounts.reduce((s, a) => s + a, BigInt(0));
+        const avgAmount = totalAmount / BigInt(data.amounts.length);
+        patterns.push({
+          merchant,
+          occurrences: data.amounts.length,
+          avgAmount: avgAmount.toString(),
+          frequency,
+          confidence: Math.round(consistency),
+        });
+        recurringCount += data.amounts.length;
+      }
+    }
+
+    patterns.sort((a, b) => b.confidence - a.confidence);
+    const monthlyTotal = patterns.reduce((s, p) => {
+      const amt = BigInt(p.avgAmount);
+      const multiplier = p.frequency === 'weekly' ? 4 : p.frequency === 'biweekly' ? 2 : p.frequency === 'quarterly' ? 1 : 1;
+      return s + amt * BigInt(multiplier);
+    }, BigInt(0));
+
+    return {
+      totalExpenses: expenses.length,
+      recurringCount,
+      oneTimeCount: expenses.length - recurringCount,
+      recurringMonthlyTotal: monthlyTotal.toString(),
+      patterns: patterns.slice(0, 10),
+    };
+  }
 }

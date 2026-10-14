@@ -160,6 +160,15 @@ export async function registerBusinessProfileRoutes(app: FastifyInstance, prisma
     }
   });
 
+  app.get('/api/business-profile/document-expiry-tracker', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    try {
+      return await svc.getDocumentExpiryTracker(req.auth!.userId);
+    } catch (e: any) {
+      if (e.message === 'profile_not_found') return reply.code(404).send({ error: e.message });
+      throw e;
+    }
+  });
+
   app.post('/api/business-profile/screening', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const body = z.object({
       riskScore: z.number().min(0).max(100).optional(),
