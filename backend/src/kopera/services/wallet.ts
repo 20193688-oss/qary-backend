@@ -862,4 +862,70 @@ export class WalletService {
       recommendations,
     };
   }
+
+  async getWalletDormancyReport(userId: string) {
+    const wallets = await this.prisma.wallet.findMany({ where: { userId } });
+
+    if (wallets.length === 0) {
+      return {
+        totalWallets: 0,
+        dormancyScore: 0,
+        dormancyLevel: 'no_data' as const,
+        breakdown: { active: 0, idle: 0, dormant: 0 },
+        recommendations: [] as string[],
+      };
+    }
+
+    const now = Date.now();
+    const thirtyDays = 30 * 86400000;
+    const ninetyDays = 90 * 86400000;
+    let activeCount = 0;
+    let idleCount = 0;
+    let dormantCount = 0;
+
+    for (const w of wallets) {
+      const updatedAt = new Date((w as any).updatedAt ?? (w as any).createdAt).getTime();
+      const age = now - updatedAt;
+      const status = (w as any).status;
+
+      if (status === 'frozen' || status === 'FROZEN' || status === 'closed' || status === 'CLOSED') {
+        dormantCount++;
+      } else if (age > ninetyDays) {
+        dormantCount++;
+      } else if (age > thirtyDays) {
+        idleCount++;
+      } else {
+        activeCount++;
+      }
+    }
+
+    const dormantRate = Math.round((dormantCount / wallets.length) * 100);
+    const idleRate = Math.round((idleCount / wallets.length) * 100);
+
+    let dormancyScore = 0;
+    if (dormantRate > 50) dormancyScore += 40;
+    else if (dormantRate > 25) dormancyScore += 20;
+    if (idleRate > 30) dormancyScore += 25;
+    else if (idleRate > 10) dormancyScore += 10;
+    if (activeCount === 0) dormancyScore += 25;
+    dormancyScore = Math.min(100, dormancyScore);
+
+    const dormancyLevel = dormancyScore >= 60 ? 'high_dormancy'
+      : dormancyScore >= 30 ? 'some_dormancy' : 'mostly_active';
+
+    const recommendations: string[] = [];
+    if (dormantCount > 0) recommendations.push(`${dormantCount} wallet(s) dormant — consider closing or reactivating`);
+    if (idleCount > 0) recommendations.push(`${idleCount} wallet(s) idle for over 30 days`);
+    if (dormancyLevel === 'mostly_active') recommendations.push('Wallets are actively used');
+
+    return {
+      totalWallets: wallets.length,
+      dormantRate,
+      idleRate,
+      dormancyScore,
+      dormancyLevel,
+      breakdown: { active: activeCount, idle: idleCount, dormant: dormantCount },
+      recommendations,
+    };
+  }
 }
