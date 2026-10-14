@@ -470,4 +470,79 @@ export class LoanRepaymentService {
       remaining: totalDue - totalPaid,
     };
   }
+
+  async getPaymentGapAnalysis(loanId: string) {
+    const repayments = await this.prisma.loanRepayment.findMany({
+      where: { loanId, status: 'PAID' },
+      orderBy: { installment: 'asc' },
+    });
+
+    if (repayments.length < 2) {
+      return {
+        loanId,
+        paidInstallments: repayments.length,
+        gaps: [] as Array<{ fromInstallment: number; toInstallment: number; gapDays: number }>,
+        avgGapDays: 0,
+        medianGapDays: 0,
+        maxGapDays: 0,
+        irregularGaps: 0,
+        pattern: 'insufficient_data' as const,
+      };
+    }
+
+    const gaps: Array<{ fromInstallment: number; toInstallment: number; gapDays: number }> = [];
+    for (let i = 1; i < repayments.length; i++) {
+      const prev = repayments[i - 1];
+      const curr = repayments[i];
+      if (!prev.paidAt || !curr.paidAt) continue;
+      const gapMs = new Date(curr.paidAt).getTime() - new Date(prev.paidAt).getTime();
+      const gapDays = Math.round(gapMs / (24 * 60 * 60 * 1000));
+      gaps.push({
+        fromInstallment: prev.installment,
+        toInstallment: curr.installment,
+        gapDays,
+      });
+    }
+
+    if (gaps.length === 0) {
+      return {
+        loanId,
+        paidInstallments: repayments.length,
+        gaps: [],
+        avgGapDays: 0,
+        medianGapDays: 0,
+        maxGapDays: 0,
+        irregularGaps: 0,
+        pattern: 'insufficient_data' as const,
+      };
+    }
+
+    const gapDays = gaps.map(g => g.gapDays);
+    const avgGapDays = Math.round((gapDays.reduce((s, d) => s + d, 0) / gapDays.length) * 100) / 100;
+    const sorted = [...gapDays].sort((a, b) => a - b);
+    const medianGapDays = sorted.length % 2 === 0
+      ? (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
+      : sorted[Math.floor(sorted.length / 2)];
+    const maxGapDays = Math.max(...gapDays);
+
+    const irregularThreshold = avgGapDays * 1.5;
+    const irregularGaps = gapDays.filter(d => d > irregularThreshold).length;
+
+    const stdDev = Math.sqrt(gapDays.reduce((s, d) => s + (d - avgGapDays) ** 2, 0) / gapDays.length);
+    const cv = avgGapDays > 0 ? stdDev / avgGapDays : 0;
+    const pattern = cv < 0.2 ? 'regular' as const
+      : cv < 0.5 ? 'mostly_regular' as const
+      : 'irregular' as const;
+
+    return {
+      loanId,
+      paidInstallments: repayments.length,
+      gaps,
+      avgGapDays,
+      medianGapDays,
+      maxGapDays,
+      irregularGaps,
+      pattern,
+    };
+  }
 }

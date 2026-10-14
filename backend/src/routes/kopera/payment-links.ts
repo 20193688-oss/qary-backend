@@ -117,6 +117,10 @@ export async function registerPaymentLinkRoutes(app: FastifyInstance, prisma: Pr
     }));
   });
 
+  app.get('/api/payment-links/usage-velocity', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getUsageVelocity(req.auth!.userId);
+  });
+
   app.get('/api/payment-links/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const link = await svc.getById(id);

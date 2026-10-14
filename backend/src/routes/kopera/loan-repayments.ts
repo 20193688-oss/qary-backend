@@ -159,6 +159,17 @@ export async function registerLoanRepaymentRoutes(app: FastifyInstance, prisma: 
     };
   });
 
+  app.get('/api/repayments/payment-gap-analysis', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const { loanId } = req.query as { loanId: string };
+    if (!loanId) return reply.code(400).send({ error: 'loanId_required' });
+
+    const loan = await prisma.loan.findUnique({ where: { id: loanId } });
+    if (!loan) return reply.code(404).send({ error: 'loan_not_found' });
+    if (loan.userId !== req.auth!.userId) return reply.code(403).send({ error: 'forbidden' });
+
+    return svc.getPaymentGapAnalysis(loanId);
+  });
+
   app.get('/api/repayments/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const repayment = await svc.getById(id);

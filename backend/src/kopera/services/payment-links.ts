@@ -314,6 +314,70 @@ export class PaymentLinkService {
     };
   }
 
+  async getUsageVelocity(userId: string) {
+    const links = await this.prisma.paymentLink.findMany({ where: { userId } });
+
+    if (links.length === 0) {
+      return {
+        totalLinks: 0,
+        totalUsed: 0,
+        byDay: [] as Array<{ day: string; created: number; used: number }>,
+        avgCreatedPerWeek: 0,
+        avgUsedPerWeek: 0,
+        peakDay: null as string | null,
+        adoptionTrend: 'none' as const,
+      };
+    }
+
+    const dayMap = new Map<string, { created: number; used: number }>();
+
+    for (const l of links) {
+      const createDay = new Date(l.createdAt).toISOString().slice(0, 10);
+      const entry = dayMap.get(createDay) ?? { created: 0, used: 0 };
+      entry.created++;
+      dayMap.set(createDay, entry);
+
+      if (l.timesUsed > 0 && (l as any).lastUsedAt) {
+        const useDay = new Date((l as any).lastUsedAt).toISOString().slice(0, 10);
+        const useEntry = dayMap.get(useDay) ?? { created: 0, used: 0 };
+        useEntry.used += l.timesUsed;
+        dayMap.set(useDay, useEntry);
+      }
+    }
+
+    const byDay = Array.from(dayMap.entries())
+      .map(([day, data]) => ({ day, created: data.created, used: data.used }))
+      .sort((a, b) => a.day.localeCompare(b.day));
+
+    const totalUsed = links.reduce((s, l) => s + l.timesUsed, 0);
+    const days = byDay.length;
+    const weeks = Math.max(1, days / 7);
+    const avgCreatedPerWeek = Math.round((links.length / weeks) * 100) / 100;
+    const avgUsedPerWeek = Math.round((totalUsed / weeks) * 100) / 100;
+
+    const peakEntry = byDay.reduce((best, d) => (d.created + d.used) > (best.created + best.used) ? d : best, byDay[0]);
+    const peakDay = peakEntry ? peakEntry.day : null;
+
+    let adoptionTrend: 'accelerating' | 'stable' | 'declining' | 'none' = 'none';
+    if (byDay.length >= 4) {
+      const half = Math.floor(byDay.length / 2);
+      const firstHalf = byDay.slice(0, half).reduce((s, d) => s + d.created, 0) / half;
+      const secondHalf = byDay.slice(half).reduce((s, d) => s + d.created, 0) / (byDay.length - half);
+      const change = firstHalf > 0 ? (secondHalf - firstHalf) / firstHalf : 0;
+      adoptionTrend = change > 0.2 ? 'accelerating' : change < -0.2 ? 'declining' : 'stable';
+    }
+
+    return {
+      totalLinks: links.length,
+      totalUsed,
+      byDay,
+      avgCreatedPerWeek,
+      avgUsedPerWeek,
+      peakDay,
+      adoptionTrend,
+    };
+  }
+
   async deactivate(id: string, userId: string) {
     const link = await this.prisma.paymentLink.findUnique({ where: { id } });
     if (!link) throw new Error('link_not_found');
