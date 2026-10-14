@@ -68,6 +68,10 @@ export async function registerAntExpenseRoutes(app: FastifyInstance, prisma: Pri
     return expenses.map(serialize);
   });
 
+  app.get('/api/ant-expenses/budget-alignment', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getExpenseBudgetAlignment(req.auth!.userId);
+  });
+
   app.get('/api/ant-expenses/summary/:currency', { preHandler: [app.requireAuth] }, async (req) => {
     const { currency } = req.params as { currency: string };
     const summary = await svc.getSummary(req.auth!.userId, currency);

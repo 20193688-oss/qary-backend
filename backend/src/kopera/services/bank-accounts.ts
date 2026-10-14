@@ -573,4 +573,61 @@ export class BankAccountService {
       recommendations,
     };
   }
+
+  async getAccountSecurityAudit(userId: string) {
+    const accounts = await this.prisma.bankAccount.findMany({ where: { userId } });
+
+    if (accounts.length === 0) {
+      return {
+        totalAccounts: 0,
+        securityScore: 100,
+        securityLevel: 'none' as const,
+        findings: [] as { accountId: string; finding: string; severity: 'high' | 'medium' | 'low' }[],
+        recommendations: [] as string[],
+      };
+    }
+
+    const findings: { accountId: string; finding: string; severity: 'high' | 'medium' | 'low' }[] = [];
+
+    for (const a of accounts) {
+      const verified = (a as any).verified || (a as any).status === 'verified';
+      if (!verified) {
+        findings.push({ accountId: a.id, finding: 'Account not verified', severity: 'high' });
+      }
+
+      const age = Date.now() - new Date(a.createdAt).getTime();
+      if (age > 365 * 86400000 && !verified) {
+        findings.push({ accountId: a.id, finding: 'Unverified account older than 1 year', severity: 'high' });
+      }
+
+      if (!(a as any).bankName && !(a as any).bankCode) {
+        findings.push({ accountId: a.id, finding: 'Missing bank identification details', severity: 'medium' });
+      }
+
+      if (!(a as any).holderName) {
+        findings.push({ accountId: a.id, finding: 'Missing account holder name', severity: 'medium' });
+      }
+    }
+
+    const highCount = findings.filter(f => f.severity === 'high').length;
+    const mediumCount = findings.filter(f => f.severity === 'medium').length;
+    const securityScore = Math.max(0, 100 - highCount * 25 - mediumCount * 10);
+    const securityLevel = securityScore >= 80 ? 'good' as const
+      : securityScore >= 50 ? 'fair' as const
+      : 'poor' as const;
+
+    const recommendations: string[] = [];
+    if (highCount > 0) recommendations.push('Address high-severity findings to secure your bank accounts');
+    const unverifiedCount = findings.filter(f => f.finding.includes('not verified')).length;
+    if (unverifiedCount > 0) recommendations.push(`Verify ${unverifiedCount} unverified account(s)`);
+    if (findings.length === 0) recommendations.push('All accounts pass security audit');
+
+    return {
+      totalAccounts: accounts.length,
+      securityScore,
+      securityLevel,
+      findings,
+      recommendations,
+    };
+  }
 }

@@ -491,4 +491,73 @@ export class BeneficiaryService {
       international,
     };
   }
+
+  async getBeneficiaryPaymentFrequency(userId: string) {
+    const beneficiaries = await this.prisma.beneficiary.findMany({ where: { userId } });
+
+    if (beneficiaries.length === 0) {
+      return {
+        totalBeneficiaries: 0,
+        frequentRecipients: [] as { beneficiaryId: string; nickname: string; transactionCount: number; lastTransactionDate: string | null }[],
+        dormantRecipients: [] as { beneficiaryId: string; nickname: string; daysSinceLastPayment: number | null }[],
+        avgTransactionsPerBeneficiary: 0,
+        recommendations: [] as string[],
+      };
+    }
+
+    const transactions = await this.prisma.transaction.findMany({ where: { userId } });
+    const now = Date.now();
+
+    const beneficiaryStats = beneficiaries.map(b => {
+      const bTxns = transactions.filter(t =>
+        (t as any).recipientId === b.id ||
+        (t as any).beneficiaryId === b.id ||
+        (t as any).counterpartyId === b.id
+      );
+
+      const lastTxn = bTxns.length > 0
+        ? new Date(Math.max(...bTxns.map(t => new Date(t.createdAt).getTime())))
+        : null;
+
+      const daysSinceLastPayment = lastTxn
+        ? Math.floor((now - lastTxn.getTime()) / 86400000)
+        : null;
+
+      return {
+        beneficiaryId: b.id,
+        nickname: (b as any).nickname || (b as any).name || b.id,
+        transactionCount: bTxns.length,
+        lastTransactionDate: lastTxn?.toISOString() || null,
+        daysSinceLastPayment,
+      };
+    });
+
+    const frequent = beneficiaryStats
+      .filter(b => b.transactionCount > 0)
+      .sort((a, b) => b.transactionCount - a.transactionCount)
+      .slice(0, 10)
+      .map(({ daysSinceLastPayment: _, ...rest }) => rest);
+
+    const dormant = beneficiaryStats
+      .filter(b => b.daysSinceLastPayment === null || b.daysSinceLastPayment > 90)
+      .map(({ transactionCount: _, lastTransactionDate: __, ...rest }) => rest);
+
+    const totalTxns = beneficiaryStats.reduce((s, b) => s + b.transactionCount, 0);
+    const avgTxns = beneficiaries.length > 0
+      ? Number((totalTxns / beneficiaries.length).toFixed(2))
+      : 0;
+
+    const recommendations: string[] = [];
+    if (dormant.length > beneficiaries.length * 0.5) recommendations.push('Over half of beneficiaries are dormant — consider cleanup');
+    if (frequent.length === 1) recommendations.push('Payments concentrated to a single recipient');
+    if (avgTxns < 1) recommendations.push('Low average transactions per beneficiary — review recipient list relevance');
+
+    return {
+      totalBeneficiaries: beneficiaries.length,
+      frequentRecipients: frequent,
+      dormantRecipients: dormant,
+      avgTransactionsPerBeneficiary: avgTxns,
+      recommendations,
+    };
+  }
 }

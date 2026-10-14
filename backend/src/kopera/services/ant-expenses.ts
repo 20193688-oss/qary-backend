@@ -554,4 +554,66 @@ export class AntExpenseService {
       },
     };
   }
+
+  async getExpenseBudgetAlignment(userId: string) {
+    const expenses = await this.prisma.antExpense.findMany({ where: { userId } });
+
+    if (expenses.length === 0) {
+      return {
+        totalExpenses: 0,
+        totalSpent: '0',
+        avgMonthlySpend: '0',
+        categorySpending: [] as { category: string; total: string; count: number; percentOfTotal: number }[],
+        budgetHealth: 'no_data' as const,
+        recommendations: [] as string[],
+      };
+    }
+
+    let totalSpent = BigInt(0);
+    const categoryMap = new Map<string, { total: bigint; count: number }>();
+
+    for (const e of expenses) {
+      const amount = (e as any).amount ?? BigInt(0);
+      totalSpent += amount;
+      const category = ((e as any).category || 'uncategorized').toLowerCase();
+      const existing = categoryMap.get(category) || { total: BigInt(0), count: 0 };
+      existing.total += amount;
+      existing.count++;
+      categoryMap.set(category, existing);
+    }
+
+    const categorySpending = Array.from(categoryMap.entries())
+      .map(([category, data]) => ({
+        category,
+        total: data.total.toString(),
+        count: data.count,
+        percentOfTotal: totalSpent > BigInt(0)
+          ? Number(data.total * BigInt(10000) / totalSpent) / 100
+          : 0,
+      }))
+      .sort((a, b) => b.percentOfTotal - a.percentOfTotal);
+
+    const earliest = new Date(Math.min(...expenses.map(e => new Date(e.createdAt).getTime())));
+    const months = Math.max(1, Math.ceil((Date.now() - earliest.getTime()) / (30 * 86400000)));
+    const avgMonthly = totalSpent / BigInt(months);
+
+    const topCategoryShare = categorySpending[0]?.percentOfTotal ?? 0;
+    const budgetHealth = topCategoryShare > 70 ? 'concentrated' as const
+      : categorySpending.length <= 2 ? 'narrow' as const
+      : 'diversified' as const;
+
+    const recommendations: string[] = [];
+    if (budgetHealth === 'concentrated') recommendations.push(`Top category accounts for ${topCategoryShare}% of spending — consider diversifying`);
+    if (categorySpending.length > 10) recommendations.push('Many small expense categories — consider consolidating tracking');
+    if (avgMonthly > BigInt(0)) recommendations.push(`Average monthly spend: ${avgMonthly.toString()} — review against budget targets`);
+
+    return {
+      totalExpenses: expenses.length,
+      totalSpent: totalSpent.toString(),
+      avgMonthlySpend: avgMonthly.toString(),
+      categorySpending,
+      budgetHealth,
+      recommendations,
+    };
+  }
 }
