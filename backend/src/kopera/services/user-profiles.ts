@@ -470,4 +470,72 @@ export class UserProfileService {
       recommendations,
     };
   }
+
+  async getProfileSecurityAudit(userId: string) {
+    const profile = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!profile) throw new Error('user_not_found');
+
+    const checks: { check: string; status: string; severity: string }[] = [];
+
+    const emailVerified = (profile as any).emailVerified || false;
+    checks.push({
+      check: 'email_verification',
+      status: emailVerified ? 'passed' : 'failed',
+      severity: emailVerified ? 'none' : 'high',
+    });
+
+    const phoneVerified = (profile as any).phoneVerified || false;
+    checks.push({
+      check: 'phone_verification',
+      status: phoneVerified ? 'passed' : 'failed',
+      severity: phoneVerified ? 'none' : 'medium',
+    });
+
+    const mfaEnabled = (profile as any).mfaEnabled || false;
+    checks.push({
+      check: 'mfa_enabled',
+      status: mfaEnabled ? 'passed' : 'failed',
+      severity: mfaEnabled ? 'none' : 'high',
+    });
+
+    const pinSet = (profile as any).pinHash != null;
+    checks.push({
+      check: 'pin_set',
+      status: pinSet ? 'passed' : 'failed',
+      severity: pinSet ? 'none' : 'medium',
+    });
+
+    const hasAddress = (profile as any).address != null || (profile as any).city != null;
+    checks.push({
+      check: 'address_provided',
+      status: hasAddress ? 'passed' : 'failed',
+      severity: hasAddress ? 'none' : 'low',
+    });
+
+    const passedCount = checks.filter(c => c.status === 'passed').length;
+    const highFailures = checks.filter(c => c.severity === 'high').length;
+    const mediumFailures = checks.filter(c => c.severity === 'medium').length;
+
+    let auditScore = Math.round((passedCount / checks.length) * 100);
+    if (highFailures > 0) auditScore = Math.max(0, auditScore - highFailures * 10);
+
+    const securityLevel = auditScore >= 80 ? 'strong' : auditScore >= 50 ? 'moderate' : 'weak';
+
+    const recommendations: string[] = [];
+    if (!mfaEnabled) recommendations.push('Enable MFA for enhanced security');
+    if (!emailVerified) recommendations.push('Verify your email address');
+    if (!phoneVerified) recommendations.push('Add and verify a phone number');
+    if (!pinSet) recommendations.push('Set a transaction PIN');
+
+    return {
+      securityLevel,
+      auditScore,
+      totalChecks: checks.length,
+      passedChecks: passedCount,
+      highSeverityFailures: highFailures,
+      mediumSeverityFailures: mediumFailures,
+      checks,
+      recommendations,
+    };
+  }
 }

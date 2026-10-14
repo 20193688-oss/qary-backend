@@ -584,4 +584,86 @@ export class UserSessionService {
       recommendations,
     };
   }
+
+  async getSessionRiskIndicators(userId: string) {
+    const sessions = await this.prisma.userSession.findMany({ where: { userId } });
+
+    if (sessions.length === 0) {
+      return {
+        totalSessions: 0,
+        riskLevel: 'no_data' as const,
+        riskScore: 0,
+        indicators: [],
+        recommendations: [],
+      };
+    }
+
+    const indicators: { indicator: string; value: number | string; severity: string }[] = [];
+
+    const ipSet = new Set<string>();
+    const deviceSet = new Set<string>();
+    const locationSet = new Set<string>();
+
+    for (const s of sessions) {
+      if ((s as any).ipAddress) ipSet.add((s as any).ipAddress);
+      if ((s as any).deviceId || (s as any).userAgent) deviceSet.add((s as any).deviceId || (s as any).userAgent);
+      if ((s as any).location || (s as any).country) locationSet.add((s as any).location || (s as any).country);
+    }
+
+    indicators.push({
+      indicator: 'unique_ips',
+      value: ipSet.size,
+      severity: ipSet.size > 10 ? 'high' : ipSet.size > 5 ? 'medium' : 'low',
+    });
+
+    indicators.push({
+      indicator: 'unique_devices',
+      value: deviceSet.size,
+      severity: deviceSet.size > 5 ? 'high' : deviceSet.size > 3 ? 'medium' : 'low',
+    });
+
+    indicators.push({
+      indicator: 'unique_locations',
+      value: locationSet.size,
+      severity: locationSet.size > 5 ? 'high' : locationSet.size > 3 ? 'medium' : 'low',
+    });
+
+    const now = Date.now();
+    const activeSessions = sessions.filter(s => {
+      const expiresAt = (s as any).expiresAt;
+      return expiresAt ? new Date(expiresAt).getTime() > now : true;
+    });
+
+    indicators.push({
+      indicator: 'active_sessions',
+      value: activeSessions.length,
+      severity: activeSessions.length > 10 ? 'high' : activeSessions.length > 5 ? 'medium' : 'low',
+    });
+
+    const highCount = indicators.filter(i => i.severity === 'high').length;
+    const mediumCount = indicators.filter(i => i.severity === 'medium').length;
+
+    let riskScore = 0;
+    riskScore += highCount * 25;
+    riskScore += mediumCount * 10;
+    riskScore = Math.min(100, riskScore);
+
+    const riskLevel = riskScore >= 50 ? 'high' : riskScore >= 25 ? 'moderate' : 'low';
+
+    const recommendations: string[] = [];
+    if (ipSet.size > 10) recommendations.push('Many unique IPs — check for unauthorized access');
+    if (deviceSet.size > 5) recommendations.push('Multiple devices — review active sessions');
+    if (activeSessions.length > 10) recommendations.push('Too many active sessions — revoke unused');
+
+    return {
+      totalSessions: sessions.length,
+      riskLevel,
+      riskScore,
+      activeSessions: activeSessions.length,
+      uniqueIps: ipSet.size,
+      uniqueDevices: deviceSet.size,
+      indicators,
+      recommendations,
+    };
+  }
 }
