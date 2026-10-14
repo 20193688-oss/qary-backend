@@ -717,4 +717,67 @@ export class TransactionService {
       recommendations,
     };
   }
+
+  async getTransactionVelocityMonitor(userId: string) {
+    const txns = await this.prisma.transaction.findMany({ where: { userId } });
+
+    if (txns.length === 0) {
+      return {
+        totalTransactions: 0,
+        velocityLevel: 'no_data' as const,
+        velocityScore: 0,
+        hourlyDistribution: {},
+        peakHour: null,
+        recommendations: [],
+      };
+    }
+
+    const hourlyDistribution: Record<string, number> = {};
+    const dailyMap = new Map<string, number>();
+
+    for (const t of txns) {
+      const date = new Date(t.createdAt);
+      const hour = String(date.getHours()).padStart(2, '0');
+      hourlyDistribution[hour] = (hourlyDistribution[hour] || 0) + 1;
+
+      const dayKey = date.toISOString().slice(0, 10);
+      dailyMap.set(dayKey, (dailyMap.get(dayKey) || 0) + 1);
+    }
+
+    const peakHour = Object.entries(hourlyDistribution)
+      .sort((a, b) => b[1] - a[1])[0];
+
+    const dailyCounts = Array.from(dailyMap.values());
+    const avgDaily = dailyCounts.reduce((s, c) => s + c, 0) / dailyCounts.length;
+    const maxDaily = Math.max(...dailyCounts);
+
+    const burstRatio = avgDaily > 0 ? maxDaily / avgDaily : 0;
+
+    let velocityScore = 50;
+    if (burstRatio > 5) velocityScore += 40;
+    else if (burstRatio > 3) velocityScore += 25;
+    else if (burstRatio > 2) velocityScore += 10;
+
+    if (Object.keys(hourlyDistribution).length <= 3) velocityScore += 10;
+    velocityScore = Math.min(100, velocityScore);
+
+    const velocityLevel = velocityScore >= 70 ? 'high' : velocityScore >= 40 ? 'moderate' : 'low';
+
+    const recommendations: string[] = [];
+    if (burstRatio > 3) recommendations.push('Transaction bursts detected — review for anomalies');
+    if (Object.keys(hourlyDistribution).length <= 3) recommendations.push('Transactions concentrated in few hours');
+    if (maxDaily > 50) recommendations.push('High daily transaction volume — ensure limits are adequate');
+
+    return {
+      totalTransactions: txns.length,
+      velocityLevel,
+      velocityScore,
+      avgDailyTransactions: Math.round(avgDaily * 10) / 10,
+      maxDailyTransactions: maxDaily,
+      burstRatio: Math.round(burstRatio * 100) / 100,
+      hourlyDistribution,
+      peakHour: peakHour ? { hour: peakHour[0], count: peakHour[1] } : null,
+      recommendations,
+    };
+  }
 }

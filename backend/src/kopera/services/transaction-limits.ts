@@ -696,6 +696,74 @@ export class TransactionLimitService {
     };
   }
 
+  async getLimitCapacityPlanning(userId: string) {
+    const limits = await this.prisma.transactionLimit.findMany({ where: { userId } });
+
+    if (limits.length === 0) {
+      return {
+        totalLimits: 0,
+        capacityLevel: 'no_data' as const,
+        capacityScore: 0,
+        planning: [],
+        recommendations: [],
+      };
+    }
+
+    const planning: { currency: string; limitType: string; maxAmount: string; currentUsage: string; utilizationPercent: number; suggestedAction: string; priority: string }[] = [];
+
+    for (const limit of limits) {
+      const refreshed = this.refreshIfNeeded(limit);
+      const usage = Number(refreshed.currentUsage);
+      const max = Number(refreshed.maxAmount);
+      const utilization = max > 0 ? Math.round((usage / max) * 100) : 0;
+
+      let suggestedAction = 'maintain';
+      let priority = 'low';
+      if (utilization >= 95) { suggestedAction = 'increase_urgently'; priority = 'critical'; }
+      else if (utilization >= 80) { suggestedAction = 'increase'; priority = 'high'; }
+      else if (utilization <= 10) { suggestedAction = 'decrease_or_remove'; priority = 'medium'; }
+      else if (utilization <= 30) { suggestedAction = 'decrease'; priority = 'low'; }
+
+      planning.push({
+        currency: limit.currency,
+        limitType: limit.limitType,
+        maxAmount: BigInt(refreshed.maxAmount).toString(),
+        currentUsage: BigInt(refreshed.currentUsage).toString(),
+        utilizationPercent: utilization,
+        suggestedAction,
+        priority,
+      });
+    }
+
+    const criticalCount = planning.filter(p => p.priority === 'critical').length;
+    const highCount = planning.filter(p => p.priority === 'high').length;
+
+    let capacityScore = 50;
+    if (criticalCount > 0) capacityScore += Math.min(40, criticalCount * 20);
+    if (highCount > 0) capacityScore += Math.min(20, highCount * 10);
+    capacityScore = Math.min(100, capacityScore);
+
+    const capacityLevel = capacityScore >= 70 ? 'needs_expansion'
+      : capacityScore >= 40 ? 'adequate' : 'well_provisioned';
+
+    const recommendations: string[] = [];
+    if (criticalCount > 0) recommendations.push(`${criticalCount} limit(s) near capacity — expand immediately`);
+    if (highCount > 0) recommendations.push(`${highCount} limit(s) approaching capacity — plan increase`);
+    const decreaseCount = planning.filter(p => p.suggestedAction.startsWith('decrease')).length;
+    if (decreaseCount > 0) recommendations.push(`${decreaseCount} limit(s) underutilized — consider reducing`);
+    if (capacityLevel === 'well_provisioned') recommendations.push('All limits well-provisioned for current usage');
+
+    return {
+      totalLimits: limits.length,
+      capacityLevel,
+      capacityScore,
+      criticalCount,
+      highCount,
+      planning,
+      recommendations,
+    };
+  }
+
   private refreshIfNeeded(limit: any): any {
     const periodStart = this.periodStart(limit.limitType);
     if (limit.periodStart < periodStart) {

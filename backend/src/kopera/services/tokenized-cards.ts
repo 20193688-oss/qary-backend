@@ -696,4 +696,68 @@ export class TokenizedCardService {
       recommendations,
     };
   }
+
+  async getCardUsagePattern(userId: string) {
+    const cards = await this.prisma.tokenizedCard.findMany({ where: { userId } });
+
+    if (cards.length === 0) {
+      return {
+        totalCards: 0,
+        usageLevel: 'no_data' as const,
+        usageScore: 0,
+        cardBreakdown: [],
+        recommendations: [],
+      };
+    }
+
+    const now = Date.now();
+    let activeCount = 0;
+    let dormantCount = 0;
+
+    const cardBreakdown = cards.map(c => {
+      const lastUsed = (c as any).lastUsedAt ? new Date((c as any).lastUsedAt).getTime() : null;
+      const daysSinceUse = lastUsed ? Math.floor((now - lastUsed) / 86400000) : 999;
+      const isActive = c.status === 'ACTIVE' || c.status === 'active';
+      const isDormant = isActive && daysSinceUse > 90;
+
+      if (isActive) activeCount++;
+      if (isDormant) dormantCount++;
+
+      return {
+        id: c.id,
+        last4: (c as any).last4 || (c as any).cardNumber?.slice(-4) || '****',
+        status: c.status,
+        daysSinceLastUse: daysSinceUse,
+        isDormant,
+        brand: (c as any).brand || (c as any).network || 'unknown',
+      };
+    });
+
+    const dormantRate = activeCount > 0 ? Math.round((dormantCount / activeCount) * 100) : 0;
+
+    let usageScore = 100;
+    if (dormantRate > 50) usageScore -= 40;
+    else if (dormantRate > 25) usageScore -= 20;
+    if (activeCount === 0) usageScore -= 30;
+    if (cards.length > 10) usageScore -= 10;
+    usageScore = Math.max(0, usageScore);
+
+    const usageLevel = usageScore >= 70 ? 'active' : usageScore >= 40 ? 'moderate' : 'low';
+
+    const recommendations: string[] = [];
+    if (dormantCount > 0) recommendations.push(`${dormantCount} dormant card(s) — consider removing`);
+    if (activeCount === 0) recommendations.push('No active cards — add a card to enable payments');
+    if (cards.length > 10) recommendations.push('Many cards stored — review and consolidate');
+
+    return {
+      totalCards: cards.length,
+      usageLevel,
+      usageScore,
+      activeCards: activeCount,
+      dormantCards: dormantCount,
+      dormantRate,
+      cardBreakdown,
+      recommendations,
+    };
+  }
 }
