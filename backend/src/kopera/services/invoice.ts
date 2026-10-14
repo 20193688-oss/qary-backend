@@ -771,4 +771,92 @@ export class InvoiceService {
       totalAmount: totalAmount.toString(),
     };
   }
+
+  async getInvoiceCashflowImpact(userId: string) {
+    const invoices = await this.prisma.invoice.findMany({ where: { senderId: userId } });
+    if (invoices.length === 0) {
+      return {
+        totalInvoices: 0,
+        totalOutstanding: '0',
+        totalPaid: '0',
+        avgPaymentDays: 0,
+        cashflowScore: 100,
+        cashflowHealth: 'no_data',
+        monthlyProjection: [],
+        recommendations: [],
+      };
+    }
+
+    let totalOutstanding = BigInt(0);
+    let totalPaid = BigInt(0);
+    const paymentDays: number[] = [];
+    const monthly: Record<string, { expected: bigint; received: bigint }> = {};
+
+    for (const inv of invoices) {
+      const amt = (inv as any).totalAmount ?? (inv as any).amount ?? BigInt(0);
+      const status = ((inv as any).status || '').toLowerCase();
+      const dueDate = (inv as any).dueDate ? new Date((inv as any).dueDate) : null;
+
+      if (status === 'paid' || status === 'settled') {
+        totalPaid += amt;
+        if (dueDate && (inv as any).paidAt) {
+          const days = Math.round((new Date((inv as any).paidAt).getTime() - new Date(inv.createdAt).getTime()) / 86400000);
+          paymentDays.push(Math.max(0, days));
+        }
+      } else {
+        totalOutstanding += amt;
+      }
+
+      if (dueDate) {
+        const key = `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, '0')}`;
+        if (!monthly[key]) monthly[key] = { expected: BigInt(0), received: BigInt(0) };
+        monthly[key].expected += amt;
+        if (status === 'paid' || status === 'settled') monthly[key].received += amt;
+      }
+    }
+
+    const avgPaymentDays = paymentDays.length > 0
+      ? Math.round(paymentDays.reduce((s, d) => s + d, 0) / paymentDays.length)
+      : 0;
+
+    let cashflowScore = 100;
+    const outstandingRatio = Number(totalPaid) > 0
+      ? Number(totalOutstanding) / (Number(totalPaid) + Number(totalOutstanding))
+      : (Number(totalOutstanding) > 0 ? 1 : 0);
+    if (outstandingRatio > 0.5) cashflowScore -= 30;
+    else if (outstandingRatio > 0.3) cashflowScore -= 15;
+    if (avgPaymentDays > 45) cashflowScore -= 25;
+    else if (avgPaymentDays > 30) cashflowScore -= 10;
+    cashflowScore = Math.max(0, cashflowScore);
+
+    const cashflowHealth = cashflowScore >= 80 ? 'healthy' : cashflowScore >= 50 ? 'moderate' : 'stressed';
+
+    const monthlyProjection = Object.entries(monthly)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-6)
+      .map(([month, data]) => ({
+        month,
+        expected: data.expected.toString(),
+        received: data.received.toString(),
+        collectionRate: Number(data.expected) > 0
+          ? Math.round(Number(data.received * BigInt(10000) / data.expected)) / 100
+          : 0,
+      }));
+
+    const recommendations: string[] = [];
+    if (outstandingRatio > 0.3) recommendations.push('Follow up on outstanding invoices to improve cash flow');
+    if (avgPaymentDays > 30) recommendations.push('Consider offering early payment discounts to reduce payment days');
+    if (monthlyProjection.some(m => m.collectionRate < 50)) recommendations.push('Some months have low collection rates — review client payment patterns');
+
+    return {
+      totalInvoices: invoices.length,
+      totalOutstanding: totalOutstanding.toString(),
+      totalPaid: totalPaid.toString(),
+      avgPaymentDays,
+      cashflowScore,
+      cashflowHealth,
+      monthlyProjection,
+      recommendations,
+    };
+  }
 }

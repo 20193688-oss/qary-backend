@@ -561,4 +561,51 @@ export class EventService {
       retentionRate,
     };
   }
+
+  async getEventBurstDetection(userId: string) {
+    const events = await this.prisma.event.findMany({ where: { userId }, orderBy: { createdAt: 'asc' } });
+    if (events.length === 0) {
+      return {
+        totalEvents: 0,
+        anomalies: [],
+        anomalyCount: 0,
+        anomalyRate: 0,
+        riskLevel: 'none',
+      };
+    }
+
+    const byDay: Record<string, number> = {};
+    for (const e of events) {
+      const d = new Date(e.createdAt);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      byDay[key] = (byDay[key] || 0) + 1;
+    }
+
+    const counts = Object.values(byDay);
+    const mean = counts.reduce((s, c) => s + c, 0) / counts.length;
+    const variance = counts.reduce((s, c) => s + Math.pow(c - mean, 2), 0) / counts.length;
+    const stdDev = Math.sqrt(variance);
+    const threshold = mean + 2 * stdDev;
+
+    const anomalies: { date: string; count: number; deviation: number }[] = [];
+    for (const [date, count] of Object.entries(byDay)) {
+      if (count > threshold && stdDev > 0) {
+        const deviation = Math.round(((count - mean) / stdDev) * 100) / 100;
+        anomalies.push({ date, count, deviation });
+      }
+    }
+
+    anomalies.sort((a, b) => b.deviation - a.deviation);
+
+    const anomalyRate = Math.round((anomalies.length / Object.keys(byDay).length) * 10000) / 100;
+    const riskLevel = anomalies.length >= 5 ? 'high' : anomalies.length >= 2 ? 'medium' : anomalies.length >= 1 ? 'low' : 'none';
+
+    return {
+      totalEvents: events.length,
+      anomalies: anomalies.slice(0, 10),
+      anomalyCount: anomalies.length,
+      anomalyRate,
+      riskLevel,
+    };
+  }
 }

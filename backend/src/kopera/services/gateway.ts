@@ -706,4 +706,58 @@ export class GatewayPaymentService {
       dropoffStage,
     };
   }
+
+  async getGatewayReconciliationStatus(userId: string) {
+    const transactions = await this.prisma.transaction.findMany({ where: { userId } });
+    if (transactions.length === 0) {
+      return {
+        totalTransactions: 0,
+        reconciledCount: 0,
+        unreconciledCount: 0,
+        reconciliationRate: 100,
+        statusBreakdown: [],
+        healthLevel: 'no_data',
+        recommendations: [],
+      };
+    }
+
+    const txnIds = new Set(transactions.map(t => t.id));
+    const allPayments = await this.prisma.gatewayPayment.findMany();
+    const payments = allPayments.filter(p => txnIds.has((p as any).transactionId));
+
+    const txnWithPayment = new Set(payments.map(p => (p as any).transactionId));
+    const reconciledCount = transactions.filter(t => txnWithPayment.has(t.id)).length;
+    const unreconciledCount = transactions.length - reconciledCount;
+    const reconciliationRate = Math.round((reconciledCount / transactions.length) * 10000) / 100;
+
+    const statusCounts: Record<string, number> = {};
+    for (const p of payments) {
+      const status = ((p as any).status || 'unknown').toLowerCase();
+      statusCounts[status] = (statusCounts[status] || 0) + 1;
+    }
+    const statusBreakdown = Object.entries(statusCounts)
+      .map(([status, count]) => ({ status, count }))
+      .sort((a, b) => b.count - a.count);
+
+    const healthLevel = reconciliationRate >= 95 ? 'excellent'
+      : reconciliationRate >= 80 ? 'good'
+      : reconciliationRate >= 50 ? 'fair' : 'poor';
+
+    const recommendations: string[] = [];
+    if (unreconciledCount > 0) recommendations.push('Investigate unreconciled transactions for missing gateway payments');
+    if (statusCounts['failed'] && statusCounts['failed'] > payments.length * 0.1) {
+      recommendations.push('High failure rate detected — review gateway provider configuration');
+    }
+    if (reconciliationRate < 80) recommendations.push('Improve reconciliation by automating payment matching');
+
+    return {
+      totalTransactions: transactions.length,
+      reconciledCount,
+      unreconciledCount,
+      reconciliationRate,
+      statusBreakdown,
+      healthLevel,
+      recommendations,
+    };
+  }
 }
