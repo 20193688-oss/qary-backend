@@ -295,4 +295,75 @@ export class BeneficiaryService {
       scores,
     };
   }
+
+  async getDormancyReport(userId: string) {
+    const beneficiaries = await this.prisma.beneficiary.findMany({ where: { userId } });
+
+    if (beneficiaries.length === 0) {
+      return {
+        totalBeneficiaries: 0,
+        activeCount: 0,
+        dormantCount: 0,
+        dormancyRate: 0,
+        dormant: [],
+        recommendation: 'No beneficiaries found.',
+      };
+    }
+
+    const transactions = await this.prisma.transaction.findMany({
+      where: { userId, status: 'COMPLETED' },
+    });
+
+    const now = Date.now();
+    const dormantThreshold = 90;
+
+    const entries = beneficiaries.map((b) => {
+      const related = transactions.filter(
+        (t) => t.counterpartyName === b.nickname || t.receiverWalletId === b.id,
+      );
+
+      let lastUsedDaysAgo: number | null = null;
+      if (related.length > 0) {
+        const latest = Math.max(...related.map(t => new Date(t.processedAt ?? t.createdAt).getTime()));
+        lastUsedDaysAgo = Math.floor((now - latest) / 86400000);
+      }
+
+      const isDormant = lastUsedDaysAgo === null || lastUsedDaysAgo > dormantThreshold;
+
+      return {
+        beneficiaryId: b.id,
+        nickname: b.nickname,
+        currency: b.currency,
+        transactionCount: related.length,
+        lastUsedDaysAgo,
+        isDormant,
+      };
+    });
+
+    const dormant = entries.filter(e => e.isDormant).sort((a, b) => {
+      if (a.lastUsedDaysAgo === null) return -1;
+      if (b.lastUsedDaysAgo === null) return 1;
+      return b.lastUsedDaysAgo - a.lastUsedDaysAgo;
+    });
+    const activeCount = entries.length - dormant.length;
+    const dormancyRate = Math.round((dormant.length / entries.length) * 10000) / 100;
+
+    let recommendation: string;
+    if (dormant.length === 0) {
+      recommendation = 'All beneficiaries are actively used.';
+    } else if (dormancyRate > 50) {
+      recommendation = `${dormant.length} dormant beneficiaries could be cleaned up to simplify your list.`;
+    } else {
+      recommendation = `A few inactive beneficiaries detected. Consider reviewing them periodically.`;
+    }
+
+    return {
+      totalBeneficiaries: beneficiaries.length,
+      activeCount,
+      dormantCount: dormant.length,
+      dormancyRate,
+      dormant,
+      recommendation,
+    };
+  }
 }

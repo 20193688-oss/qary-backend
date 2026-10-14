@@ -353,4 +353,68 @@ export class AntExpenseService {
       byCategory: categories,
     };
   }
+
+  async getSeasonalPattern(userId: string) {
+    const expenses = await this.prisma.antExpense.findMany({ where: { userId } });
+
+    if (expenses.length === 0) {
+      return {
+        totalExpenses: 0,
+        byMonth: [],
+        peakMonth: null,
+        lowMonth: null,
+        seasonalityIndex: 0,
+        pattern: 'none' as const,
+      };
+    }
+
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const monthData = new Array(12).fill(null).map(() => ({ count: 0, totalAmount: BigInt(0) }));
+
+    for (const e of expenses) {
+      const month = new Date((e as any).createdAt).getMonth();
+      monthData[month].count++;
+      monthData[month].totalAmount += e.amount;
+    }
+
+    const byMonth = monthData.map((d, i) => ({
+      month: monthNames[i],
+      monthIndex: i,
+      count: d.count,
+      totalAmount: d.totalAmount.toString(),
+    }));
+
+    const counts = monthData.map(d => d.count);
+    const avgCount = counts.reduce((a, b) => a + b, 0) / 12;
+
+    let peakMonth: string | null = null;
+    let lowMonth: string | null = null;
+    let maxCount = 0;
+    let minCount = Infinity;
+
+    for (let i = 0; i < 12; i++) {
+      if (counts[i] > maxCount) { maxCount = counts[i]; peakMonth = monthNames[i]; }
+      if (counts[i] < minCount) { minCount = counts[i]; lowMonth = monthNames[i]; }
+    }
+
+    const variance = avgCount > 0
+      ? counts.reduce((s, c) => s + (c - avgCount) ** 2, 0) / 12
+      : 0;
+    const cv = avgCount > 0 ? Math.sqrt(variance) / avgCount : 0;
+    const seasonalityIndex = Math.round(cv * 10000) / 100;
+
+    const pattern = seasonalityIndex > 50 ? 'highly_seasonal'
+      : seasonalityIndex > 20 ? 'seasonal'
+      : seasonalityIndex > 5 ? 'mild'
+      : 'none';
+
+    return {
+      totalExpenses: expenses.length,
+      byMonth,
+      peakMonth,
+      lowMonth,
+      seasonalityIndex,
+      pattern,
+    };
+  }
 }
