@@ -103,6 +103,10 @@ export async function registerTokenizedCardRoutes(app: FastifyInstance, prisma: 
     return svc.getCardUsagePattern(req.auth!.userId);
   });
 
+  app.get('/api/cards/renewal-planner', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getCardRenewalPlanner(req.auth!.userId);
+  });
+
   app.get('/api/cards/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const card = await svc.getCard(id);

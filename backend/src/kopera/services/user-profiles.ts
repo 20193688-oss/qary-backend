@@ -538,4 +538,50 @@ export class UserProfileService {
       recommendations,
     };
   }
+
+  async getProfileDataQualityCheck(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new Error('user_not_found');
+
+    const fields = [
+      { name: 'email', filled: !!(user as any).email, weight: 20 },
+      { name: 'phone', filled: !!(user as any).phone, weight: 15 },
+      { name: 'fullName', filled: !!(user as any).fullName || !!(user as any).firstName, weight: 15 },
+      { name: 'dateOfBirth', filled: !!(user as any).dateOfBirth, weight: 10 },
+      { name: 'address', filled: !!(user as any).address || !!(user as any).country, weight: 10 },
+      { name: 'mfaEnabled', filled: !!(user as any).mfaEnabled, weight: 15 },
+      { name: 'kycVerified', filled: (user as any).kycStatus === 'VERIFIED' || (user as any).kycStatus === 'verified', weight: 15 },
+    ];
+
+    let totalWeight = 0;
+    let filledWeight = 0;
+    const missingFields: string[] = [];
+
+    for (const f of fields) {
+      totalWeight += f.weight;
+      if (f.filled) filledWeight += f.weight;
+      else missingFields.push(f.name);
+    }
+
+    const qualityScore = totalWeight > 0 ? Math.round((filledWeight / totalWeight) * 100) : 0;
+    const completionRate = Math.round((fields.filter(f => f.filled).length / fields.length) * 100);
+
+    const qualityLevel = qualityScore >= 80 ? 'high'
+      : qualityScore >= 50 ? 'moderate' : 'low';
+
+    const recommendations: string[] = [];
+    if (missingFields.length > 0) recommendations.push(`Missing: ${missingFields.slice(0, 3).join(', ')}`);
+    if (qualityLevel === 'low') recommendations.push('Complete your profile to unlock full features');
+    if (qualityLevel === 'high') recommendations.push('Profile data quality is excellent');
+
+    return {
+      qualityScore,
+      qualityLevel,
+      completionRate,
+      filledFields: fields.filter(f => f.filled).length,
+      totalFields: fields.length,
+      missingFields,
+      recommendations,
+    };
+  }
 }

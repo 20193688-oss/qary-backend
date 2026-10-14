@@ -780,4 +780,61 @@ export class TransactionService {
       recommendations,
     };
   }
+
+  async getTransactionCategoryInsights(userId: string) {
+    const txns = await this.prisma.transaction.findMany({ where: { userId } });
+
+    if (txns.length === 0) {
+      return {
+        totalTransactions: 0,
+        insightScore: 0,
+        insightLevel: 'no_data' as const,
+        categories: [] as { category: string; count: number; percentage: number }[],
+        recommendations: [] as string[],
+      };
+    }
+
+    const catMap = new Map<string, number>();
+    for (const t of txns) {
+      const cat = (t as any).type ?? (t as any).category ?? 'other';
+      catMap.set(cat, (catMap.get(cat) ?? 0) + 1);
+    }
+
+    const categories = Array.from(catMap.entries())
+      .map(([category, count]) => ({
+        category,
+        count,
+        percentage: Math.round((count / txns.length) * 100),
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    const categoryCount = categories.length;
+    const topCategoryShare = categories.length > 0 ? categories[0].percentage : 0;
+
+    let insightScore = 50;
+    if (categoryCount >= 5) insightScore += 25;
+    else if (categoryCount >= 3) insightScore += 15;
+    if (topCategoryShare < 50) insightScore += 20;
+    else if (topCategoryShare > 80) insightScore -= 15;
+    if (txns.length >= 20) insightScore += 10;
+    insightScore = Math.max(0, Math.min(100, insightScore));
+
+    const insightLevel = insightScore >= 70 ? 'diversified'
+      : insightScore >= 40 ? 'moderate' : 'concentrated';
+
+    const recommendations: string[] = [];
+    if (topCategoryShare > 70) recommendations.push(`${categories[0].category} dominates at ${topCategoryShare}% — consider diversifying`);
+    if (categoryCount < 3) recommendations.push('Limited transaction categories — explore more services');
+    if (insightLevel === 'diversified') recommendations.push('Transaction activity is well-diversified');
+
+    return {
+      totalTransactions: txns.length,
+      categoryCount,
+      topCategoryShare,
+      insightScore,
+      insightLevel,
+      categories,
+      recommendations,
+    };
+  }
 }
