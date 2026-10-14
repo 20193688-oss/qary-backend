@@ -106,6 +106,10 @@ export async function registerWalletRoutes(app: FastifyInstance, prisma: PrismaC
     return wallets.getWalletHealthDashboard(req.auth!.userId);
   });
 
+  app.get('/api/wallets/dormancy-report', { preHandler: [app.requireAuth] }, async (req) => {
+    return wallets.getWalletDormancyReport(req.auth!.userId);
+  });
+
   app.get('/api/wallets/:currency', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { currency } = req.params as { currency: string };
     const balance = await wallets.getBalance(req.auth!.userId, currency);
