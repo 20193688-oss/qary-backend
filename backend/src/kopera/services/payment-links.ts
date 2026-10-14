@@ -480,4 +480,60 @@ export class PaymentLinkService {
       abandonedValue: abandonedValue.toString(),
     };
   }
+
+  async getPaymentLinkRecurrenceAnalysis(userId: string) {
+    const links = await this.prisma.paymentLink.findMany({ where: { userId } });
+
+    if (links.length === 0) {
+      return {
+        totalLinks: 0,
+        singleUseCount: 0,
+        multiUseCount: 0,
+        reuseRate: 0,
+        avgUsesPerLink: 0,
+        topReusedLinks: [] as { id: string; code: string; useCount: number }[],
+        recommendations: [] as string[],
+      };
+    }
+
+    let singleUseCount = 0;
+    let multiUseCount = 0;
+    let totalUses = 0;
+    const reusedLinks: { id: string; code: string; useCount: number }[] = [];
+
+    for (const l of links) {
+      const useCount = (l as any).useCount ?? ((l as any).status === 'USED' ? 1 : 0);
+      totalUses += useCount;
+      if (useCount > 1) {
+        multiUseCount++;
+        reusedLinks.push({ id: l.id, code: (l as any).code || '', useCount });
+      } else if (useCount === 1) {
+        singleUseCount++;
+      }
+    }
+
+    reusedLinks.sort((a, b) => b.useCount - a.useCount);
+
+    const reuseRate = links.length > 0
+      ? Number((multiUseCount / links.length).toFixed(4))
+      : 0;
+    const avgUsesPerLink = links.length > 0
+      ? Number((totalUses / links.length).toFixed(2))
+      : 0;
+
+    const recommendations: string[] = [];
+    if (reuseRate < 0.1) recommendations.push('Consider creating reusable payment links for recurring payments');
+    if (singleUseCount > multiUseCount * 5) recommendations.push('High single-use ratio — evaluate if multi-use links could reduce management overhead');
+    if (avgUsesPerLink < 1.5) recommendations.push('Low average usage per link — review link distribution strategy');
+
+    return {
+      totalLinks: links.length,
+      singleUseCount,
+      multiUseCount,
+      reuseRate,
+      avgUsesPerLink,
+      topReusedLinks: reusedLinks.slice(0, 5),
+      recommendations,
+    };
+  }
 }

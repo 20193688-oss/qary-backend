@@ -642,4 +642,86 @@ export class SavingsGoalService {
       goalPairs,
     };
   }
+
+  async getSavingsVelocityTrend(userId: string) {
+    const goals = await this.prisma.savingsGoal.findMany({ where: { userId } });
+
+    if (goals.length === 0) {
+      return {
+        totalGoals: 0,
+        avgDailySavings: '0',
+        avgWeeklySavings: '0',
+        trend: 'none' as const,
+        goalVelocities: [] as { goalId: string; name: string; dailyRate: string; daysToTarget: number | null }[],
+        recommendations: [] as string[],
+      };
+    }
+
+    const velocities: { goalId: string; name: string; dailyRate: bigint; daysToTarget: number | null }[] = [];
+    let totalDailyRate = BigInt(0);
+
+    for (const g of goals) {
+      const currentAmount = (g as any).currentAmount ?? BigInt(0);
+      const targetAmount = (g as any).targetAmount ?? BigInt(0);
+      const createdAt = new Date(g.createdAt).getTime();
+      const now = Date.now();
+      const daysSinceCreation = Math.max(1, Math.floor((now - createdAt) / 86400000));
+
+      const dailyRate = currentAmount / BigInt(daysSinceCreation);
+      totalDailyRate += dailyRate;
+
+      const remaining = targetAmount - currentAmount;
+      const daysToTarget = dailyRate > BigInt(0)
+        ? Number(remaining / dailyRate)
+        : null;
+
+      velocities.push({
+        goalId: g.id,
+        name: (g as any).name || g.id,
+        dailyRate,
+        daysToTarget,
+      });
+    }
+
+    const avgDailyRate = goals.length > 0 ? totalDailyRate / BigInt(goals.length) : BigInt(0);
+    const avgWeeklyRate = avgDailyRate * BigInt(7);
+
+    const recentGoals = goals.filter(g => {
+      const age = Date.now() - new Date(g.createdAt).getTime();
+      return age < 30 * 86400000;
+    });
+    const olderGoals = goals.filter(g => {
+      const age = Date.now() - new Date(g.createdAt).getTime();
+      return age >= 30 * 86400000;
+    });
+
+    let trend: 'increasing' | 'decreasing' | 'stable' | 'none' = 'stable';
+    if (recentGoals.length > 0 && olderGoals.length > 0) {
+      const recentAvg = recentGoals.reduce((sum, g) => sum + Number((g as any).currentAmount ?? 0), 0) / recentGoals.length;
+      const olderAvg = olderGoals.reduce((sum, g) => sum + Number((g as any).currentAmount ?? 0), 0) / olderGoals.length;
+      if (recentAvg > olderAvg * 1.1) trend = 'increasing';
+      else if (recentAvg < olderAvg * 0.9) trend = 'decreasing';
+    }
+
+    const recommendations: string[] = [];
+    const stalled = velocities.filter(v => v.dailyRate === BigInt(0));
+    if (stalled.length > 0) recommendations.push(`${stalled.length} goal(s) with zero daily savings — consider setting up automatic contributions`);
+    if (trend === 'decreasing') recommendations.push('Savings velocity is declining — review budget allocation');
+    const slowGoals = velocities.filter(v => v.daysToTarget !== null && v.daysToTarget > 365);
+    if (slowGoals.length > 0) recommendations.push(`${slowGoals.length} goal(s) will take over a year at current pace`);
+
+    return {
+      totalGoals: goals.length,
+      avgDailySavings: avgDailyRate.toString(),
+      avgWeeklySavings: avgWeeklyRate.toString(),
+      trend,
+      goalVelocities: velocities.map(v => ({
+        goalId: v.goalId,
+        name: v.name,
+        dailyRate: v.dailyRate.toString(),
+        daysToTarget: v.daysToTarget,
+      })),
+      recommendations,
+    };
+  }
 }

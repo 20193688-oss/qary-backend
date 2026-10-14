@@ -604,4 +604,83 @@ export class ReferralService {
       },
     };
   }
+
+  async getReferralQualityScore(userId: string) {
+    const referral = await this.prisma.referral.findFirst({ where: { userId } });
+
+    if (!referral) {
+      return {
+        hasReferralCode: false,
+        qualityScore: 0,
+        totalSignups: 0,
+        activeSignups: 0,
+        rewardedSignups: 0,
+        qualityLevel: 'none' as const,
+        breakdown: {
+          conversionScore: 0,
+          retentionScore: 0,
+          volumeScore: 0,
+        },
+        recommendations: [] as string[],
+      };
+    }
+
+    const signups = await this.prisma.referralSignup.findMany({
+      where: { referralId: referral.id },
+    });
+
+    if (signups.length === 0) {
+      return {
+        hasReferralCode: true,
+        qualityScore: 0,
+        totalSignups: 0,
+        activeSignups: 0,
+        rewardedSignups: 0,
+        qualityLevel: 'low' as const,
+        breakdown: {
+          conversionScore: 0,
+          retentionScore: 0,
+          volumeScore: 0,
+        },
+        recommendations: ['Share your referral code to start earning rewards'],
+      };
+    }
+
+    let rewarded = 0;
+    let active = 0;
+    for (const s of signups) {
+      const status = ((s as any).status || '').toLowerCase();
+      if (status === 'rewarded' || status === 'completed') rewarded++;
+      if (status !== 'expired' && status !== 'cancelled') active++;
+    }
+
+    const conversionScore = Math.round((rewarded / signups.length) * 40);
+    const retentionScore = Math.round((active / signups.length) * 30);
+    const volumeBonus = Math.min(30, signups.length * 3);
+    const qualityScore = Math.min(100, conversionScore + retentionScore + volumeBonus);
+
+    const qualityLevel = qualityScore >= 70 ? 'excellent' as const
+      : qualityScore >= 40 ? 'good' as const
+      : 'low' as const;
+
+    const recommendations: string[] = [];
+    if (conversionScore < 15) recommendations.push('Low conversion rate — focus on sharing with engaged users');
+    if (retentionScore < 10) recommendations.push('Many signups are inactive — follow up with referred users');
+    if (volumeBonus < 10) recommendations.push('Increase referral volume to improve overall quality score');
+
+    return {
+      hasReferralCode: true,
+      qualityScore,
+      totalSignups: signups.length,
+      activeSignups: active,
+      rewardedSignups: rewarded,
+      qualityLevel,
+      breakdown: {
+        conversionScore,
+        retentionScore,
+        volumeScore: volumeBonus,
+      },
+      recommendations,
+    };
+  }
 }

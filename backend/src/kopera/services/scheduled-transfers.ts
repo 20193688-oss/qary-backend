@@ -688,4 +688,68 @@ export class ScheduledTransferService {
       dominantCurrency: currencies[0]?.currency || null,
     };
   }
+
+  async getTransferLoadDistribution(userId: string) {
+    const transfers = await this.prisma.scheduledTransfer.findMany({
+      where: { userId },
+    });
+
+    if (transfers.length === 0) {
+      return {
+        totalTransfers: 0,
+        byDayOfWeek: {} as Record<string, number>,
+        byFrequency: {} as Record<string, number>,
+        peakDay: null as string | null,
+        loadBalance: 0,
+        recommendations: [] as string[],
+      };
+    }
+
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayCount: Record<string, number> = {};
+    const freqCount: Record<string, number> = {};
+
+    for (const t of transfers) {
+      const freq = ((t as any).frequency || 'unknown').toLowerCase();
+      freqCount[freq] = (freqCount[freq] || 0) + 1;
+
+      const nextExec = (t as any).nextExecutionDate || (t as any).nextDate || t.createdAt;
+      if (nextExec) {
+        const day = dayNames[new Date(nextExec).getDay()] || 'Unknown';
+        dayCount[day] = (dayCount[day] || 0) + 1;
+      }
+    }
+
+    let peakDay: string | null = null;
+    let peakCount = 0;
+    for (const [day, count] of Object.entries(dayCount)) {
+      if (count > peakCount) {
+        peakCount = count;
+        peakDay = day;
+      }
+    }
+
+    const dayValues = Object.values(dayCount);
+    const avgPerDay = dayValues.length > 0
+      ? dayValues.reduce((a, b) => a + b, 0) / dayValues.length
+      : 0;
+    const maxDay = Math.max(...dayValues, 0);
+    const loadBalance = maxDay > 0
+      ? Number(((1 - (maxDay - avgPerDay) / maxDay) * 100).toFixed(2))
+      : 100;
+
+    const recommendations: string[] = [];
+    if (loadBalance < 50) recommendations.push('Transfers are heavily concentrated on specific days — consider spreading them out');
+    if (peakCount > transfers.length * 0.5) recommendations.push(`Over half of transfers execute on ${peakDay} — redistribute for better cash flow management`);
+    if (Object.keys(freqCount).length === 1) recommendations.push('All transfers use the same frequency — consider varying based on payment importance');
+
+    return {
+      totalTransfers: transfers.length,
+      byDayOfWeek: dayCount,
+      byFrequency: freqCount,
+      peakDay,
+      loadBalance,
+      recommendations,
+    };
+  }
 }
