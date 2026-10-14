@@ -445,6 +445,68 @@ export class BusinessProfileService {
     };
   }
 
+  async getBusinessHealthScore(userId: string) {
+    const profile = await this.prisma.businessProfile.findUnique({ where: { userId } });
+    if (!profile) throw new Error('profile_not_found');
+
+    let score = 0;
+    const factors: Array<{ name: string; points: number; status: string }> = [];
+
+    if ((profile as any).status === 'VERIFIED' || (profile as any).status === 'APPROVED') {
+      score += 25;
+      factors.push({ name: 'verification', points: 25, status: 'pass' });
+    } else if ((profile as any).status === 'PENDING') {
+      score += 10;
+      factors.push({ name: 'verification', points: 10, status: 'pending' });
+    } else {
+      factors.push({ name: 'verification', points: 0, status: 'fail' });
+    }
+
+    const completenessFields = [
+      'businessName', 'companyName', 'registrationNumber', 'taxId',
+      'industry', 'website', 'address', 'country',
+    ];
+    let filled = 0;
+    for (const f of completenessFields) {
+      if ((profile as any)[f]) filled++;
+    }
+    const completenessScore = Math.round((filled / completenessFields.length) * 25);
+    score += completenessScore;
+    factors.push({ name: 'completeness', points: completenessScore, status: filled >= 6 ? 'pass' : filled >= 3 ? 'partial' : 'fail' });
+
+    if ((profile as any).riskScore != null) {
+      const riskPoints = (profile as any).riskScore <= 30 ? 25 : (profile as any).riskScore <= 60 ? 15 : 5;
+      score += riskPoints;
+      factors.push({ name: 'risk_assessment', points: riskPoints, status: riskPoints >= 20 ? 'pass' : 'warning' });
+    } else {
+      factors.push({ name: 'risk_assessment', points: 0, status: 'missing' });
+    }
+
+    if ((profile as any).reputationScore != null) {
+      const repPoints = (profile as any).reputationScore >= 70 ? 25 : (profile as any).reputationScore >= 40 ? 15 : 5;
+      score += repPoints;
+      factors.push({ name: 'reputation', points: repPoints, status: repPoints >= 20 ? 'pass' : 'warning' });
+    } else {
+      factors.push({ name: 'reputation', points: 0, status: 'missing' });
+    }
+
+    score = Math.min(100, score);
+    const healthLevel = score >= 80 ? 'excellent' : score >= 60 ? 'good' : score >= 40 ? 'fair' : 'poor';
+
+    const recommendations: string[] = [];
+    if (filled < completenessFields.length) recommendations.push(`Complete ${completenessFields.length - filled} missing profile field(s)`);
+    if ((profile as any).status !== 'VERIFIED' && (profile as any).status !== 'APPROVED') recommendations.push('Complete verification process');
+    if ((profile as any).riskScore == null) recommendations.push('Undergo risk assessment');
+
+    return {
+      userId,
+      healthScore: score,
+      healthLevel,
+      factors,
+      recommendations,
+    };
+  }
+
   async reject(userId: string, reason: string) {
     const profile = await this.prisma.businessProfile.findUnique({ where: { userId } });
     if (!profile) throw new Error('profile_not_found');

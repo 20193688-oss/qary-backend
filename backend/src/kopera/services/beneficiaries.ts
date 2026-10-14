@@ -442,4 +442,53 @@ export class BeneficiaryService {
       scores,
     };
   }
+
+  async getBeneficiaryGeographicSpread(userId: string) {
+    const beneficiaries = await this.prisma.beneficiary.findMany({ where: { userId } });
+    if (beneficiaries.length === 0) {
+      return {
+        totalBeneficiaries: 0,
+        countries: [],
+        topCountry: null,
+        diversityScore: 0,
+        domestic: 0,
+        international: 0,
+      };
+    }
+
+    const byCountry: Record<string, number> = {};
+    let domestic = 0;
+    let international = 0;
+    const userCountry = (beneficiaries[0] as any).senderCountry || null;
+
+    for (const b of beneficiaries) {
+      const country = (b as any).country || (b as any).bankCountry || 'UNKNOWN';
+      byCountry[country] = (byCountry[country] || 0) + 1;
+      if (userCountry && country === userCountry) domestic++;
+      else international++;
+    }
+
+    const countries = Object.entries(byCountry)
+      .map(([country, count]) => ({
+        country,
+        count,
+        percentage: Math.round((count / beneficiaries.length) * 10000) / 100,
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    const topCountry = countries[0] || null;
+
+    const shares = countries.map(c => c.count / beneficiaries.length);
+    const hhi = shares.reduce((s, p) => s + p * p, 0);
+    const diversityScore = Math.round((1 - hhi) * 100);
+
+    return {
+      totalBeneficiaries: beneficiaries.length,
+      countries,
+      topCountry,
+      diversityScore,
+      domestic,
+      international,
+    };
+  }
 }

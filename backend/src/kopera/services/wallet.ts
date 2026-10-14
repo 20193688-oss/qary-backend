@@ -701,4 +701,90 @@ export class WalletService {
       overallTrend,
     };
   }
+
+  async getWalletRiskExposure(userId: string) {
+    const wallets = await this.prisma.wallet.findMany({ where: { userId } });
+    if (wallets.length === 0) {
+      return {
+        totalWallets: 0,
+        overallRiskScore: 0,
+        riskLevel: 'none' as const,
+        walletRisks: [],
+        recommendations: [] as string[],
+      };
+    }
+
+    const recommendations: string[] = [];
+    const walletRisks: Array<{
+      walletId: string;
+      currency: string;
+      balance: string;
+      riskScore: number;
+      factors: string[];
+    }> = [];
+
+    for (const w of wallets) {
+      let score = 0;
+      const factors: string[] = [];
+
+      if ((w as any).frozen) {
+        score += 15;
+        factors.push('frozen');
+      }
+      if ((w as any).status === 'closed') {
+        score += 20;
+        factors.push('closed');
+      }
+
+      const bal = w.balance ?? BigInt(0);
+      if (bal === BigInt(0)) {
+        score += 10;
+        factors.push('zero_balance');
+      } else if (bal > BigInt(10000000)) {
+        score += 25;
+        factors.push('high_balance');
+      }
+
+      const holds = (w as any).holdAmount ?? BigInt(0);
+      if (holds > BigInt(0)) {
+        const holdRatio = Number(holds) / Math.max(Number(bal), 1);
+        if (holdRatio > 0.5) {
+          score += 20;
+          factors.push('high_hold_ratio');
+        }
+      }
+
+      if (!(w as any).isDefault && wallets.length > 3) {
+        score += 5;
+        factors.push('non_default_multi_wallet');
+      }
+
+      score = Math.min(100, score);
+      walletRisks.push({
+        walletId: w.id,
+        currency: w.currency,
+        balance: (w.balance ?? BigInt(0)).toString(),
+        riskScore: score,
+        factors,
+      });
+    }
+
+    const highRisk = walletRisks.filter(r => r.riskScore >= 50);
+    if (highRisk.length > 0) recommendations.push('Review high-risk wallets with elevated exposure');
+    const frozenCount = walletRisks.filter(r => r.factors.includes('frozen')).length;
+    if (frozenCount > 0) recommendations.push(`${frozenCount} frozen wallet(s) require attention`);
+    const zeroCount = walletRisks.filter(r => r.factors.includes('zero_balance')).length;
+    if (zeroCount > 1) recommendations.push('Consider closing unused zero-balance wallets');
+
+    const avgScore = Math.round(walletRisks.reduce((s, r) => s + r.riskScore, 0) / walletRisks.length);
+    const riskLevel = avgScore >= 50 ? 'high' : avgScore >= 25 ? 'medium' : 'low';
+
+    return {
+      totalWallets: wallets.length,
+      overallRiskScore: avgScore,
+      riskLevel,
+      walletRisks,
+      recommendations,
+    };
+  }
 }
