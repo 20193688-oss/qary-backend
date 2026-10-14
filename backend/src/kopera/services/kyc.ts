@@ -550,4 +550,46 @@ export class KycService {
       lastUpdated: (kyc as any).updatedAt || kyc.createdAt,
     };
   }
+
+  async getKycComplianceTimeline(userId: string) {
+    const kyc = await this.prisma.kycProfile.findUnique({ where: { userId } });
+    if (!kyc) throw new Error('kyc_not_found');
+
+    const events: Array<{ event: string; date: string; status: string }> = [];
+
+    events.push({ event: 'profile_created', date: new Date(kyc.createdAt).toISOString(), status: 'completed' });
+
+    if ((kyc as any).documentFrontUrl) {
+      events.push({ event: 'document_uploaded', date: new Date((kyc as any).updatedAt || kyc.createdAt).toISOString(), status: 'completed' });
+    } else {
+      events.push({ event: 'document_upload', date: '', status: 'pending' });
+    }
+
+    if ((kyc as any).selfieUrl) {
+      events.push({ event: 'selfie_uploaded', date: new Date((kyc as any).updatedAt || kyc.createdAt).toISOString(), status: 'completed' });
+    } else {
+      events.push({ event: 'selfie_upload', date: '', status: 'pending' });
+    }
+
+    const status = ((kyc as any).status || 'PENDING').toUpperCase();
+    if (status === 'APPROVED' || status === 'VERIFIED') {
+      events.push({ event: 'verification_approved', date: new Date((kyc as any).verifiedAt || (kyc as any).updatedAt || kyc.createdAt).toISOString(), status: 'completed' });
+    } else if (status === 'REJECTED') {
+      events.push({ event: 'verification_rejected', date: new Date((kyc as any).updatedAt || kyc.createdAt).toISOString(), status: 'failed' });
+    } else {
+      events.push({ event: 'verification', date: '', status: 'pending' });
+    }
+
+    const completedCount = events.filter(e => e.status === 'completed').length;
+    const progress = Math.round((completedCount / events.length) * 100);
+
+    return {
+      userId,
+      currentStatus: status,
+      progress,
+      totalSteps: events.length,
+      completedSteps: completedCount,
+      timeline: events,
+    };
+  }
 }

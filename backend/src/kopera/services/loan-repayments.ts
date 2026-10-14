@@ -688,4 +688,64 @@ export class LoanRepaymentService {
       recentPayments,
     };
   }
+
+  async getRepaymentRiskProfile(loanId: string) {
+    const repayments = await this.prisma.loanRepayment.findMany({
+      where: { loanId },
+      orderBy: { dueDate: 'asc' },
+    });
+
+    if (repayments.length === 0) {
+      return {
+        loanId,
+        totalRepayments: 0,
+        riskScore: 0,
+        riskLevel: 'none' as const,
+        lateCount: 0,
+        onTimeCount: 0,
+        missedCount: 0,
+      };
+    }
+
+    let lateCount = 0;
+    let onTimeCount = 0;
+    let missedCount = 0;
+
+    for (const r of repayments) {
+      const status = ((r as any).status || '').toLowerCase();
+      if (status === 'overdue' || status === 'missed') {
+        missedCount++;
+      } else if (status === 'late') {
+        lateCount++;
+      } else if (status === 'paid' || status === 'completed') {
+        if ((r as any).paidAt && (r as any).dueDate) {
+          const paid = new Date((r as any).paidAt).getTime();
+          const due = new Date((r as any).dueDate).getTime();
+          if (paid > due) lateCount++;
+          else onTimeCount++;
+        } else {
+          onTimeCount++;
+        }
+      }
+    }
+
+    let riskScore = 0;
+    const lateRate = (lateCount + missedCount) / repayments.length;
+    riskScore += Math.round(lateRate * 60);
+    if (missedCount > 0) riskScore += 20;
+    if (lateCount > repayments.length * 0.3) riskScore += 10;
+    riskScore = Math.min(100, riskScore);
+
+    const riskLevel = riskScore >= 60 ? 'high' : riskScore >= 30 ? 'medium' : 'low';
+
+    return {
+      loanId,
+      totalRepayments: repayments.length,
+      riskScore,
+      riskLevel,
+      lateCount,
+      onTimeCount,
+      missedCount,
+    };
+  }
 }

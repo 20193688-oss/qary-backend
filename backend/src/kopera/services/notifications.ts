@@ -538,6 +538,60 @@ export class NotificationService {
     };
   }
 
+  async getNotificationPriorityAnalysis(userId: string) {
+    const notifications = await this.prisma.notification.findMany({ where: { userId } });
+
+    if (notifications.length === 0) {
+      return {
+        totalNotifications: 0,
+        byPriority: {},
+        highPriorityUnread: 0,
+        avgReadTimeByPriority: {},
+        recommendations: [],
+      };
+    }
+
+    const byPriority: Record<string, { total: number; read: number; unread: number }> = {};
+    const readTimesByPriority: Record<string, number[]> = {};
+    let highPriorityUnread = 0;
+
+    for (const n of notifications) {
+      const priority = (n as any).priority || (n as any).type || 'normal';
+      if (!byPriority[priority]) byPriority[priority] = { total: 0, read: 0, unread: 0 };
+      byPriority[priority].total++;
+
+      if ((n as any).readAt) {
+        byPriority[priority].read++;
+        const readTime = new Date((n as any).readAt).getTime() - new Date(n.createdAt).getTime();
+        if (!readTimesByPriority[priority]) readTimesByPriority[priority] = [];
+        readTimesByPriority[priority].push(readTime);
+      } else {
+        byPriority[priority].unread++;
+        if (priority === 'high' || priority === 'urgent' || priority === 'critical') {
+          highPriorityUnread++;
+        }
+      }
+    }
+
+    const avgReadTimeByPriority: Record<string, number> = {};
+    for (const [priority, times] of Object.entries(readTimesByPriority)) {
+      avgReadTimeByPriority[priority] = Math.round(times.reduce((s, t) => s + t, 0) / times.length);
+    }
+
+    const recommendations: string[] = [];
+    if (highPriorityUnread > 0) recommendations.push(`${highPriorityUnread} high-priority notification(s) unread`);
+    const totalUnread = Object.values(byPriority).reduce((s, p) => s + p.unread, 0);
+    if (totalUnread > notifications.length * 0.5) recommendations.push('Over 50% of notifications are unread');
+
+    return {
+      totalNotifications: notifications.length,
+      byPriority,
+      highPriorityUnread,
+      avgReadTimeByPriority,
+      recommendations,
+    };
+  }
+
   async delete(id: string, userId: string) {
     const n = await this.prisma.notification.findUnique({ where: { id } });
     if (!n) throw new Error('notification_not_found');
