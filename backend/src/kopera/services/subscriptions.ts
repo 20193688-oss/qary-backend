@@ -831,4 +831,67 @@ export class SubscriptionService {
       recommendations,
     };
   }
+
+  async getSubscriptionCostTrendForecast(userId: string) {
+    const subs = await this.prisma.subscription.findMany({ where: { userId } });
+    if (subs.length === 0) {
+      return {
+        totalActive: 0,
+        currentMonthlyCost: '0',
+        projectedMonthlyCost: '0',
+        costChangePercent: 0,
+        trendDirection: 'stable' as const,
+        recommendations: [] as string[],
+      };
+    }
+
+    const active = subs.filter(s => ((s as any).status || '').toLowerCase() === 'active');
+    let currentCost = BigInt(0);
+    let projectedCost = BigInt(0);
+
+    for (const s of active) {
+      const amount = BigInt((s as any).amount ?? 0);
+      const interval = ((s as any).billingInterval || (s as any).interval || 'monthly').toLowerCase();
+      const monthlyCost = interval === 'yearly' || interval === 'annual'
+        ? amount / BigInt(12)
+        : interval === 'weekly' ? amount * BigInt(4)
+        : amount;
+      currentCost += monthlyCost;
+    }
+
+    const recentlyCancelled = subs.filter(s => {
+      const status = ((s as any).status || '').toLowerCase();
+      const cancelledAt = (s as any).cancelledAt;
+      if (status !== 'cancelled' || !cancelledAt) return false;
+      return Date.now() - new Date(cancelledAt).getTime() < 30 * 86400000;
+    });
+
+    projectedCost = currentCost;
+    for (const s of recentlyCancelled) {
+      const amount = BigInt((s as any).amount ?? 0);
+      projectedCost -= amount;
+    }
+    if (projectedCost < BigInt(0)) projectedCost = BigInt(0);
+
+    const changePercent = Number(currentCost) > 0
+      ? Math.round((Number(projectedCost) - Number(currentCost)) / Number(currentCost) * 10000) / 100
+      : 0;
+
+    const trendDirection = changePercent > 5 ? 'increasing'
+      : changePercent < -5 ? 'decreasing' : 'stable';
+
+    const recommendations: string[] = [];
+    if (trendDirection === 'increasing') recommendations.push('Subscription costs are trending upward — review new additions');
+    if (active.length > 5) recommendations.push('Many active subscriptions — check for redundancies');
+    if (recentlyCancelled.length > 0) recommendations.push(`${recentlyCancelled.length} recent cancellation(s) will reduce projected costs`);
+
+    return {
+      totalActive: active.length,
+      currentMonthlyCost: currentCost.toString(),
+      projectedMonthlyCost: projectedCost.toString(),
+      costChangePercent: changePercent,
+      trendDirection,
+      recommendations,
+    };
+  }
 }

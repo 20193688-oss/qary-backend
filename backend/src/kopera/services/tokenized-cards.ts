@@ -634,4 +634,66 @@ export class TokenizedCardService {
       recommendations,
     };
   }
+
+  async getCardExpiryRiskMatrix(userId: string) {
+    const cards = await this.prisma.tokenizedCard.findMany({ where: { userId } });
+    if (cards.length === 0) {
+      return {
+        totalCards: 0,
+        riskScore: 0,
+        riskLevel: 'no_data',
+        riskMatrix: [],
+        recommendations: [],
+      };
+    }
+
+    const now = Date.now();
+    const riskMatrix: Array<{ cardId: string; last4: string; expiryDate: string | null; daysUntilExpiry: number | null; riskCategory: string }> = [];
+    let highRisk = 0;
+    let mediumRisk = 0;
+
+    for (const c of cards) {
+      const expiry = (c as any).expiryDate || (c as any).expiresAt;
+      let daysUntilExpiry: number | null = null;
+      let riskCategory = 'unknown';
+
+      if (expiry) {
+        daysUntilExpiry = Math.round((new Date(expiry).getTime() - now) / 86400000);
+        if (daysUntilExpiry <= 0) { riskCategory = 'expired'; highRisk++; }
+        else if (daysUntilExpiry <= 30) { riskCategory = 'critical'; highRisk++; }
+        else if (daysUntilExpiry <= 90) { riskCategory = 'warning'; mediumRisk++; }
+        else { riskCategory = 'safe'; }
+      }
+
+      riskMatrix.push({
+        cardId: c.id,
+        last4: (c as any).last4 || '****',
+        expiryDate: expiry ? new Date(expiry).toISOString() : null,
+        daysUntilExpiry,
+        riskCategory,
+      });
+    }
+
+    riskMatrix.sort((a, b) => (a.daysUntilExpiry ?? 9999) - (b.daysUntilExpiry ?? 9999));
+
+    let riskScore = 100;
+    if (highRisk > 0) riskScore -= Math.min(50, highRisk * 20);
+    if (mediumRisk > 0) riskScore -= Math.min(30, mediumRisk * 10);
+    riskScore = Math.max(0, riskScore);
+
+    const riskLevel = riskScore >= 80 ? 'low' : riskScore >= 50 ? 'moderate' : 'high';
+
+    const recommendations: string[] = [];
+    if (highRisk > 0) recommendations.push(`${highRisk} card(s) expired or expiring within 30 days — update immediately`);
+    if (mediumRisk > 0) recommendations.push(`${mediumRisk} card(s) expiring within 90 days — plan renewal`);
+    if (riskLevel === 'low') recommendations.push('All cards are in good standing');
+
+    return {
+      totalCards: cards.length,
+      riskScore,
+      riskLevel,
+      riskMatrix,
+      recommendations,
+    };
+  }
 }

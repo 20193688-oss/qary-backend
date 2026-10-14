@@ -643,6 +643,59 @@ export class TransactionLimitService {
     };
   }
 
+  async getLimitEfficiencyIndex(userId: string) {
+    const limits = await this.prisma.transactionLimit.findMany({ where: { userId } });
+    if (limits.length === 0) {
+      return {
+        totalLimits: 0,
+        efficiencyIndex: 0,
+        efficiencyLevel: 'no_data',
+        optimalCount: 0,
+        wastefulCount: 0,
+        tightCount: 0,
+        recommendations: [],
+      };
+    }
+
+    let optimalCount = 0;
+    let wastefulCount = 0;
+    let tightCount = 0;
+    let totalEfficiency = 0;
+
+    for (const l of limits) {
+      const refreshed = this.refreshIfNeeded(l);
+      const maxAmount = BigInt((refreshed as any).maxAmount ?? 0);
+      const currentUsage = BigInt((refreshed as any).currentUsage ?? 0);
+      const utilization = maxAmount > BigInt(0)
+        ? Number(currentUsage * BigInt(100) / maxAmount)
+        : 0;
+
+      if (utilization >= 30 && utilization <= 80) { optimalCount++; totalEfficiency += 100; }
+      else if (utilization < 10) { wastefulCount++; totalEfficiency += 20; }
+      else if (utilization > 90) { tightCount++; totalEfficiency += 40; }
+      else { totalEfficiency += 60; }
+    }
+
+    const efficiencyIndex = Math.round(totalEfficiency / limits.length);
+    const efficiencyLevel = efficiencyIndex >= 70 ? 'optimal'
+      : efficiencyIndex >= 40 ? 'suboptimal' : 'poor';
+
+    const recommendations: string[] = [];
+    if (wastefulCount > 0) recommendations.push(`${wastefulCount} limit(s) barely used — tighten or remove`);
+    if (tightCount > 0) recommendations.push(`${tightCount} limit(s) nearly maxed out — increase to avoid rejections`);
+    if (efficiencyLevel === 'optimal') recommendations.push('Limits are well-calibrated to usage patterns');
+
+    return {
+      totalLimits: limits.length,
+      efficiencyIndex,
+      efficiencyLevel,
+      optimalCount,
+      wastefulCount,
+      tightCount,
+      recommendations,
+    };
+  }
+
   private refreshIfNeeded(limit: any): any {
     const periodStart = this.periodStart(limit.limitType);
     if (limit.periodStart < periodStart) {
