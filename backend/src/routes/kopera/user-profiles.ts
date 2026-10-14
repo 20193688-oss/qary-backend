@@ -103,6 +103,10 @@ export async function registerUserProfileRoutes(app: FastifyInstance, prisma: Pr
     return svc.getAccountMaturityReport(req.auth!.userId);
   });
 
+  app.get('/api/profile/account-completeness', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getAccountCompleteness(req.auth!.userId);
+  });
+
   app.post('/api/profile/mfa/enable', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const body = z.object({
       secret: z.string().min(1),

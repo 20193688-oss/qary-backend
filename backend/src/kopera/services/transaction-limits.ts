@@ -512,6 +512,70 @@ export class TransactionLimitService {
     };
   }
 
+  async getLimitBreachHistory(userId: string) {
+    const limits = await this.prisma.transactionLimit.findMany({ where: { userId } });
+    if (limits.length === 0) {
+      return {
+        totalLimits: 0,
+        breachedCount: 0,
+        nearBreachCount: 0,
+        safeCount: 0,
+        overallUtilization: 0,
+        limits: [],
+      };
+    }
+
+    let breachedCount = 0;
+    let nearBreachCount = 0;
+    let safeCount = 0;
+    let totalUtilization = 0;
+
+    const limitDetails: { currency: string; limitType: string; maxAmount: string; currentUsage: string; utilization: number; status: string }[] = [];
+
+    for (const l of limits) {
+      const maxAmount = BigInt((l as any).maxAmount || 1);
+      const currentUsage = BigInt((l as any).currentUsage || 0);
+      const utilization = maxAmount > 0
+        ? Number((currentUsage * BigInt(10000) / maxAmount)) / 100
+        : 0;
+      totalUtilization += utilization;
+
+      let status: string;
+      if (utilization >= 100) {
+        status = 'breached';
+        breachedCount++;
+      } else if (utilization >= 80) {
+        status = 'near_breach';
+        nearBreachCount++;
+      } else {
+        status = 'safe';
+        safeCount++;
+      }
+
+      limitDetails.push({
+        currency: (l as any).currency || 'USD',
+        limitType: (l as any).limitType || 'daily',
+        maxAmount: maxAmount.toString(),
+        currentUsage: currentUsage.toString(),
+        utilization: Number(utilization.toFixed(2)),
+        status,
+      });
+    }
+
+    const overallUtilization = limits.length > 0
+      ? Number((totalUtilization / limits.length).toFixed(2))
+      : 0;
+
+    return {
+      totalLimits: limits.length,
+      breachedCount,
+      nearBreachCount,
+      safeCount,
+      overallUtilization,
+      limits: limitDetails,
+    };
+  }
+
   private refreshIfNeeded(limit: any): any {
     const periodStart = this.periodStart(limit.limitType);
     if (limit.periodStart < periodStart) {

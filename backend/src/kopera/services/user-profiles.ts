@@ -322,4 +322,49 @@ export class UserProfileService {
       totalCards: cards.length,
     };
   }
+
+  async getAccountCompleteness(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new Error('user_not_found');
+
+    const fields: { field: string; completed: boolean }[] = [];
+    let completed = 0;
+    const checks = [
+      { field: 'email', value: (user as any).email },
+      { field: 'phone', value: (user as any).phone },
+      { field: 'firstName', value: (user as any).firstName },
+      { field: 'lastName', value: (user as any).lastName },
+      { field: 'dateOfBirth', value: (user as any).dateOfBirth },
+      { field: 'country', value: (user as any).country },
+      { field: 'mfaEnabled', value: (user as any).mfaEnabled },
+      { field: 'pinHash', value: (user as any).pinHash },
+    ];
+
+    for (const c of checks) {
+      const isDone = c.value !== null && c.value !== undefined && c.value !== '' && c.value !== false;
+      fields.push({ field: c.field, completed: isDone });
+      if (isDone) completed++;
+    }
+
+    const totalFields = checks.length;
+    const completenessPercent = Number(((completed / totalFields) * 100).toFixed(1));
+
+    let level: string;
+    if (completenessPercent >= 90) level = 'complete';
+    else if (completenessPercent >= 60) level = 'mostly_complete';
+    else if (completenessPercent >= 30) level = 'partial';
+    else level = 'minimal';
+
+    const missing = fields.filter(f => !f.completed).map(f => f.field);
+
+    return {
+      userId,
+      completedFields: completed,
+      totalFields,
+      completenessPercent,
+      level,
+      fields,
+      missingFields: missing,
+    };
+  }
 }

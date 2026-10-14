@@ -555,4 +555,49 @@ export class TransactionService {
       weekdayVsWeekend: { weekday, weekend },
     };
   }
+
+  async getTransactionAnomalyDetection(userId: string, currency?: string) {
+    const where: any = { userId };
+    if (currency) where.currency = currency;
+    const txns = await this.prisma.transaction.findMany({ where });
+
+    if (txns.length === 0) {
+      return {
+        totalTransactions: 0,
+        anomalies: [],
+        avgAmount: '0',
+        stdDeviation: '0',
+        threshold: '0',
+      };
+    }
+
+    const amounts = txns.map((t: any) => Number(t.amount || 0));
+    const avg = amounts.reduce((a, b) => a + b, 0) / amounts.length;
+    const variance = amounts.reduce((sum, a) => sum + (a - avg) ** 2, 0) / amounts.length;
+    const stdDev = Math.sqrt(variance);
+    const threshold = avg + 2 * stdDev;
+
+    const anomalies: { transactionId: string; amount: string; deviation: number; date: string }[] = [];
+    for (const t of txns) {
+      const amt = Number((t as any).amount || 0);
+      if (amt > threshold) {
+        anomalies.push({
+          transactionId: t.id,
+          amount: String((t as any).amount || 0),
+          deviation: Number(((amt - avg) / (stdDev || 1)).toFixed(2)),
+          date: t.createdAt.toISOString(),
+        });
+      }
+    }
+
+    anomalies.sort((a, b) => b.deviation - a.deviation);
+
+    return {
+      totalTransactions: txns.length,
+      anomalies: anomalies.slice(0, 10),
+      avgAmount: Math.round(avg).toString(),
+      stdDeviation: Math.round(stdDev).toString(),
+      threshold: Math.round(threshold).toString(),
+    };
+  }
 }
