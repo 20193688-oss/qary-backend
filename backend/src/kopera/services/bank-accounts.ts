@@ -630,4 +630,61 @@ export class BankAccountService {
       recommendations,
     };
   }
+
+  async getAccountDormancyRisk(userId: string) {
+    const accounts = await this.prisma.bankAccount.findMany({ where: { userId } });
+    if (accounts.length === 0) {
+      return {
+        totalAccounts: 0,
+        dormantCount: 0,
+        atRiskCount: 0,
+        dormancyRate: 0,
+        riskLevel: 'no_data',
+        accounts: [],
+        recommendations: [],
+      };
+    }
+
+    const now = Date.now();
+    const accountAnalysis: Array<{ id: string; bankName: string; daysSinceActivity: number | null; dormancyStatus: string }> = [];
+    let dormantCount = 0;
+    let atRiskCount = 0;
+
+    for (const a of accounts) {
+      const lastUsed = (a as any).lastUsedAt || (a as any).updatedAt || (a as any).createdAt;
+      const daysSinceActivity = lastUsed ? Math.round((now - new Date(lastUsed).getTime()) / 86400000) : null;
+      let dormancyStatus = 'active';
+
+      if (daysSinceActivity !== null) {
+        if (daysSinceActivity > 180) { dormancyStatus = 'dormant'; dormantCount++; }
+        else if (daysSinceActivity > 90) { dormancyStatus = 'at_risk'; atRiskCount++; }
+      }
+
+      accountAnalysis.push({
+        id: a.id,
+        bankName: (a as any).bankName || (a as any).institutionName || 'Unknown',
+        daysSinceActivity,
+        dormancyStatus,
+      });
+    }
+
+    const dormancyRate = Math.round((dormantCount / accounts.length) * 10000) / 100;
+    const riskLevel = dormantCount > accounts.length * 0.5 ? 'high'
+      : (dormantCount + atRiskCount) > 0 ? 'moderate' : 'low';
+
+    const recommendations: string[] = [];
+    if (dormantCount > 0) recommendations.push(`${dormantCount} account(s) dormant for 180+ days — consider removal`);
+    if (atRiskCount > 0) recommendations.push(`${atRiskCount} account(s) approaching dormancy — use or verify`);
+    if (riskLevel === 'low') recommendations.push('All accounts are actively used');
+
+    return {
+      totalAccounts: accounts.length,
+      dormantCount,
+      atRiskCount,
+      dormancyRate,
+      riskLevel,
+      accounts: accountAnalysis,
+      recommendations,
+    };
+  }
 }

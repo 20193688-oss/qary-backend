@@ -687,4 +687,66 @@ export class DisputeService {
       recommendations,
     };
   }
+
+  async getDisputeEscalationEffectiveness(userId: string) {
+    const disputes = await this.prisma.dispute.findMany({ where: { userId } });
+    if (disputes.length === 0) {
+      return {
+        totalDisputes: 0,
+        escalatedCount: 0,
+        escalationRate: 0,
+        escalatedResolutionRate: 0,
+        nonEscalatedResolutionRate: 0,
+        escalationEffectiveness: 0,
+        effectivenessLevel: 'no_data',
+        recommendations: [],
+      };
+    }
+
+    const escalated = disputes.filter(d => {
+      const status = ((d as any).status || '').toLowerCase();
+      return status === 'escalated' || !!(d as any).escalatedAt;
+    });
+
+    const nonEscalated = disputes.filter(d => {
+      const status = ((d as any).status || '').toLowerCase();
+      return status !== 'escalated' && !(d as any).escalatedAt;
+    });
+
+    const escalatedResolved = escalated.filter(d => {
+      const status = ((d as any).status || '').toLowerCase();
+      return status === 'resolved' || status === 'won' || status === 'closed';
+    });
+
+    const nonEscalatedResolved = nonEscalated.filter(d => {
+      const status = ((d as any).status || '').toLowerCase();
+      return status === 'resolved' || status === 'won' || status === 'closed';
+    });
+
+    const escalationRate = Math.round((escalated.length / disputes.length) * 10000) / 100;
+    const escalatedResolutionRate = escalated.length > 0
+      ? Math.round((escalatedResolved.length / escalated.length) * 10000) / 100 : 0;
+    const nonEscalatedResolutionRate = nonEscalated.length > 0
+      ? Math.round((nonEscalatedResolved.length / nonEscalated.length) * 10000) / 100 : 0;
+
+    const escalationEffectiveness = escalatedResolutionRate - nonEscalatedResolutionRate;
+    const effectivenessLevel = escalationEffectiveness > 20 ? 'highly_effective'
+      : escalationEffectiveness > 0 ? 'moderately_effective' : 'ineffective';
+
+    const recommendations: string[] = [];
+    if (escalationRate > 50) recommendations.push('High escalation rate — improve initial dispute handling');
+    if (effectivenessLevel === 'ineffective') recommendations.push('Escalation does not improve outcomes — review process');
+    if (escalated.length === 0) recommendations.push('No escalations recorded — escalation process may be underused');
+
+    return {
+      totalDisputes: disputes.length,
+      escalatedCount: escalated.length,
+      escalationRate,
+      escalatedResolutionRate,
+      nonEscalatedResolutionRate,
+      escalationEffectiveness,
+      effectivenessLevel,
+      recommendations,
+    };
+  }
 }

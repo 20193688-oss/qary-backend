@@ -97,6 +97,10 @@ export async function registerBankAccountRoutes(app: FastifyInstance, prisma: Pr
     return svc.getAccountSecurityAudit(req.auth!.userId);
   });
 
+  app.get('/api/bank-accounts/dormancy-risk', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getAccountDormancyRisk(req.auth!.userId);
+  });
+
   app.patch('/api/bank-accounts/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const body = z.object({

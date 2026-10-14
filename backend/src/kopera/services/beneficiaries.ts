@@ -560,4 +560,61 @@ export class BeneficiaryService {
       recommendations,
     };
   }
+
+  async getBeneficiaryRiskConcentration(userId: string) {
+    const beneficiaries = await this.prisma.beneficiary.findMany({ where: { userId } });
+    if (beneficiaries.length === 0) {
+      return {
+        totalBeneficiaries: 0,
+        concentrationScore: 0,
+        concentrationLevel: 'no_data',
+        topRecipients: [],
+        recommendations: [],
+      };
+    }
+
+    const countryMap: Record<string, number> = {};
+    const currencyMap: Record<string, number> = {};
+
+    for (const b of beneficiaries) {
+      const country = (b as any).country || (b as any).bankCountry || 'unknown';
+      const currency = (b as any).currency || 'unknown';
+      countryMap[country] = (countryMap[country] || 0) + 1;
+      currencyMap[currency] = (currencyMap[currency] || 0) + 1;
+    }
+
+    let concentrationScore = 0;
+    const countryEntries = Object.entries(countryMap);
+    for (const [, count] of countryEntries) {
+      const share = count / beneficiaries.length;
+      concentrationScore += Math.round(share * share * 10000);
+    }
+    concentrationScore = Math.min(10000, concentrationScore);
+
+    const concentrationLevel = concentrationScore > 5000 ? 'concentrated'
+      : concentrationScore > 2500 ? 'moderate' : 'diversified';
+
+    const topRecipients = countryEntries
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([country, count]) => ({
+        country,
+        count,
+        sharePercent: Math.round((count / beneficiaries.length) * 10000) / 100,
+      }));
+
+    const recommendations: string[] = [];
+    if (concentrationLevel === 'concentrated') recommendations.push('Beneficiaries concentrated in few countries — consider diversification');
+    if (Object.keys(currencyMap).length === 1) recommendations.push('All beneficiaries use single currency — multi-currency may reduce FX costs');
+    if (beneficiaries.length > 20) recommendations.push('Large beneficiary list — review for inactive or duplicate entries');
+
+    return {
+      totalBeneficiaries: beneficiaries.length,
+      concentrationScore,
+      concentrationLevel,
+      topRecipients,
+      currencyDistribution: currencyMap,
+      recommendations,
+    };
+  }
 }
