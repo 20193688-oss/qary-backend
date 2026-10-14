@@ -779,4 +779,87 @@ export class SavingsGoalService {
       recommendations,
     };
   }
+
+  async getSavingsGoalRiskAssessment(userId: string) {
+    const goals = await this.prisma.savingsGoal.findMany({ where: { userId } });
+
+    if (goals.length === 0) {
+      return {
+        totalGoals: 0,
+        riskLevel: 'no_data' as const,
+        riskScore: 0,
+        atRiskGoals: 0,
+        onTrackGoals: 0,
+        recommendations: [],
+      };
+    }
+
+    const now = Date.now();
+    let atRisk = 0;
+    let onTrack = 0;
+    let completed = 0;
+
+    const goalDetails = goals.map(g => {
+      const current = Number(g.currentAmount);
+      const target = Number(g.targetAmount);
+      const progress = target > 0 ? current / target : 0;
+
+      const deadline = (g as any).targetDate || (g as any).deadline;
+      let daysRemaining = 999;
+      if (deadline) {
+        daysRemaining = Math.max(0, Math.floor((new Date(deadline).getTime() - now) / 86400000));
+      }
+
+      let status: string;
+      if (progress >= 1) {
+        status = 'completed';
+        completed++;
+      } else if (daysRemaining <= 0 && progress < 1) {
+        status = 'overdue';
+        atRisk++;
+      } else if (daysRemaining <= 30 && progress < 0.8) {
+        status = 'at_risk';
+        atRisk++;
+      } else if (progress >= 0.5 || daysRemaining > 60) {
+        status = 'on_track';
+        onTrack++;
+      } else {
+        status = 'behind';
+        atRisk++;
+      }
+
+      return {
+        id: g.id,
+        name: (g as any).name || (g as any).title || 'Unnamed',
+        progress: Math.round(progress * 100),
+        daysRemaining,
+        status,
+        currentAmount: g.currentAmount.toString(),
+        targetAmount: g.targetAmount.toString(),
+      };
+    });
+
+    const atRiskRate = atRisk / goals.length;
+    let riskScore = Math.round(atRiskRate * 100);
+    if (completed === 0 && goals.length > 3) riskScore = Math.min(100, riskScore + 15);
+    riskScore = Math.min(100, riskScore);
+
+    const riskLevel = riskScore >= 60 ? 'high' : riskScore >= 30 ? 'moderate' : 'low';
+
+    const recommendations: string[] = [];
+    if (atRisk > 0) recommendations.push(`${atRisk} goal(s) at risk — increase contributions`);
+    if (completed === 0) recommendations.push('No completed goals yet — stay consistent');
+    if (goalDetails.some(g => g.status === 'overdue')) recommendations.push('Overdue goals detected — review targets');
+
+    return {
+      totalGoals: goals.length,
+      riskLevel,
+      riskScore,
+      atRiskGoals: atRisk,
+      onTrackGoals: onTrack,
+      completedGoals: completed,
+      goals: goalDetails,
+      recommendations,
+    };
+  }
 }

@@ -732,4 +732,71 @@ export class ReferralService {
       recommendations,
     };
   }
+
+  async getReferralNetworkHealth(userId: string) {
+    const referral = await this.prisma.referral.findUnique({ where: { userId } });
+    if (!referral) {
+      return {
+        hasReferralCode: false,
+        healthLevel: 'no_data' as const,
+        healthScore: 0,
+        totalSignups: 0,
+        activeSignups: 0,
+        conversionRate: 0,
+        recommendations: [],
+      };
+    }
+
+    const signups = await this.prisma.referralSignup.findMany({ where: { referralId: referral.id } });
+
+    if (signups.length === 0) {
+      return {
+        hasReferralCode: true,
+        healthLevel: 'inactive' as const,
+        healthScore: 0,
+        totalSignups: 0,
+        activeSignups: 0,
+        conversionRate: 0,
+        recommendations: ['Share your referral code to start building your network'],
+      };
+    }
+
+    const activeStatuses = ['active', 'converted', 'completed', 'ACTIVE', 'CONVERTED', 'COMPLETED'];
+    const activeSignups = signups.filter(s => activeStatuses.includes(s.status)).length;
+    const conversionRate = Math.round((activeSignups / signups.length) * 100);
+
+    const now = Date.now();
+    const recentSignups = signups.filter(s => now - new Date(s.createdAt).getTime() < 30 * 86400000).length;
+
+    let healthScore = 0;
+    if (activeSignups > 10) healthScore += 30;
+    else if (activeSignups > 5) healthScore += 20;
+    else if (activeSignups > 0) healthScore += 10;
+
+    if (conversionRate > 80) healthScore += 30;
+    else if (conversionRate > 50) healthScore += 20;
+    else if (conversionRate > 20) healthScore += 10;
+
+    if (recentSignups > 3) healthScore += 25;
+    else if (recentSignups > 0) healthScore += 15;
+
+    healthScore = Math.min(100, healthScore);
+    const healthLevel = healthScore >= 60 ? 'thriving' : healthScore >= 30 ? 'growing' : 'stagnant';
+
+    const recommendations: string[] = [];
+    if (recentSignups === 0) recommendations.push('No recent signups — consider resharing your code');
+    if (conversionRate < 50) recommendations.push('Low conversion rate — follow up with pending referrals');
+    if (healthLevel === 'thriving') recommendations.push('Great network health — keep sharing!');
+
+    return {
+      hasReferralCode: true,
+      healthLevel,
+      healthScore,
+      totalSignups: signups.length,
+      activeSignups,
+      conversionRate,
+      recentSignups,
+      recommendations,
+    };
+  }
 }

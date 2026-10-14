@@ -894,4 +894,67 @@ export class SubscriptionService {
       recommendations,
     };
   }
+
+  async getSubscriptionValueScore(userId: string) {
+    const subs = await this.prisma.subscription.findMany({ where: { userId } });
+
+    if (subs.length === 0) {
+      return {
+        totalSubscriptions: 0,
+        valueLevel: 'no_data' as const,
+        valueScore: 0,
+        statusBreakdown: {},
+        recommendations: [],
+      };
+    }
+
+    const statusBreakdown: Record<string, number> = {};
+    let activeSubs = 0;
+    let totalMonthlyCost = BigInt(0);
+
+    for (const sub of subs) {
+      const status = sub.status || 'unknown';
+      statusBreakdown[status] = (statusBreakdown[status] || 0) + 1;
+
+      const isActive = status === 'ACTIVE' || status === 'active';
+      if (isActive) {
+        activeSubs++;
+        const interval = (sub as any).interval || (sub as any).billingCycle || 'monthly';
+        let monthlyCost = sub.amount;
+        if (interval === 'yearly' || interval === 'annual') monthlyCost = sub.amount / BigInt(12);
+        else if (interval === 'weekly') monthlyCost = sub.amount * BigInt(4);
+        totalMonthlyCost += monthlyCost;
+      }
+    }
+
+    const avgCostPerSub = activeSubs > 0 ? totalMonthlyCost / BigInt(activeSubs) : BigInt(0);
+    const cancelledCount = (statusBreakdown['CANCELLED'] || 0) + (statusBreakdown['cancelled'] || 0);
+    const churnRate = subs.length > 0 ? Math.round((cancelledCount / subs.length) * 100) : 0;
+
+    let valueScore = 70;
+    if (churnRate > 50) valueScore -= 30;
+    else if (churnRate > 25) valueScore -= 15;
+    if (activeSubs === 0) valueScore -= 30;
+    if (activeSubs > 10) valueScore -= 10;
+    valueScore = Math.max(0, Math.min(100, valueScore));
+
+    const valueLevel = valueScore >= 60 ? 'good' : valueScore >= 30 ? 'fair' : 'poor';
+
+    const recommendations: string[] = [];
+    if (churnRate > 30) recommendations.push('High churn rate — review subscription value');
+    if (activeSubs === 0) recommendations.push('No active subscriptions');
+    if (activeSubs > 10) recommendations.push('Many active subscriptions — check for overlap');
+
+    return {
+      totalSubscriptions: subs.length,
+      valueLevel,
+      valueScore,
+      activeSubscriptions: activeSubs,
+      totalMonthlyCost: totalMonthlyCost.toString(),
+      avgCostPerSubscription: avgCostPerSub.toString(),
+      churnRate,
+      statusBreakdown,
+      recommendations,
+    };
+  }
 }
