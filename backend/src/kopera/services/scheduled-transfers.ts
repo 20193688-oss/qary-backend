@@ -485,4 +485,65 @@ export class ScheduledTransferService {
       suggestions,
     };
   }
+
+  async getExecutionSuccessRate(userId: string) {
+    const transfers = await this.prisma.scheduledTransfer.findMany({
+      where: { userId },
+    });
+
+    if (transfers.length === 0) {
+      return {
+        totalTransfers: 0,
+        totalExecutions: 0,
+        successRate: 0,
+        avgExecutionsPerTransfer: 0,
+        byFrequency: [] as Array<{ frequency: string; transfers: number; totalExecutions: number; avgExecutions: number }>,
+        mostReliable: null as string | null,
+        leastReliable: null as string | null,
+      };
+    }
+
+    let totalExecutions = 0;
+    const freqMap = new Map<string, { transfers: number; totalExecutions: number }>();
+
+    for (const t of transfers) {
+      const execCount = (t as any).executionCount ?? 0;
+      totalExecutions += execCount;
+
+      const freq = (t as any).frequency ?? 'unknown';
+      const entry = freqMap.get(freq) ?? { transfers: 0, totalExecutions: 0 };
+      entry.transfers++;
+      entry.totalExecutions += execCount;
+      freqMap.set(freq, entry);
+    }
+
+    const withExecutions = transfers.filter((t: any) => (t.executionCount ?? 0) > 0).length;
+    const successRate = transfers.length > 0
+      ? Math.round((withExecutions / transfers.length) * 10000) / 100
+      : 0;
+    const avgExecutionsPerTransfer = transfers.length > 0
+      ? Math.round((totalExecutions / transfers.length) * 100) / 100
+      : 0;
+
+    const byFrequency = Array.from(freqMap.entries())
+      .map(([frequency, data]) => ({
+        frequency,
+        transfers: data.transfers,
+        totalExecutions: data.totalExecutions,
+        avgExecutions: data.transfers > 0
+          ? Math.round((data.totalExecutions / data.transfers) * 100) / 100
+          : 0,
+      }))
+      .sort((a, b) => b.avgExecutions - a.avgExecutions);
+
+    return {
+      totalTransfers: transfers.length,
+      totalExecutions,
+      successRate,
+      avgExecutionsPerTransfer,
+      byFrequency,
+      mostReliable: byFrequency[0]?.frequency ?? null,
+      leastReliable: byFrequency.length > 1 ? byFrequency[byFrequency.length - 1].frequency : null,
+    };
+  }
 }

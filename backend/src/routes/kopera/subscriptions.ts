@@ -125,6 +125,10 @@ export async function registerSubscriptionRoutes(app: FastifyInstance, prisma: P
     return subscriptions.getSpendingTrend(req.auth!.userId);
   });
 
+  app.get('/api/subscriptions/cancellation-risk', { preHandler: [app.requireAuth] }, async (req) => {
+    return subscriptions.getCancellationRisk(req.auth!.userId);
+  });
+
   app.get('/api/subscriptions/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const sub = await subscriptions.getById(id);
