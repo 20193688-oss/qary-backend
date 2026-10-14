@@ -636,4 +636,69 @@ export class KycService {
       recommendations,
     };
   }
+
+  async getKycRenewalForecast(userId: string) {
+    const profile = await this.prisma.kycProfile.findFirst({ where: { userId } });
+    if (!profile) throw new Error('kyc_not_found');
+
+    const now = new Date();
+    const createdAt = new Date(profile.createdAt);
+    const updatedAt = new Date(profile.updatedAt);
+    const accountAgeDays = Math.floor((now.getTime() - createdAt.getTime()) / 86400000);
+    const daysSinceUpdate = Math.floor((now.getTime() - updatedAt.getTime()) / 86400000);
+
+    const checks: { check: string; status: string; urgency: string }[] = [];
+
+    const verificationStatus = profile.status || 'PENDING';
+    checks.push({
+      check: 'identity_verification',
+      status: verificationStatus === 'VERIFIED' || verificationStatus === 'APPROVED' ? 'current' : 'needs_renewal',
+      urgency: verificationStatus === 'VERIFIED' || verificationStatus === 'APPROVED' ? 'none' : 'high',
+    });
+
+    const documentExpiry = daysSinceUpdate > 365;
+    checks.push({
+      check: 'document_validity',
+      status: documentExpiry ? 'expired' : 'current',
+      urgency: documentExpiry ? 'high' : daysSinceUpdate > 270 ? 'medium' : 'none',
+    });
+
+    checks.push({
+      check: 'periodic_review',
+      status: daysSinceUpdate > 180 ? 'overdue' : 'current',
+      urgency: daysSinceUpdate > 180 ? 'high' : daysSinceUpdate > 120 ? 'medium' : 'none',
+    });
+
+    checks.push({
+      check: 'risk_reassessment',
+      status: accountAgeDays > 365 && daysSinceUpdate > 90 ? 'due' : 'current',
+      urgency: accountAgeDays > 365 && daysSinceUpdate > 90 ? 'medium' : 'none',
+    });
+
+    const urgentCount = checks.filter(c => c.urgency === 'high').length;
+    const dueCount = checks.filter(c => c.urgency === 'medium').length;
+
+    let renewalScore = 100;
+    renewalScore -= urgentCount * 25;
+    renewalScore -= dueCount * 10;
+    renewalScore = Math.max(0, renewalScore);
+
+    const renewalStatus = renewalScore >= 70 ? 'current' : renewalScore >= 40 ? 'renewal_due' : 'urgent_renewal';
+
+    const recommendations: string[] = [];
+    if (urgentCount > 0) recommendations.push(`${urgentCount} check(s) require immediate attention`);
+    if (dueCount > 0) recommendations.push(`${dueCount} check(s) due for renewal soon`);
+    if (daysSinceUpdate > 365) recommendations.push('KYC profile not updated in over a year');
+
+    return {
+      renewalStatus,
+      renewalScore,
+      accountAgeDays,
+      daysSinceLastUpdate: daysSinceUpdate,
+      totalChecks: checks.length,
+      urgentChecks: urgentCount,
+      checks,
+      recommendations,
+    };
+  }
 }
