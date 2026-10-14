@@ -389,4 +389,70 @@ export class BankAccountService {
       recommendation,
     };
   }
+
+  async getAccountAgingReport(userId: string) {
+    const accounts = await this.prisma.bankAccount.findMany({ where: { userId } });
+
+    if (accounts.length === 0) {
+      return {
+        totalAccounts: 0,
+        avgAgeDays: 0,
+        oldestAgeDays: 0,
+        newestAgeDays: 0,
+        staleCount: 0,
+        byAgeGroup: [],
+        recommendation: 'No bank accounts found.',
+      };
+    }
+
+    const now = Date.now();
+    const ages = accounts.map((a: any) => ({
+      id: a.id,
+      bankName: a.bankName,
+      ageDays: Math.floor((now - new Date(a.createdAt).getTime()) / 86400000),
+      isVerified: !!(a.isVerified ?? a.verified),
+      currency: a.currency,
+    }));
+
+    ages.sort((a, b) => b.ageDays - a.ageDays);
+
+    const totalAge = ages.reduce((s, a) => s + a.ageDays, 0);
+    const avgAgeDays = Math.round(totalAge / ages.length);
+    const oldestAgeDays = ages[0].ageDays;
+    const newestAgeDays = ages[ages.length - 1].ageDays;
+
+    const staleThreshold = 180;
+    const staleAccounts = ages.filter(a => a.ageDays > staleThreshold && !a.isVerified);
+
+    const groups = [
+      { label: 'new', min: 0, max: 30 },
+      { label: 'recent', min: 30, max: 90 },
+      { label: 'established', min: 90, max: 365 },
+      { label: 'mature', min: 365, max: Infinity },
+    ];
+
+    const byAgeGroup = groups.map(g => ({
+      group: g.label,
+      count: ages.filter(a => a.ageDays >= g.min && a.ageDays < g.max).length,
+    }));
+
+    let recommendation: string;
+    if (staleAccounts.length > 0) {
+      recommendation = `${staleAccounts.length} unverified account(s) older than ${staleThreshold} days should be verified or removed.`;
+    } else if (avgAgeDays > 365) {
+      recommendation = 'All accounts are well-established. Consider reviewing for updated details.';
+    } else {
+      recommendation = 'Account portfolio is healthy with no stale entries.';
+    }
+
+    return {
+      totalAccounts: accounts.length,
+      avgAgeDays,
+      oldestAgeDays,
+      newestAgeDays,
+      staleCount: staleAccounts.length,
+      byAgeGroup,
+      recommendation,
+    };
+  }
 }

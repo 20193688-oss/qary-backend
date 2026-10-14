@@ -88,6 +88,10 @@ export async function registerBeneficiaryRoutes(app: FastifyInstance, prisma: Pr
     return svc.getActivityScore(req.auth!.userId);
   });
 
+  app.get('/api/beneficiaries/dormancy-report', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getDormancyReport(req.auth!.userId);
+  });
+
   app.get('/api/beneficiaries/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const b = await svc.getById(id);

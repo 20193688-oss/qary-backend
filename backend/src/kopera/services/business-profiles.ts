@@ -316,6 +316,73 @@ export class BusinessProfileService {
     };
   }
 
+  async getComplianceGapAnalysis(userId: string) {
+    const profile = await this.prisma.businessProfile.findUnique({ where: { userId } });
+    if (!profile) throw new Error('profile_not_found');
+
+    const p = profile as any;
+    const requiredFields = [
+      { field: 'taxId', label: 'Tax ID', category: 'identity' },
+      { field: 'taxIdType', label: 'Tax ID Type', category: 'identity' },
+      { field: 'taxIdCountry', label: 'Tax ID Country', category: 'identity' },
+      { field: 'legalName', label: 'Legal Name', category: 'registration' },
+      { field: 'incorporationDate', label: 'Incorporation Date', category: 'registration' },
+      { field: 'economicActivity', label: 'Economic Activity', category: 'registration' },
+      { field: 'ciiu', label: 'CIIU Code', category: 'registration' },
+      { field: 'fiscalAddress', label: 'Fiscal Address', category: 'address' },
+      { field: 'legalRepName', label: 'Legal Rep Name', category: 'representative' },
+      { field: 'legalRepDocType', label: 'Legal Rep Doc Type', category: 'representative' },
+      { field: 'legalRepDocNumber', label: 'Legal Rep Doc Number', category: 'representative' },
+    ];
+
+    const gaps: { field: string; label: string; category: string; severity: string }[] = [];
+    const categoryStatus = new Map<string, { total: number; filled: number }>();
+
+    for (const rf of requiredFields) {
+      const cat = categoryStatus.get(rf.category) ?? { total: 0, filled: 0 };
+      cat.total++;
+      if (p[rf.field]) {
+        cat.filled++;
+      } else {
+        const severity = ['taxId', 'legalName', 'legalRepName'].includes(rf.field) ? 'critical' : 'important';
+        gaps.push({ field: rf.field, label: rf.label, category: rf.category, severity });
+      }
+      categoryStatus.set(rf.category, cat);
+    }
+
+    const isVerified = profile.status === 'APPROVED';
+    const hasScreening = !!p.lastScreeningAt;
+    if (!isVerified) gaps.push({ field: 'verification', label: 'Profile Verification', category: 'verification', severity: 'critical' });
+    if (!hasScreening) gaps.push({ field: 'screening', label: 'AML Screening', category: 'screening', severity: 'critical' });
+
+    const byCategory = Array.from(categoryStatus.entries()).map(([category, data]) => ({
+      category,
+      filled: data.filled,
+      total: data.total,
+      completeness: Math.round((data.filled / data.total) * 100),
+    }));
+
+    const criticalGaps = gaps.filter(g => g.severity === 'critical').length;
+    const totalGaps = gaps.length;
+    const complianceScore = Math.round(((requiredFields.length + 2 - totalGaps) / (requiredFields.length + 2)) * 100);
+
+    const readiness = complianceScore >= 90 ? 'ready'
+      : complianceScore >= 70 ? 'near_ready'
+      : complianceScore >= 40 ? 'in_progress'
+      : 'not_started';
+
+    return {
+      userId,
+      status: profile.status,
+      complianceScore,
+      readiness,
+      totalGaps,
+      criticalGaps,
+      gaps,
+      byCategory,
+    };
+  }
+
   async reject(userId: string, reason: string) {
     const profile = await this.prisma.businessProfile.findUnique({ where: { userId } });
     if (!profile) throw new Error('profile_not_found');

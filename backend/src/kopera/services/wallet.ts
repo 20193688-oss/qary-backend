@@ -599,4 +599,106 @@ export class WalletService {
       recommendation,
     };
   }
+
+  async getBalanceGrowthTrend(userId: string) {
+    const userWallets = await this.prisma.wallet.findMany({ where: { userId } });
+    if (userWallets.length === 0) {
+      return {
+        totalWallets: 0,
+        byWallet: [],
+        overallGrowthRate: 0,
+        overallTrend: 'none' as const,
+      };
+    }
+
+    const walletIds = userWallets.map((w: any) => w.id);
+    const allEntries = await this.prisma.ledgerEntry.findMany({
+      where: { walletId: { in: walletIds } },
+    });
+
+    const byWallet: {
+      walletId: string;
+      currency: string;
+      currentBalance: string;
+      entries: number;
+      oldestBalance: string;
+      newestBalance: string;
+      growthAmount: string;
+      growthPercent: number;
+      trend: string;
+    }[] = [];
+
+    let totalOldest = BigInt(0);
+    let totalNewest = BigInt(0);
+
+    for (const w of userWallets) {
+      const entries = allEntries
+        .filter((e: any) => e.walletId === w.id)
+        .sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+      if (entries.length === 0) {
+        byWallet.push({
+          walletId: w.id,
+          currency: w.currency,
+          currentBalance: w.balance.toString(),
+          entries: 0,
+          oldestBalance: w.balance.toString(),
+          newestBalance: w.balance.toString(),
+          growthAmount: '0',
+          growthPercent: 0,
+          trend: 'stable',
+        });
+        totalOldest += w.balance;
+        totalNewest += w.balance;
+        continue;
+      }
+
+      const oldest = (entries[0] as any).balanceBefore;
+      const newest = (entries[entries.length - 1] as any).balanceAfter;
+      const growth = newest - oldest;
+      const growthPercent = Number(oldest) !== 0
+        ? Math.round(Number(growth * BigInt(10000) / oldest)) / 100
+        : Number(newest) > 0 ? 100 : 0;
+
+      const midpoint = Math.floor(entries.length / 2);
+      const firstHalfNet = entries.slice(0, midpoint).reduce((s: bigint, e: any) => s + e.amount, BigInt(0));
+      const secondHalfNet = entries.slice(midpoint).reduce((s: bigint, e: any) => s + e.amount, BigInt(0));
+
+      let trend: string;
+      if (entries.length < 2) trend = 'stable';
+      else if (secondHalfNet > firstHalfNet + BigInt(Math.abs(Number(firstHalfNet)) / 10)) trend = 'accelerating';
+      else if (secondHalfNet < firstHalfNet - BigInt(Math.abs(Number(firstHalfNet)) / 10)) trend = 'decelerating';
+      else trend = 'stable';
+
+      byWallet.push({
+        walletId: w.id,
+        currency: w.currency,
+        currentBalance: w.balance.toString(),
+        entries: entries.length,
+        oldestBalance: oldest.toString(),
+        newestBalance: newest.toString(),
+        growthAmount: growth.toString(),
+        growthPercent,
+        trend,
+      });
+
+      totalOldest += oldest;
+      totalNewest += newest;
+    }
+
+    const overallGrowthRate = Number(totalOldest) !== 0
+      ? Math.round(Number((totalNewest - totalOldest) * BigInt(10000) / totalOldest)) / 100
+      : Number(totalNewest) > 0 ? 100 : 0;
+
+    const overallTrend = overallGrowthRate > 5 ? 'growing'
+      : overallGrowthRate < -5 ? 'declining'
+      : 'stable';
+
+    return {
+      totalWallets: userWallets.length,
+      byWallet,
+      overallGrowthRate,
+      overallTrend,
+    };
+  }
 }
