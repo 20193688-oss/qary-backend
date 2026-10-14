@@ -507,6 +507,73 @@ export class BusinessProfileService {
     };
   }
 
+  async getBusinessOperationalReadiness(userId: string) {
+    const profile = await this.prisma.businessProfile.findUnique({ where: { userId } });
+    if (!profile) throw new Error('profile_not_found');
+
+    const checks: { check: string; passed: boolean; detail: string }[] = [];
+
+    const verified = ((profile as any).status || '').toLowerCase() === 'verified' ||
+      ((profile as any).status || '').toLowerCase() === 'approved';
+    checks.push({
+      check: 'verification',
+      passed: verified,
+      detail: verified ? 'Business is verified' : 'Business verification pending',
+    });
+
+    const hasName = !!(profile as any).businessName;
+    checks.push({
+      check: 'business_name',
+      passed: hasName,
+      detail: hasName ? 'Business name on file' : 'Business name missing',
+    });
+
+    const hasRegNumber = !!(profile as any).registrationNumber;
+    checks.push({
+      check: 'registration',
+      passed: hasRegNumber,
+      detail: hasRegNumber ? 'Registration number on file' : 'Registration number missing',
+    });
+
+    const hasAddress = !!(profile as any).address || !!(profile as any).businessAddress;
+    checks.push({
+      check: 'address',
+      passed: hasAddress,
+      detail: hasAddress ? 'Business address on file' : 'Business address missing',
+    });
+
+    const hasIndustry = !!(profile as any).industry;
+    checks.push({
+      check: 'industry',
+      passed: hasIndustry,
+      detail: hasIndustry ? 'Industry classification set' : 'Industry classification missing',
+    });
+
+    const passedCount = checks.filter(c => c.passed).length;
+    const readinessScore = Math.round((passedCount / checks.length) * 100);
+    const readinessLevel = readinessScore >= 80 ? 'ready' as const
+      : readinessScore >= 50 ? 'partial' as const
+      : 'not_ready' as const;
+
+    const recommendations: string[] = [];
+    const failed = checks.filter(c => !c.passed);
+    if (failed.length > 0) {
+      recommendations.push(`Complete ${failed.length} remaining check(s) before going operational`);
+    }
+    if (!verified) recommendations.push('Submit business for verification');
+    if (readinessLevel === 'ready') recommendations.push('Business is operationally ready');
+
+    return {
+      userId,
+      readinessScore,
+      readinessLevel,
+      checks,
+      passedChecks: passedCount,
+      totalChecks: checks.length,
+      recommendations,
+    };
+  }
+
   async reject(userId: string, reason: string) {
     const profile = await this.prisma.businessProfile.findUnique({ where: { userId } });
     if (!profile) throw new Error('profile_not_found');

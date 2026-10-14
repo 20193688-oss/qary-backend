@@ -525,4 +525,63 @@ export class UserSessionService {
       sharingRisk,
     };
   }
+
+  async getSessionConcurrencyAnalysis(userId: string) {
+    const sessions = await this.prisma.userSession.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (sessions.length === 0) {
+      return {
+        totalSessions: 0,
+        activeSessions: 0,
+        peakConcurrent: 0,
+        avgSessionDurationHours: 0,
+        concurrencyLevel: 'none' as const,
+        recommendations: [] as string[],
+      };
+    }
+
+    const active = sessions.filter(s => ((s as any).status || '').toLowerCase() === 'active');
+    const now = Date.now();
+
+    let longestDuration = 0;
+    let totalDuration = 0;
+    let withDuration = 0;
+
+    for (const s of sessions) {
+      const start = new Date(s.createdAt).getTime();
+      const end = (s as any).revokedAt ? new Date((s as any).revokedAt).getTime() : now;
+      const duration = end - start;
+      totalDuration += duration;
+      withDuration++;
+      if (duration > longestDuration) longestDuration = duration;
+    }
+
+    const avgDurationHours = withDuration > 0
+      ? Number((totalDuration / withDuration / 3600000).toFixed(2))
+      : 0;
+
+    const peakConcurrent = active.length;
+
+    const concurrencyLevel = peakConcurrent >= 5 ? 'high' as const
+      : peakConcurrent >= 3 ? 'moderate' as const
+      : peakConcurrent >= 1 ? 'low' as const
+      : 'none' as const;
+
+    const recommendations: string[] = [];
+    if (peakConcurrent >= 5) recommendations.push('High number of concurrent sessions — consider revoking unused ones');
+    if (avgDurationHours > 720) recommendations.push('Sessions remain active for very long periods — enable session expiry');
+    if (active.length > sessions.length * 0.8) recommendations.push('Most sessions are still active — review session cleanup policy');
+
+    return {
+      totalSessions: sessions.length,
+      activeSessions: active.length,
+      peakConcurrent,
+      avgSessionDurationHours: avgDurationHours,
+      concurrencyLevel,
+      recommendations,
+    };
+  }
 }

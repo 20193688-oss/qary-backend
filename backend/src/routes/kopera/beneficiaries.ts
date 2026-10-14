@@ -100,6 +100,10 @@ export async function registerBeneficiaryRoutes(app: FastifyInstance, prisma: Pr
     return svc.getBeneficiaryGeographicSpread(req.auth!.userId);
   });
 
+  app.get('/api/beneficiaries/payment-frequency', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getBeneficiaryPaymentFrequency(req.auth!.userId);
+  });
+
   app.get('/api/beneficiaries/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const b = await svc.getById(id);
