@@ -157,6 +157,10 @@ export async function registerScheduledTransferRoutes(app: FastifyInstance, pris
     return svc.getTransferCurrencyExposure(req.auth!.userId);
   });
 
+  app.get('/api/scheduled-transfers/load-distribution', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getTransferLoadDistribution(req.auth!.userId);
+  });
+
   app.get('/api/scheduled-transfers/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const st = await svc.getById(id);

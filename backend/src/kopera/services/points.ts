@@ -615,4 +615,77 @@ export class PointsService {
     const threshold = TIER_THRESHOLDS[nextTier as keyof typeof TIER_THRESHOLDS];
     return Math.max(0, threshold - lifetimeEarned);
   }
+
+  async getPointsConcentrationAnalysis(userId: string) {
+    const history = await this.prisma.pointsHistory.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (history.length === 0) {
+      return {
+        totalTransactions: 0,
+        earnTransactions: 0,
+        redeemTransactions: 0,
+        topEarnReasons: [] as { reason: string; count: number; totalAmount: number }[],
+        topRedeemReasons: [] as { reason: string; count: number; totalAmount: number }[],
+        concentrationScore: 0,
+        recommendations: [] as string[],
+      };
+    }
+
+    const earnMap = new Map<string, { count: number; totalAmount: number }>();
+    const redeemMap = new Map<string, { count: number; totalAmount: number }>();
+    let earnCount = 0;
+    let redeemCount = 0;
+
+    for (const h of history) {
+      const type = ((h as any).type || '').toUpperCase();
+      const reason = (h as any).reason || 'unknown';
+      const amount = Number((h as any).amount || 0);
+
+      if (type === 'EARN' || type === 'CREDIT') {
+        earnCount++;
+        const existing = earnMap.get(reason) || { count: 0, totalAmount: 0 };
+        existing.count++;
+        existing.totalAmount += amount;
+        earnMap.set(reason, existing);
+      } else if (type === 'REDEEM' || type === 'DEBIT') {
+        redeemCount++;
+        const existing = redeemMap.get(reason) || { count: 0, totalAmount: 0 };
+        existing.count++;
+        existing.totalAmount += amount;
+        redeemMap.set(reason, existing);
+      }
+    }
+
+    const topEarnReasons = Array.from(earnMap.entries())
+      .map(([reason, data]) => ({ reason, ...data }))
+      .sort((a, b) => b.totalAmount - a.totalAmount)
+      .slice(0, 5);
+
+    const topRedeemReasons = Array.from(redeemMap.entries())
+      .map(([reason, data]) => ({ reason, ...data }))
+      .sort((a, b) => b.totalAmount - a.totalAmount)
+      .slice(0, 5);
+
+    const earnShares = topEarnReasons.map(r => r.count / Math.max(earnCount, 1));
+    const hhi = earnShares.reduce((sum, s) => sum + s * s, 0);
+    const concentrationScore = Number((hhi * 100).toFixed(2));
+
+    const recommendations: string[] = [];
+    if (concentrationScore > 70) recommendations.push('Earning sources are highly concentrated — diversify point-earning activities');
+    if (redeemCount === 0 && earnCount > 10) recommendations.push('No redemptions recorded — consider promoting redemption options');
+    if (topEarnReasons.length === 1) recommendations.push('All earnings from a single source — introduce additional earning channels');
+
+    return {
+      totalTransactions: history.length,
+      earnTransactions: earnCount,
+      redeemTransactions: redeemCount,
+      topEarnReasons,
+      topRedeemReasons,
+      concentrationScore,
+      recommendations,
+    };
+  }
 }
