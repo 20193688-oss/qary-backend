@@ -748,4 +748,80 @@ export class LoanRepaymentService {
       missedCount,
     };
   }
+
+  async getRepaymentEfficiencyScore(loanId: string) {
+    const repayments = await this.prisma.loanRepayment.findMany({
+      where: { loanId },
+      orderBy: { dueDate: 'asc' },
+    });
+
+    if (repayments.length === 0) {
+      return {
+        loanId,
+        totalRepayments: 0,
+        efficiencyScore: 100,
+        efficiencyLevel: 'no_data',
+        onTimeRate: 0,
+        earlyPaymentRate: 0,
+        avgDaysBeforeDue: 0,
+        recommendations: [],
+      };
+    }
+
+    let onTimeCount = 0;
+    let earlyCount = 0;
+    let totalDaysBeforeDue = 0;
+    let paidCount = 0;
+
+    for (const r of repayments) {
+      const status = ((r as any).status || '').toLowerCase();
+      if (status === 'paid' || status === 'completed') {
+        paidCount++;
+        if ((r as any).paidAt && (r as any).dueDate) {
+          const paid = new Date((r as any).paidAt).getTime();
+          const due = new Date((r as any).dueDate).getTime();
+          const daysDiff = Math.round((due - paid) / 86400000);
+          if (daysDiff >= 0) {
+            onTimeCount++;
+            totalDaysBeforeDue += daysDiff;
+            if (daysDiff >= 3) earlyCount++;
+          }
+        } else {
+          onTimeCount++;
+        }
+      }
+    }
+
+    const onTimeRate = Math.round((onTimeCount / repayments.length) * 10000) / 100;
+    const earlyPaymentRate = paidCount > 0
+      ? Math.round((earlyCount / paidCount) * 10000) / 100
+      : 0;
+    const avgDaysBeforeDue = onTimeCount > 0
+      ? Math.round(totalDaysBeforeDue / onTimeCount)
+      : 0;
+
+    let efficiencyScore = 0;
+    efficiencyScore += Math.round(onTimeRate * 0.6);
+    efficiencyScore += Math.round(earlyPaymentRate * 0.3);
+    if (avgDaysBeforeDue >= 3) efficiencyScore += 10;
+    efficiencyScore = Math.min(100, efficiencyScore);
+
+    const efficiencyLevel = efficiencyScore >= 80 ? 'excellent' : efficiencyScore >= 50 ? 'fair' : 'poor';
+
+    const recommendations: string[] = [];
+    if (onTimeRate < 80) recommendations.push('Set up automatic payments to improve on-time rate');
+    if (earlyPaymentRate < 20) recommendations.push('Consider paying a few days early to build credit score');
+    if (paidCount < repayments.length) recommendations.push('Complete outstanding repayments to improve efficiency');
+
+    return {
+      loanId,
+      totalRepayments: repayments.length,
+      efficiencyScore,
+      efficiencyLevel,
+      onTimeRate,
+      earlyPaymentRate,
+      avgDaysBeforeDue,
+      recommendations,
+    };
+  }
 }

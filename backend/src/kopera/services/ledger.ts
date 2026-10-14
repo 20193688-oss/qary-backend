@@ -592,4 +592,66 @@ export class LedgerService {
       totalDebits: totalDebits.toString(),
     };
   }
+
+  async getLedgerAuditTrail(walletId: string) {
+    const entries = await this.prisma.ledgerEntry.findMany({
+      where: { walletId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (entries.length === 0) {
+      return {
+        totalEntries: 0,
+        dateRange: null,
+        dailyActivity: [],
+        gaps: [],
+        auditScore: 100,
+        auditLevel: 'no_data',
+      };
+    }
+
+    const byDay: Record<string, number> = {};
+    for (const e of entries) {
+      const d = new Date(e.createdAt);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      byDay[key] = (byDay[key] || 0) + 1;
+    }
+
+    const sortedDays = Object.keys(byDay).sort();
+    const firstDay = sortedDays[0];
+    const lastDay = sortedDays[sortedDays.length - 1];
+
+    const gaps: Array<{ from: string; to: string; daysGap: number }> = [];
+    for (let i = 1; i < sortedDays.length; i++) {
+      const prev = new Date(sortedDays[i - 1]).getTime();
+      const curr = new Date(sortedDays[i]).getTime();
+      const daysGap = Math.round((curr - prev) / 86400000);
+      if (daysGap > 7) {
+        gaps.push({ from: sortedDays[i - 1], to: sortedDays[i], daysGap });
+      }
+    }
+
+    const dailyActivity = sortedDays.slice(-30).map(date => ({
+      date,
+      count: byDay[date],
+    }));
+
+    let auditScore = 100;
+    if (gaps.length > 3) auditScore -= 30;
+    else if (gaps.length > 0) auditScore -= 10;
+    const maxGap = gaps.length > 0 ? Math.max(...gaps.map(g => g.daysGap)) : 0;
+    if (maxGap > 30) auditScore -= 25;
+    auditScore = Math.max(0, auditScore);
+
+    const auditLevel = auditScore >= 80 ? 'clean' : auditScore >= 50 ? 'gaps_detected' : 'needs_review';
+
+    return {
+      totalEntries: entries.length,
+      dateRange: { from: firstDay, to: lastDay },
+      dailyActivity,
+      gaps: gaps.slice(0, 10),
+      auditScore,
+      auditLevel,
+    };
+  }
 }
