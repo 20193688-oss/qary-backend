@@ -500,6 +500,85 @@ export class LoanService {
     };
   }
 
+  async getLoanUtilizationReport(userId: string) {
+    const loans = await this.prisma.loan.findMany({ where: { userId } });
+
+    if (loans.length === 0) {
+      return {
+        totalLoans: 0,
+        disbursed: 0,
+        totalApproved: '0',
+        totalDisbursed: '0',
+        utilizationRate: 0,
+        byStatus: [],
+        byCurrency: [],
+        avgLoanSize: '0',
+      };
+    }
+
+    const disbursedStatuses = new Set(['DISBURSED', 'COMPLETED', 'DEFAULTED']);
+    const disbursed = loans.filter((l: any) => disbursedStatuses.has(l.status));
+
+    let totalApproved = BigInt(0);
+    let totalDisbursed = BigInt(0);
+
+    const statusMap = new Map<string, { count: number; totalAmount: bigint }>();
+    const currencyMap = new Map<string, { count: number; totalAmount: bigint }>();
+
+    for (const loan of loans) {
+      totalApproved += loan.principalAmount;
+      if (disbursedStatuses.has(loan.status)) {
+        totalDisbursed += loan.principalAmount;
+      }
+
+      const status = loan.status;
+      const sEntry = statusMap.get(status) ?? { count: 0, totalAmount: BigInt(0) };
+      sEntry.count++;
+      sEntry.totalAmount += loan.principalAmount;
+      statusMap.set(status, sEntry);
+
+      const currency = loan.currency;
+      const cEntry = currencyMap.get(currency) ?? { count: 0, totalAmount: BigInt(0) };
+      cEntry.count++;
+      cEntry.totalAmount += loan.principalAmount;
+      currencyMap.set(currency, cEntry);
+    }
+
+    const utilizationRate = totalApproved > BigInt(0)
+      ? Math.round((Number(totalDisbursed) / Number(totalApproved)) * 10000) / 100
+      : 0;
+
+    const byStatus = Array.from(statusMap.entries())
+      .map(([status, data]) => ({
+        status,
+        count: data.count,
+        totalAmount: data.totalAmount.toString(),
+        percent: Math.round((data.count / loans.length) * 10000) / 100,
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    const byCurrency = Array.from(currencyMap.entries())
+      .map(([currency, data]) => ({
+        currency,
+        count: data.count,
+        totalAmount: data.totalAmount.toString(),
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    const avgLoanSize = (totalApproved / BigInt(loans.length)).toString();
+
+    return {
+      totalLoans: loans.length,
+      disbursed: disbursed.length,
+      totalApproved: totalApproved.toString(),
+      totalDisbursed: totalDisbursed.toString(),
+      utilizationRate,
+      byStatus,
+      byCurrency,
+      avgLoanSize,
+    };
+  }
+
   async simulate(principalAmount: number, currency: string, termMonths: number, interestRate?: number) {
     const rate = interestRate ?? this.getDefaultRate(currency);
     const { monthlyPayment, totalInterest, tcea } = this.calculateAmortization(

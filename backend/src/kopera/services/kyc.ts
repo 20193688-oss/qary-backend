@@ -421,4 +421,81 @@ export class KycService {
       fasterThanAverage: totalHours > 0 && totalHours < systemAvgHours,
     };
   }
+
+  async getDocumentVerificationReport(userId: string) {
+    const profile = await this.prisma.kycProfile.findUnique({ where: { userId } });
+    if (!profile) throw new Error('kyc_not_found');
+
+    const documents = await this.prisma.kycDocument.findMany({ where: { userId } });
+
+    if (documents.length === 0) {
+      return {
+        totalDocuments: 0,
+        verified: 0,
+        pending: 0,
+        rejected: 0,
+        verificationRate: 0,
+        byDocumentType: [],
+        avgProcessingDays: 0,
+        oldestPendingDays: 0,
+      };
+    }
+
+    const verified = documents.filter((d: any) => d.status === 'VERIFIED' || d.status === 'APPROVED');
+    const pending = documents.filter((d: any) => d.status === 'PENDING' || d.status === 'IN_REVIEW');
+    const rejected = documents.filter((d: any) => d.status === 'REJECTED');
+
+    const verificationRate = documents.length > 0
+      ? Math.round((verified.length / documents.length) * 10000) / 100
+      : 0;
+
+    const typeMap = new Map<string, { total: number; verified: number; pending: number; rejected: number }>();
+    for (const doc of documents) {
+      const docType = (doc as any).documentType ?? (doc as any).type ?? 'unknown';
+      const entry = typeMap.get(docType) ?? { total: 0, verified: 0, pending: 0, rejected: 0 };
+      entry.total++;
+      const status = (doc as any).status;
+      if (status === 'VERIFIED' || status === 'APPROVED') entry.verified++;
+      else if (status === 'REJECTED') entry.rejected++;
+      else entry.pending++;
+      typeMap.set(docType, entry);
+    }
+
+    const byDocumentType = Array.from(typeMap.entries())
+      .map(([type, data]) => ({
+        type,
+        total: data.total,
+        verified: data.verified,
+        pending: data.pending,
+        rejected: data.rejected,
+        verificationRate: data.total > 0 ? Math.round((data.verified / data.total) * 10000) / 100 : 0,
+      }))
+      .sort((a, b) => b.total - a.total);
+
+    const processingDays = verified.map((d: any) => {
+      const uploaded = new Date(d.createdAt).getTime();
+      const verifiedAt = d.verifiedAt ?? d.updatedAt;
+      return Math.max(0, Math.round((new Date(verifiedAt).getTime() - uploaded) / 86400000));
+    });
+    const avgProcessingDays = processingDays.length > 0
+      ? Math.round(processingDays.reduce((s, d) => s + d, 0) / processingDays.length)
+      : 0;
+
+    let oldestPendingDays = 0;
+    for (const d of pending) {
+      const days = Math.round((Date.now() - new Date(d.createdAt).getTime()) / 86400000);
+      if (days > oldestPendingDays) oldestPendingDays = days;
+    }
+
+    return {
+      totalDocuments: documents.length,
+      verified: verified.length,
+      pending: pending.length,
+      rejected: rejected.length,
+      verificationRate,
+      byDocumentType,
+      avgProcessingDays,
+      oldestPendingDays,
+    };
+  }
 }

@@ -410,4 +410,75 @@ export class LedgerService {
       byDay,
     };
   }
+
+  async getEntryFrequencyAnalysis(walletId: string) {
+    const entries = await this.prisma.ledgerEntry.findMany({
+      where: { walletId },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (entries.length === 0) {
+      return {
+        walletId,
+        totalEntries: 0,
+        avgEntriesPerDay: 0,
+        peakDay: null as string | null,
+        quietestDay: null as string | null,
+        byDayOfWeek: [] as Array<{ day: string; count: number; percent: number }>,
+        burstDays: [] as Array<{ date: string; count: number }>,
+        activityPattern: 'none' as const,
+      };
+    }
+
+    const dayMap = new Map<string, number>();
+    const dayOfWeekCounts = new Array(7).fill(0);
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+    for (const e of entries) {
+      const d = new Date(e.createdAt);
+      const dateKey = d.toISOString().slice(0, 10);
+      dayMap.set(dateKey, (dayMap.get(dateKey) ?? 0) + 1);
+      dayOfWeekCounts[d.getUTCDay()]++;
+    }
+
+    const dayCounts = Array.from(dayMap.entries());
+    const totalDays = dayCounts.length;
+    const avgEntriesPerDay = totalDays > 0
+      ? Math.round((entries.length / totalDays) * 100) / 100
+      : 0;
+
+    dayCounts.sort((a, b) => b[1] - a[1]);
+    const peakDay = dayCounts[0]?.[0] ?? null;
+    const quietestDay = dayCounts[dayCounts.length - 1]?.[0] ?? null;
+
+    const byDayOfWeek = dayNames.map((day, i) => ({
+      day,
+      count: dayOfWeekCounts[i],
+      percent: entries.length > 0 ? Math.round((dayOfWeekCounts[i] / entries.length) * 10000) / 100 : 0,
+    }));
+
+    const burstThreshold = avgEntriesPerDay * 3;
+    const burstDays = dayCounts
+      .filter(([, count]) => count >= burstThreshold && count >= 3)
+      .slice(0, 5)
+      .map(([date, count]) => ({ date, count }));
+
+    const weekday = dayOfWeekCounts.slice(1, 6).reduce((s: number, c: number) => s + c, 0);
+    const weekend = dayOfWeekCounts[0] + dayOfWeekCounts[6];
+    const activityPattern = weekend === 0 && weekday > 0 ? 'weekday_only' as const
+      : weekday === 0 && weekend > 0 ? 'weekend_only' as const
+      : weekday > weekend * 3 ? 'weekday_heavy' as const
+      : 'balanced' as const;
+
+    return {
+      walletId,
+      totalEntries: entries.length,
+      avgEntriesPerDay,
+      peakDay,
+      quietestDay,
+      byDayOfWeek,
+      burstDays,
+      activityPattern,
+    };
+  }
 }
