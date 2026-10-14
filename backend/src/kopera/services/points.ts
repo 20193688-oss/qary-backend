@@ -738,4 +738,70 @@ export class PointsService {
       recommendations,
     };
   }
+
+  async getPointsExpiryRisk(userId: string) {
+    const points = await this.prisma.koperaPoints.findFirst({ where: { userId } });
+    const history = await this.prisma.pointsHistory.findMany({ where: { userId } });
+
+    if (!points && history.length === 0) {
+      return {
+        currentBalance: 0,
+        riskLevel: 'no_data' as const,
+        expiryScore: 0,
+        earnedLast90Days: 0,
+        redeemedLast90Days: 0,
+        recommendations: [],
+      };
+    }
+
+    const balance = points?.balance ?? 0;
+    const now = Date.now();
+    const ninetyDaysAgo = now - 90 * 86400000;
+
+    let earnedLast90 = 0;
+    let redeemedLast90 = 0;
+    let lastActivityMs = 0;
+
+    for (const h of history) {
+      const ts = new Date(h.createdAt).getTime();
+      if (ts > lastActivityMs) lastActivityMs = ts;
+
+      if (ts >= ninetyDaysAgo) {
+        const hType = (h as any).type || (h as any).action || '';
+        if (hType === 'EARN' || hType === 'CREDIT' || hType === 'earn') {
+          earnedLast90 += h.points;
+        } else if (hType === 'REDEEM' || hType === 'DEBIT' || hType === 'redeem') {
+          redeemedLast90 += h.points;
+        }
+      }
+    }
+
+    const daysSinceActivity = lastActivityMs > 0 ? Math.floor((now - lastActivityMs) / 86400000) : 999;
+
+    let expiryScore = 0;
+    if (daysSinceActivity > 180) expiryScore += 40;
+    else if (daysSinceActivity > 90) expiryScore += 20;
+    else if (daysSinceActivity > 30) expiryScore += 10;
+
+    if (balance > 0 && redeemedLast90 === 0) expiryScore += 30;
+    if (earnedLast90 === 0 && balance > 0) expiryScore += 20;
+    expiryScore = Math.min(100, expiryScore);
+
+    const riskLevel = expiryScore >= 60 ? 'high' : expiryScore >= 30 ? 'moderate' : 'low';
+
+    const recommendations: string[] = [];
+    if (expiryScore >= 60) recommendations.push('Points at high risk of expiry — redeem soon');
+    if (daysSinceActivity > 90) recommendations.push('No recent activity — points may expire');
+    if (balance > 0 && redeemedLast90 === 0) recommendations.push('Balance unused — explore redemption options');
+
+    return {
+      currentBalance: balance,
+      riskLevel,
+      expiryScore,
+      daysSinceLastActivity: daysSinceActivity,
+      earnedLast90Days: earnedLast90,
+      redeemedLast90Days: redeemedLast90,
+      recommendations,
+    };
+  }
 }

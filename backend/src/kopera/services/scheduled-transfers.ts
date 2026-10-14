@@ -811,4 +811,68 @@ export class ScheduledTransferService {
       recommendations,
     };
   }
+
+  async getTransferScheduleOptimization(userId: string) {
+    const transfers = await this.prisma.scheduledTransfer.findMany({ where: { userId } });
+
+    if (transfers.length === 0) {
+      return {
+        totalTransfers: 0,
+        optimizationLevel: 'no_data' as const,
+        optimizationScore: 0,
+        dayDistribution: {},
+        recommendations: [],
+      };
+    }
+
+    const dayDistribution: Record<string, number> = {};
+    const frequencyMap = new Map<string, number>();
+    let activeCount = 0;
+
+    for (const t of transfers) {
+      const status = t.status?.toLowerCase() || '';
+      if (status === 'active' || status === 'scheduled') activeCount++;
+
+      const day = new Date(t.createdAt).toLocaleDateString('en-US', { weekday: 'long' });
+      dayDistribution[day] = (dayDistribution[day] || 0) + 1;
+
+      const freq = (t as any).frequency || (t as any).interval || 'one-time';
+      frequencyMap.set(freq, (frequencyMap.get(freq) || 0) + 1);
+    }
+
+    const frequencies = Array.from(frequencyMap.entries()).map(([frequency, count]) => ({
+      frequency,
+      count,
+      sharePercent: Math.round((count / transfers.length) * 100),
+    })).sort((a, b) => b.count - a.count);
+
+    const dayValues = Object.values(dayDistribution);
+    const maxDayCount = Math.max(...dayValues);
+    const minDayCount = Math.min(...dayValues);
+    const daySpread = dayValues.length;
+
+    let optimizationScore = 50;
+    if (daySpread >= 5) optimizationScore += 20;
+    else if (daySpread >= 3) optimizationScore += 10;
+    if (maxDayCount - minDayCount <= 2) optimizationScore += 15;
+    if (activeCount / transfers.length > 0.5) optimizationScore += 15;
+    optimizationScore = Math.min(100, optimizationScore);
+
+    const optimizationLevel = optimizationScore >= 70 ? 'optimized' : optimizationScore >= 40 ? 'fair' : 'needs_improvement';
+
+    const recommendations: string[] = [];
+    if (daySpread <= 2) recommendations.push('Transfers concentrated on few days — consider spreading');
+    if (maxDayCount > transfers.length * 0.5) recommendations.push('Too many transfers on a single day');
+    if (activeCount === 0) recommendations.push('No active scheduled transfers');
+
+    return {
+      totalTransfers: transfers.length,
+      optimizationLevel,
+      optimizationScore,
+      activeTransfers: activeCount,
+      dayDistribution,
+      frequencies,
+      recommendations,
+    };
+  }
 }
