@@ -475,6 +475,68 @@ export class FxService {
     };
   }
 
+  async getCurrencyExposureSummary(userId: string) {
+    const conversions = await this.prisma.transaction.findMany({
+      where: { userId, type: 'FX_CONVERSION' },
+    });
+    if (conversions.length === 0) {
+      return {
+        totalConversions: 0,
+        uniqueCurrencies: 0,
+        byCurrency: [],
+        largestExposure: null,
+        diversificationScore: 0,
+      };
+    }
+
+    const currencyMap = new Map<string, { bought: bigint; sold: bigint; txCount: number }>();
+
+    for (const c of conversions) {
+      const from = c.currency || 'USD';
+      const to = (c as any).counterpartyCurrency || (c as any).toCurrency || 'USD';
+      const amount = c.amount ?? BigInt(0);
+      const toAmount = (c as any).toAmount || amount;
+
+      if (from) {
+        if (!currencyMap.has(from)) currencyMap.set(from, { bought: BigInt(0), sold: BigInt(0), txCount: 0 });
+        const entry = currencyMap.get(from)!;
+        entry.sold += amount;
+        entry.txCount++;
+      }
+      if (to) {
+        if (!currencyMap.has(to)) currencyMap.set(to, { bought: BigInt(0), sold: BigInt(0), txCount: 0 });
+        const entry = currencyMap.get(to)!;
+        entry.bought += toAmount;
+        entry.txCount++;
+      }
+    }
+
+    const byCurrency = Array.from(currencyMap.entries())
+      .map(([currency, data]) => ({
+        currency,
+        totalBought: data.bought.toString(),
+        totalSold: data.sold.toString(),
+        netExposure: (data.bought - data.sold).toString(),
+        transactionCount: data.txCount,
+      }))
+      .sort((a, b) => b.transactionCount - a.transactionCount);
+
+    const largestExposure = byCurrency.length > 0 ? byCurrency[0].currency : null;
+
+    const totalTx = conversions.length;
+    const counts = byCurrency.map(c => c.transactionCount);
+    const maxShare = Math.max(...counts) / (totalTx * 2);
+    const diversificationScore = Math.round((1 - maxShare) * 100);
+
+    return {
+      totalConversions: conversions.length,
+      uniqueCurrencies: currencyMap.size,
+      byCurrency,
+      largestExposure,
+      diversificationScore,
+    };
+  }
+
   async storeRate(baseCurrency: string, quoteCurrency: string, bid: number, ask: number, source: string) {
     const mid = (bid + ask) / 2;
     const spread = ask - bid;

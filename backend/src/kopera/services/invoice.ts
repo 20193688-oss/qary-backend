@@ -597,6 +597,65 @@ export class InvoiceService {
     };
   }
 
+  async getRevenueConcentrationAnalysis(userId: string) {
+    const invoices = await this.prisma.invoice.findMany({ where: { senderId: userId } });
+    if (invoices.length === 0) {
+      return {
+        totalInvoices: 0,
+        totalRevenue: '0',
+        uniqueClients: 0,
+        byClient: [],
+        concentrationRisk: 'none',
+        herfindahlIndex: 0,
+      };
+    }
+
+    const clientMap = new Map<string, { count: number; total: bigint }>();
+    let totalRevenue = BigInt(0);
+
+    for (const inv of invoices) {
+      const client = (inv as any).recipientId || (inv as any).recipientEmail || 'unknown';
+      if (!clientMap.has(client)) clientMap.set(client, { count: 0, total: BigInt(0) });
+      const entry = clientMap.get(client)!;
+      entry.count++;
+      const amount = (inv as any).totalAmount || (inv as any).amount || BigInt(0);
+      entry.total += amount;
+      totalRevenue += amount;
+    }
+
+    const byClient = Array.from(clientMap.entries())
+      .map(([client, data]) => ({
+        client,
+        invoiceCount: data.count,
+        totalAmount: data.total.toString(),
+        sharePercent: totalRevenue > BigInt(0)
+          ? Math.round(Number((data.total * BigInt(10000)) / totalRevenue)) / 100
+          : 0,
+      }))
+      .sort((a, b) => b.sharePercent - a.sharePercent);
+
+    let herfindahlIndex = 0;
+    for (const c of byClient) {
+      herfindahlIndex += (c.sharePercent / 100) ** 2;
+    }
+    herfindahlIndex = Math.round(herfindahlIndex * 10000) / 10000;
+
+    const topClientShare = byClient.length > 0 ? byClient[0].sharePercent : 0;
+    const concentrationRisk = topClientShare >= 50 ? 'high'
+      : topClientShare >= 30 ? 'moderate'
+      : topClientShare >= 15 ? 'low'
+      : 'none';
+
+    return {
+      totalInvoices: invoices.length,
+      totalRevenue: totalRevenue.toString(),
+      uniqueClients: clientMap.size,
+      byClient,
+      concentrationRisk,
+      herfindahlIndex,
+    };
+  }
+
   private getDefaultTaxRate(country: string): number {
     const rates: Record<string, number> = {
       PE: 0.18, // IGV

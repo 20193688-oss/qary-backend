@@ -442,4 +442,60 @@ export class EventService {
       },
     };
   }
+
+  async getEventCorrelationAnalysis(userId: string) {
+    const events = await this.prisma.event.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (events.length < 2) {
+      return {
+        totalEvents: events.length,
+        correlations: [],
+        topSequence: null,
+        avgTimeBetweenEvents: null,
+      };
+    }
+
+    const gaps: number[] = [];
+    const sequences = new Map<string, { count: number; avgGapMs: number; gaps: number[] }>();
+
+    for (let i = 1; i < events.length; i++) {
+      const prev = events[i - 1];
+      const curr = events[i];
+      const gapMs = new Date(curr.createdAt).getTime() - new Date(prev.createdAt).getTime();
+      gaps.push(gapMs);
+
+      const key = `${(prev as any).eventType}->${(curr as any).eventType}`;
+      if (!sequences.has(key)) sequences.set(key, { count: 0, avgGapMs: 0, gaps: [] });
+      const entry = sequences.get(key)!;
+      entry.count++;
+      entry.gaps.push(gapMs);
+    }
+
+    for (const entry of sequences.values()) {
+      entry.avgGapMs = entry.gaps.reduce((s, g) => s + g, 0) / entry.gaps.length;
+    }
+
+    const correlations = Array.from(sequences.entries())
+      .filter(([, data]) => data.count >= 2)
+      .map(([sequence, data]) => ({
+        sequence,
+        occurrences: data.count,
+        avgGapSeconds: Math.round(data.avgGapMs / 1000),
+      }))
+      .sort((a, b) => b.occurrences - a.occurrences)
+      .slice(0, 10);
+
+    const avgTotalGap = gaps.reduce((s, g) => s + g, 0) / gaps.length;
+
+    const topSequence = correlations.length > 0 ? correlations[0].sequence : null;
+
+    return {
+      totalEvents: events.length,
+      correlations,
+      topSequence,
+      avgTimeBetweenEvents: Math.round(avgTotalGap / 1000),
+    };
+  }
 }

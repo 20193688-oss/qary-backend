@@ -582,4 +582,64 @@ export class GatewayPaymentService {
       trend,
     };
   }
+
+  async getProviderPerformanceBenchmark(userId: string) {
+    const payments = await this.prisma.gatewayPayment.findMany({ where: { userId } });
+    if (payments.length === 0) {
+      return {
+        totalPayments: 0,
+        providers: [],
+        bestProvider: null,
+        worstProvider: null,
+      };
+    }
+
+    const providerMap = new Map<string, { total: number; successful: number; failed: number; totalAmount: bigint; processingTimes: number[] }>();
+
+    for (const p of payments) {
+      const provider = (p as any).provider || (p as any).gateway || 'unknown';
+      if (!providerMap.has(provider)) {
+        providerMap.set(provider, { total: 0, successful: 0, failed: 0, totalAmount: BigInt(0), processingTimes: [] });
+      }
+      const entry = providerMap.get(provider)!;
+      entry.total++;
+      entry.totalAmount += (p as any).amount ?? BigInt(0);
+
+      if ((p as any).status === 'completed' || (p as any).status === 'success' || (p as any).status === 'succeeded') {
+        entry.successful++;
+      } else if ((p as any).status === 'failed' || (p as any).status === 'error') {
+        entry.failed++;
+      }
+
+      if ((p as any).processedAt) {
+        const processingMs = new Date((p as any).processedAt).getTime() - new Date(p.createdAt).getTime();
+        if (processingMs > 0) entry.processingTimes.push(processingMs);
+      }
+    }
+
+    const providers = Array.from(providerMap.entries())
+      .map(([provider, data]) => {
+        const successRate = data.total > 0 ? Math.round((data.successful / data.total) * 10000) / 100 : 0;
+        const avgProcessingMs = data.processingTimes.length > 0
+          ? Math.round(data.processingTimes.reduce((s, t) => s + t, 0) / data.processingTimes.length)
+          : null;
+        return {
+          provider,
+          totalPayments: data.total,
+          successRate,
+          failureCount: data.failed,
+          totalVolume: data.totalAmount.toString(),
+          avgProcessingMs,
+          score: Math.round(successRate - (data.failed * 2)),
+        };
+      })
+      .sort((a, b) => b.score - a.score);
+
+    return {
+      totalPayments: payments.length,
+      providers,
+      bestProvider: providers.length > 0 ? providers[0].provider : null,
+      worstProvider: providers.length > 1 ? providers[providers.length - 1].provider : null,
+    };
+  }
 }
