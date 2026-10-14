@@ -760,4 +760,78 @@ export class GatewayPaymentService {
       recommendations,
     };
   }
+
+  async getGatewayLatencyAnalysis(userId: string) {
+    const userTxns = await this.prisma.transaction.findMany({ where: { userId } });
+    const txnIds = new Set(userTxns.map(t => t.id));
+    const allPayments = await this.prisma.gatewayPayment.findMany();
+    const payments = allPayments.filter(p => txnIds.has(p.transactionId));
+
+    if (payments.length === 0) {
+      return {
+        totalPayments: 0,
+        latencyLevel: 'no_data' as const,
+        latencyScore: 0,
+        gatewayBreakdown: [],
+        recommendations: [],
+      };
+    }
+
+    const gatewayMap = new Map<string, { count: number; totalProcessingMs: number; statuses: string[] }>();
+
+    for (const p of payments) {
+      const gateway = p.gateway;
+      const processingMs = p.updatedAt && p.createdAt
+        ? new Date(p.updatedAt).getTime() - new Date(p.createdAt).getTime()
+        : 0;
+
+      const existing = gatewayMap.get(gateway);
+      if (existing) {
+        existing.count++;
+        existing.totalProcessingMs += processingMs;
+        existing.statuses.push(p.status);
+      } else {
+        gatewayMap.set(gateway, { count: 1, totalProcessingMs: processingMs, statuses: [p.status] });
+      }
+    }
+
+    const gatewayBreakdown = Array.from(gatewayMap.entries()).map(([name, data]) => {
+      const avgMs = Math.round(data.totalProcessingMs / data.count);
+      const successCount = data.statuses.filter(s => s === 'COMPLETED' || s === 'completed' || s === 'succeeded').length;
+      const successRate = Math.round((successCount / data.count) * 100);
+
+      return {
+        gateway: name,
+        count: data.count,
+        avgProcessingMs: avgMs,
+        successRate,
+      };
+    }).sort((a, b) => b.count - a.count);
+
+    const overallAvgMs = gatewayBreakdown.reduce((s, g) => s + g.avgProcessingMs * g.count, 0) / payments.length;
+
+    let latencyScore = 100;
+    if (overallAvgMs > 60000) latencyScore -= 40;
+    else if (overallAvgMs > 30000) latencyScore -= 20;
+    const avgSuccessRate = gatewayBreakdown.reduce((s, g) => s + g.successRate, 0) / gatewayBreakdown.length;
+    if (avgSuccessRate < 80) latencyScore -= 30;
+    else if (avgSuccessRate < 95) latencyScore -= 15;
+    latencyScore = Math.max(0, latencyScore);
+
+    const latencyLevel = latencyScore >= 70 ? 'fast' : latencyScore >= 40 ? 'moderate' : 'slow';
+
+    const recommendations: string[] = [];
+    if (overallAvgMs > 30000) recommendations.push('Average processing time is high — consider gateway optimization');
+    if (gatewayBreakdown.some(g => g.successRate < 80)) recommendations.push('Some gateways have low success rates');
+    if (gatewayBreakdown.length === 1) recommendations.push('Single gateway dependency — consider adding backup');
+
+    return {
+      totalPayments: payments.length,
+      latencyLevel,
+      latencyScore,
+      avgProcessingMs: Math.round(overallAvgMs),
+      gatewayBreakdown: gatewayBreakdown.slice(0, 10),
+      recommendations,
+    };
+  }
 }

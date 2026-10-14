@@ -378,4 +378,13 @@ export async function registerKycRoutes(app: FastifyInstance, prisma: PrismaClie
       throw e;
     }
   });
+
+  app.get('/api/kyc/renewal-forecast', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    try {
+      return await kyc.getKycRenewalForecast(req.auth!.userId);
+    } catch (e: any) {
+      if (e.message === 'kyc_not_found') return reply.code(404).send({ error: e.message });
+      throw e;
+    }
+  });
 }

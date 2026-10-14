@@ -608,4 +608,72 @@ export class EventService {
       riskLevel,
     };
   }
+
+  async getEventRetentionCompliance(userId: string) {
+    const events = await this.prisma.event.findMany({ where: { userId } });
+
+    if (events.length === 0) {
+      return {
+        totalEvents: 0,
+        complianceLevel: 'no_data' as const,
+        retentionScore: 0,
+        categories: [],
+        oldestEventDays: 0,
+        recommendations: [],
+      };
+    }
+
+    const now = Date.now();
+    const categoryMap = new Map<string, { count: number; oldestDays: number; newestDays: number }>();
+
+    let oldestDays = 0;
+
+    for (const e of events) {
+      const ageDays = Math.floor((now - new Date(e.createdAt).getTime()) / 86400000);
+      if (ageDays > oldestDays) oldestDays = ageDays;
+
+      const cat = (e as any).eventType || (e as any).type || 'unknown';
+      const existing = categoryMap.get(cat);
+      if (existing) {
+        existing.count++;
+        if (ageDays > existing.oldestDays) existing.oldestDays = ageDays;
+        if (ageDays < existing.newestDays) existing.newestDays = ageDays;
+      } else {
+        categoryMap.set(cat, { count: 1, oldestDays: ageDays, newestDays: ageDays });
+      }
+    }
+
+    const categories = Array.from(categoryMap.entries())
+      .map(([name, data]) => ({
+        name,
+        count: data.count,
+        oldestDays: data.oldestDays,
+        newestDays: data.newestDays,
+        retentionSpanDays: data.oldestDays - data.newestDays,
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    const recommendations: string[] = [];
+    if (oldestDays > 365) recommendations.push('Consider archiving events older than 1 year');
+    if (oldestDays > 730) recommendations.push('Events older than 2 years may violate retention policies');
+    if (categories.length > 20) recommendations.push('High event type diversity — consider consolidation');
+
+    let retentionScore = 100;
+    if (oldestDays > 730) retentionScore -= 30;
+    else if (oldestDays > 365) retentionScore -= 15;
+    if (events.length > 10000) retentionScore -= 20;
+    if (categories.some(c => c.count === 1)) retentionScore -= 10;
+    retentionScore = Math.max(0, retentionScore);
+
+    const complianceLevel = retentionScore >= 70 ? 'compliant' : retentionScore >= 40 ? 'at_risk' : 'non_compliant';
+
+    return {
+      totalEvents: events.length,
+      complianceLevel,
+      retentionScore,
+      categories: categories.slice(0, 10),
+      oldestEventDays: oldestDays,
+      recommendations,
+    };
+  }
 }

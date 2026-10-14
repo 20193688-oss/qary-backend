@@ -105,6 +105,10 @@ export async function registerFxRoutes(app: FastifyInstance, prisma: PrismaClien
     return fx.getFxCostOptimization(req.auth!.userId);
   });
 
+  app.get('/api/fx/volatility-exposure', { preHandler: [app.requireAuth] }, async (req) => {
+    return fx.getFxVolatilityExposure(req.auth!.userId);
+  });
+
   app.post('/api/fx/convert', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const body = z.object({
       amount: z.number().positive(),

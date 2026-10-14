@@ -859,4 +859,65 @@ export class InvoiceService {
       recommendations,
     };
   }
+
+  async getInvoicePaymentVelocity(userId: string) {
+    const invoices = await this.prisma.invoice.findMany({ where: { senderUserId: userId } });
+
+    if (invoices.length === 0) {
+      return {
+        totalInvoices: 0,
+        velocityLevel: 'no_data' as const,
+        velocityScore: 0,
+        statusBreakdown: {},
+        avgPaymentDays: 0,
+        recommendations: [],
+      };
+    }
+
+    const statusBreakdown: Record<string, number> = {};
+    const paymentDays: number[] = [];
+
+    for (const inv of invoices) {
+      const status = inv.status || 'unknown';
+      statusBreakdown[status] = (statusBreakdown[status] || 0) + 1;
+
+      if ((inv as any).paidAt && inv.createdAt) {
+        const days = Math.floor(
+          (new Date((inv as any).paidAt).getTime() - new Date(inv.createdAt).getTime()) / 86400000
+        );
+        if (days >= 0) paymentDays.push(days);
+      }
+    }
+
+    const paidCount = statusBreakdown['PAID'] || statusBreakdown['paid'] || 0;
+    const paymentRate = Math.round((paidCount / invoices.length) * 100);
+
+    const avgPaymentDays = paymentDays.length > 0
+      ? Math.round(paymentDays.reduce((s, d) => s + d, 0) / paymentDays.length)
+      : 0;
+
+    let velocityScore = 100;
+    if (paymentRate < 50) velocityScore -= 40;
+    else if (paymentRate < 80) velocityScore -= 20;
+    if (avgPaymentDays > 60) velocityScore -= 30;
+    else if (avgPaymentDays > 30) velocityScore -= 15;
+    velocityScore = Math.max(0, velocityScore);
+
+    const velocityLevel = velocityScore >= 70 ? 'fast' : velocityScore >= 40 ? 'moderate' : 'slow';
+
+    const recommendations: string[] = [];
+    if (paymentRate < 50) recommendations.push('Low payment rate — consider automated reminders');
+    if (avgPaymentDays > 30) recommendations.push('Average payment time exceeds 30 days');
+    if (invoices.length > 0 && paidCount === 0) recommendations.push('No invoices paid yet — follow up with clients');
+
+    return {
+      totalInvoices: invoices.length,
+      velocityLevel,
+      velocityScore,
+      statusBreakdown,
+      avgPaymentDays,
+      paymentRate,
+      recommendations,
+    };
+  }
 }

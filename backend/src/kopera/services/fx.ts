@@ -687,4 +687,72 @@ export class FxService {
       recommendations,
     };
   }
+
+  async getFxVolatilityExposure(userId: string) {
+    const txns = await this.prisma.transaction.findMany({ where: { userId, type: 'FX_CONVERSION' } });
+
+    if (txns.length === 0) {
+      return {
+        totalConversions: 0,
+        exposureLevel: 'no_data' as const,
+        volatilityScore: 0,
+        currencyPairs: [],
+        recommendations: [],
+      };
+    }
+
+    const pairMap = new Map<string, { count: number; totalAmount: bigint; amounts: number[] }>();
+
+    for (const t of txns) {
+      const pair = (t as any).fromCurrency && (t as any).toCurrency
+        ? `${(t as any).fromCurrency}/${(t as any).toCurrency}`
+        : t.currency || 'UNKNOWN';
+      const amt = t.amount;
+      const existing = pairMap.get(pair);
+      if (existing) {
+        existing.count++;
+        existing.totalAmount += amt;
+        existing.amounts.push(Number(amt));
+      } else {
+        pairMap.set(pair, { count: 1, totalAmount: amt, amounts: [Number(amt)] });
+      }
+    }
+
+    const currencyPairs = Array.from(pairMap.entries()).map(([pair, data]) => {
+      const mean = data.amounts.reduce((s, v) => s + v, 0) / data.amounts.length;
+      const variance = data.amounts.reduce((s, v) => s + (v - mean) ** 2, 0) / data.amounts.length;
+      const stdDev = Math.sqrt(variance);
+      const cv = mean > 0 ? stdDev / mean : 0;
+
+      return {
+        pair,
+        count: data.count,
+        totalAmount: data.totalAmount.toString(),
+        avgAmount: Math.round(mean).toString(),
+        coefficientOfVariation: Math.round(cv * 100) / 100,
+      };
+    }).sort((a, b) => b.count - a.count);
+
+    const avgCv = currencyPairs.reduce((s, p) => s + p.coefficientOfVariation, 0) / currencyPairs.length;
+    let volatilityScore = Math.round(Math.min(100, avgCv * 100));
+
+    const uniquePairs = currencyPairs.length;
+    if (uniquePairs > 5) volatilityScore = Math.min(100, volatilityScore + 15);
+    if (uniquePairs > 10) volatilityScore = Math.min(100, volatilityScore + 10);
+
+    const exposureLevel = volatilityScore >= 70 ? 'high' : volatilityScore >= 35 ? 'moderate' : 'low';
+
+    const recommendations: string[] = [];
+    if (uniquePairs > 5) recommendations.push('High currency pair diversity increases exposure');
+    if (avgCv > 0.5) recommendations.push('Large amount variations suggest inconsistent hedging');
+    if (exposureLevel === 'high') recommendations.push('Consider forward contracts for frequent pairs');
+
+    return {
+      totalConversions: txns.length,
+      exposureLevel,
+      volatilityScore,
+      currencyPairs: currencyPairs.slice(0, 10),
+      recommendations,
+    };
+  }
 }
