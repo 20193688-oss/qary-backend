@@ -787,4 +787,79 @@ export class WalletService {
       recommendations,
     };
   }
+
+  async getWalletHealthDashboard(userId: string) {
+    const wallets = await this.prisma.wallet.findMany({ where: { userId } });
+
+    if (wallets.length === 0) {
+      return {
+        totalWallets: 0,
+        healthScore: 0,
+        healthLevel: 'no_data' as const,
+        summary: { active: 0, frozen: 0, closed: 0, zeroBalance: 0 },
+        currencyBreakdown: [],
+        recommendations: [] as string[],
+      };
+    }
+
+    let activeCount = 0;
+    let frozenCount = 0;
+    let closedCount = 0;
+    let zeroBalanceCount = 0;
+    let totalBalance = BigInt(0);
+
+    const currencyMap = new Map<string, { count: number; totalBalance: bigint; hasDefault: boolean }>();
+
+    for (const w of wallets) {
+      const bal = w.balance ?? BigInt(0);
+      totalBalance += bal;
+
+      if ((w as any).status === 'closed') closedCount++;
+      else if ((w as any).frozen) frozenCount++;
+      else activeCount++;
+
+      if (bal === BigInt(0)) zeroBalanceCount++;
+
+      const entry = currencyMap.get(w.currency) ?? { count: 0, totalBalance: BigInt(0), hasDefault: false };
+      entry.count++;
+      entry.totalBalance += bal;
+      if ((w as any).isDefault) entry.hasDefault = true;
+      currencyMap.set(w.currency, entry);
+    }
+
+    const currencyBreakdown = Array.from(currencyMap.entries()).map(([currency, data]) => ({
+      currency,
+      walletCount: data.count,
+      totalBalance: data.totalBalance.toString(),
+      hasDefault: data.hasDefault,
+    }));
+
+    let healthScore = 70;
+    if (frozenCount > 0) healthScore -= Math.min(20, frozenCount * 10);
+    if (closedCount > 0) healthScore -= Math.min(15, closedCount * 5);
+    if (zeroBalanceCount > wallets.length / 2) healthScore -= 15;
+    const hasDefault = wallets.some((w: any) => w.isDefault);
+    if (!hasDefault) healthScore -= 10;
+    if (wallets.length > 10) healthScore -= 10;
+    healthScore = Math.max(0, Math.min(100, healthScore));
+
+    const healthLevel = healthScore >= 70 ? 'healthy'
+      : healthScore >= 40 ? 'needs_attention' : 'critical';
+
+    const recommendations: string[] = [];
+    if (frozenCount > 0) recommendations.push(`${frozenCount} frozen wallet(s) — review and unfreeze or close`);
+    if (zeroBalanceCount > 1) recommendations.push(`${zeroBalanceCount} wallets with zero balance — consider consolidating`);
+    if (!hasDefault) recommendations.push('No default wallet set — set one for smoother transactions');
+    if (healthLevel === 'healthy') recommendations.push('Wallets are well-maintained');
+
+    return {
+      totalWallets: wallets.length,
+      healthScore,
+      healthLevel,
+      totalBalance: totalBalance.toString(),
+      summary: { active: activeCount, frozen: frozenCount, closed: closedCount, zeroBalance: zeroBalanceCount },
+      currencyBreakdown,
+      recommendations,
+    };
+  }
 }
