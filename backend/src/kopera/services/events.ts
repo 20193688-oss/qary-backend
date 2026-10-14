@@ -676,4 +676,58 @@ export class EventService {
       recommendations,
     };
   }
+
+  async getEventChannelDistribution(userId: string) {
+    const events = await this.prisma.event.findMany({ where: { userId } });
+
+    if (events.length === 0) {
+      return {
+        totalEvents: 0,
+        distributionScore: 0,
+        distributionLevel: 'no_data' as const,
+        channels: [],
+        recommendations: [] as string[],
+      };
+    }
+
+    const channelMap = new Map<string, number>();
+    for (const e of events) {
+      const channel = (e as any).channel ?? (e as any).source ?? 'unknown';
+      channelMap.set(channel, (channelMap.get(channel) ?? 0) + 1);
+    }
+
+    const channels = Array.from(channelMap.entries())
+      .map(([channel, count]) => ({
+        channel,
+        count,
+        percentage: Math.round((count / events.length) * 100),
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    const topChannelShare = channels.length > 0 ? channels[0].percentage : 0;
+
+    let distributionScore = 50;
+    if (channels.length >= 3) distributionScore += 20;
+    else if (channels.length >= 2) distributionScore += 10;
+    if (topChannelShare > 80) distributionScore -= 25;
+    else if (topChannelShare > 60) distributionScore -= 10;
+    distributionScore = Math.max(0, Math.min(100, distributionScore));
+
+    const distributionLevel = distributionScore >= 70 ? 'well_distributed'
+      : distributionScore >= 40 ? 'concentrated' : 'single_channel';
+
+    const recommendations: string[] = [];
+    if (channels.length === 1) recommendations.push('Events come from a single channel — consider diversifying');
+    if (topChannelShare > 80) recommendations.push(`${channels[0].channel} accounts for ${topChannelShare}% of events`);
+    if (distributionLevel === 'well_distributed') recommendations.push('Event channels are well-distributed');
+
+    return {
+      totalEvents: events.length,
+      distributionScore,
+      distributionLevel,
+      channelCount: channels.length,
+      channels,
+      recommendations,
+    };
+  }
 }

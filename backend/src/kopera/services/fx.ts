@@ -755,4 +755,67 @@ export class FxService {
       recommendations,
     };
   }
+
+  async getFxSeasonalAnalysis(userId: string) {
+    const txns = await this.prisma.transaction.findMany({ where: { userId, type: 'FX_CONVERSION' } });
+
+    if (txns.length === 0) {
+      return {
+        totalConversions: 0,
+        seasonalScore: 0,
+        seasonalLevel: 'no_data' as const,
+        monthlyDistribution: [],
+        recommendations: [] as string[],
+      };
+    }
+
+    const monthCounts = new Array(12).fill(0);
+    let totalAmount = BigInt(0);
+
+    for (const t of txns) {
+      const month = new Date(t.createdAt ?? Date.now()).getMonth();
+      monthCounts[month]++;
+      totalAmount += BigInt((t as any).amount ?? 0);
+    }
+
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const monthlyDistribution = monthCounts.map((count, i) => ({
+      month: monthNames[i],
+      count,
+      percentage: Math.round((count / txns.length) * 100),
+    }));
+
+    const activeMonths = monthCounts.filter(c => c > 0).length;
+    const maxMonth = Math.max(...monthCounts);
+    const avgPerMonth = txns.length / 12;
+    const peakRatio = avgPerMonth > 0 ? maxMonth / avgPerMonth : 0;
+
+    let seasonalScore = 50;
+    if (peakRatio > 3) seasonalScore += 30;
+    else if (peakRatio > 2) seasonalScore += 15;
+    if (activeMonths <= 3) seasonalScore += 20;
+    else if (activeMonths <= 6) seasonalScore += 10;
+    seasonalScore = Math.min(100, seasonalScore);
+
+    const seasonalLevel = seasonalScore >= 70 ? 'highly_seasonal'
+      : seasonalScore >= 40 ? 'moderate' : 'evenly_spread';
+
+    const peakMonth = monthlyDistribution.reduce((a, b) => b.count > a.count ? b : a);
+
+    const recommendations: string[] = [];
+    if (seasonalLevel === 'highly_seasonal') recommendations.push(`Peak activity in ${peakMonth.month} — plan liquidity accordingly`);
+    if (activeMonths <= 3) recommendations.push('FX activity concentrated in few months');
+    if (seasonalLevel === 'evenly_spread') recommendations.push('FX conversions are evenly distributed throughout the year');
+
+    return {
+      totalConversions: txns.length,
+      totalAmount: totalAmount.toString(),
+      seasonalScore,
+      seasonalLevel,
+      activeMonths,
+      peakMonth: peakMonth.month,
+      monthlyDistribution,
+      recommendations,
+    };
+  }
 }
