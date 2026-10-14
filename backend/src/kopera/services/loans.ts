@@ -724,6 +724,58 @@ export class LoanService {
     return repayments;
   }
 
+  async getLoanConsolidationAnalysis(userId: string) {
+    const loans = await this.prisma.loan.findMany({ where: { userId } });
+    const activeLoans = loans.filter(l => (l as any).status === 'active' || (l as any).status === 'disbursed');
+
+    if (activeLoans.length === 0) {
+      return {
+        totalActiveLoans: 0,
+        canConsolidate: false,
+        totalOutstanding: '0',
+        weightedAvgRate: 0,
+        recommendations: [],
+      };
+    }
+
+    let totalOutstanding = BigInt(0);
+    let weightedRateSum = 0;
+    let totalWeight = 0;
+    const byCurrency: Record<string, { count: number; outstanding: bigint }> = {};
+
+    for (const loan of activeLoans) {
+      const outstanding = (loan as any).remainingAmount ?? (loan as any).principalAmount ?? BigInt(0);
+      totalOutstanding += outstanding;
+
+      const rate = (loan as any).interestRate ?? 0;
+      const weight = Number(outstanding);
+      weightedRateSum += rate * weight;
+      totalWeight += weight;
+
+      const curr = (loan as any).currency || 'USD';
+      if (!byCurrency[curr]) byCurrency[curr] = { count: 0, outstanding: BigInt(0) };
+      byCurrency[curr].count++;
+      byCurrency[curr].outstanding += outstanding;
+    }
+
+    const weightedAvgRate = totalWeight > 0 ? Math.round((weightedRateSum / totalWeight) * 100) / 100 : 0;
+    const canConsolidate = activeLoans.length > 1;
+
+    const recommendations: string[] = [];
+    if (canConsolidate) recommendations.push(`${activeLoans.length} active loans could potentially be consolidated`);
+    const highRateLoans = activeLoans.filter(l => ((l as any).interestRate ?? 0) > weightedAvgRate * 1.2);
+    if (highRateLoans.length > 0) recommendations.push(`${highRateLoans.length} loan(s) have above-average interest rates`);
+    if (Object.keys(byCurrency).length > 1) recommendations.push('Loans span multiple currencies — consider currency risk');
+
+    return {
+      totalActiveLoans: activeLoans.length,
+      canConsolidate,
+      totalOutstanding: totalOutstanding.toString(),
+      weightedAvgRate,
+      recommendations,
+    };
+  }
+
   private getDefaultRate(currency: string): number {
     const rates: Record<string, number> = {
       PEN: 0.18, USD: 0.12, EUR: 0.08, MXN: 0.22, BRL: 0.25,

@@ -538,4 +538,58 @@ export class LedgerService {
       trend,
     };
   }
+
+  async getLedgerCategoryBreakdown(walletId: string) {
+    const entries = await this.prisma.ledgerEntry.findMany({
+      where: { walletId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (entries.length === 0) {
+      return {
+        totalEntries: 0,
+        byType: {},
+        largestEntry: null,
+        totalCredits: '0',
+        totalDebits: '0',
+      };
+    }
+
+    const byType: Record<string, { count: number; total: bigint }> = {};
+    let totalCredits = BigInt(0);
+    let totalDebits = BigInt(0);
+    let largestEntry: { id: string; type: string; amount: string; date: string } | null = null;
+    let largestAmount = BigInt(0);
+
+    for (const e of entries) {
+      const type = (e as any).type || (e as any).entryType || 'UNKNOWN';
+      if (!byType[type]) byType[type] = { count: 0, total: BigInt(0) };
+      byType[type].count++;
+
+      const amt = (e as any).amount ?? BigInt(0);
+      const absAmt = amt < BigInt(0) ? -amt : amt;
+      byType[type].total += absAmt;
+
+      if ((e as any).type === 'CREDIT' || (e as any).entryType === 'CREDIT') totalCredits += absAmt;
+      else totalDebits += absAmt;
+
+      if (absAmt > largestAmount) {
+        largestAmount = absAmt;
+        largestEntry = { id: e.id, type, amount: absAmt.toString(), date: new Date(e.createdAt).toISOString() };
+      }
+    }
+
+    const serializedByType: Record<string, { count: number; total: string }> = {};
+    for (const [type, data] of Object.entries(byType)) {
+      serializedByType[type] = { count: data.count, total: data.total.toString() };
+    }
+
+    return {
+      totalEntries: entries.length,
+      byType: serializedByType,
+      largestEntry,
+      totalCredits: totalCredits.toString(),
+      totalDebits: totalDebits.toString(),
+    };
+  }
 }
