@@ -687,4 +687,62 @@ export class BankAccountService {
       recommendations,
     };
   }
+
+  async getAccountRecoveryReadiness(userId: string) {
+    const accounts = await this.prisma.bankAccount.findMany({ where: { userId } });
+
+    if (accounts.length === 0) {
+      return {
+        totalAccounts: 0,
+        readinessScore: 0,
+        readinessLevel: 'no_data' as const,
+        checks: [],
+        recommendations: [] as string[],
+      };
+    }
+
+    const checks: { check: string; passed: boolean; severity: string }[] = [];
+
+    const verifiedCount = accounts.filter((a: any) => a.verified).length;
+    checks.push({ check: 'verified_accounts', passed: verifiedCount > 0, severity: 'high' });
+
+    const hasDefault = accounts.some((a: any) => a.isDefault);
+    checks.push({ check: 'default_account_set', passed: hasDefault, severity: 'medium' });
+
+    const multipleAccounts = accounts.length >= 2;
+    checks.push({ check: 'backup_account_available', passed: multipleAccounts, severity: 'high' });
+
+    const uniqueBanks = new Set(accounts.map((a: any) => a.bankName ?? a.routingNumber ?? 'unknown'));
+    checks.push({ check: 'multi_bank_diversity', passed: uniqueBanks.size >= 2, severity: 'medium' });
+
+    const recentAccount = accounts.some((a: any) => {
+      const created = new Date(a.createdAt ?? Date.now());
+      return (Date.now() - created.getTime()) < 180 * 86400000;
+    });
+    checks.push({ check: 'recently_updated', passed: recentAccount, severity: 'low' });
+
+    const passedCount = checks.filter(c => c.passed).length;
+    let readinessScore = Math.round((passedCount / checks.length) * 100);
+    const highFailures = checks.filter(c => !c.passed && c.severity === 'high').length;
+    if (highFailures > 0) readinessScore = Math.max(0, readinessScore - highFailures * 10);
+
+    const readinessLevel = readinessScore >= 80 ? 'ready'
+      : readinessScore >= 50 ? 'partial' : 'not_ready';
+
+    const recommendations: string[] = [];
+    if (!hasDefault) recommendations.push('Set a default bank account for fallback withdrawals');
+    if (!multipleAccounts) recommendations.push('Add a backup bank account for redundancy');
+    if (verifiedCount === 0) recommendations.push('Verify at least one bank account');
+    if (readinessLevel === 'ready') recommendations.push('Account recovery setup is solid');
+
+    return {
+      totalAccounts: accounts.length,
+      readinessScore,
+      readinessLevel,
+      passedChecks: passedCount,
+      totalChecks: checks.length,
+      checks,
+      recommendations,
+    };
+  }
 }

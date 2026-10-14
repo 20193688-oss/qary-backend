@@ -749,4 +749,70 @@ export class DisputeService {
       recommendations,
     };
   }
+
+  async getDisputeCostAnalysis(userId: string) {
+    const disputes = await this.prisma.dispute.findMany({ where: { userId } });
+
+    if (disputes.length === 0) {
+      return {
+        totalDisputes: 0,
+        costScore: 0,
+        costLevel: 'no_data' as const,
+        totalDisputedAmount: '0',
+        avgDisputeAmount: '0',
+        breakdown: [],
+        recommendations: [] as string[],
+      };
+    }
+
+    let totalAmount = BigInt(0);
+    const statusBreakdown = new Map<string, { count: number; amount: bigint }>();
+
+    for (const d of disputes) {
+      const amt = BigInt((d as any).amount ?? 0);
+      totalAmount += amt;
+      const status = (d as any).status ?? 'unknown';
+      const entry = statusBreakdown.get(status) ?? { count: 0, amount: BigInt(0) };
+      entry.count++;
+      entry.amount += amt;
+      statusBreakdown.set(status, entry);
+    }
+
+    const avgAmount = disputes.length > 0 ? totalAmount / BigInt(disputes.length) : BigInt(0);
+
+    const breakdown = Array.from(statusBreakdown.entries()).map(([status, data]) => ({
+      status,
+      count: data.count,
+      totalAmount: data.amount.toString(),
+    }));
+
+    const resolvedCount = disputes.filter((d: any) => d.status === 'resolved' || d.status === 'RESOLVED').length;
+    const resolutionRate = Math.round((resolvedCount / disputes.length) * 100);
+
+    let costScore = 50;
+    if (disputes.length > 10) costScore += 20;
+    else if (disputes.length > 5) costScore += 10;
+    if (resolutionRate < 50) costScore += 20;
+    else if (resolutionRate < 80) costScore += 10;
+    if (totalAmount > BigInt(1000000)) costScore += 15;
+    costScore = Math.min(100, costScore);
+
+    const costLevel = costScore >= 70 ? 'high' : costScore >= 40 ? 'moderate' : 'low';
+
+    const recommendations: string[] = [];
+    if (resolutionRate < 80) recommendations.push(`Resolution rate is ${resolutionRate}% — investigate unresolved disputes`);
+    if (disputes.length > 10) recommendations.push('High dispute volume — review prevention measures');
+    if (costLevel === 'low') recommendations.push('Dispute costs are well-managed');
+
+    return {
+      totalDisputes: disputes.length,
+      costScore,
+      costLevel,
+      totalDisputedAmount: totalAmount.toString(),
+      avgDisputeAmount: avgAmount.toString(),
+      resolutionRate,
+      breakdown,
+      recommendations,
+    };
+  }
 }

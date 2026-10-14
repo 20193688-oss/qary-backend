@@ -671,4 +671,62 @@ export class AntExpenseService {
       recommendations,
     };
   }
+
+  async getExpenseComplianceCheck(userId: string) {
+    const expenses = await this.prisma.antExpense.findMany({ where: { userId } });
+
+    if (expenses.length === 0) {
+      return {
+        totalExpenses: 0,
+        complianceScore: 0,
+        complianceLevel: 'no_data' as const,
+        flags: [],
+        recommendations: [] as string[],
+      };
+    }
+
+    const flags: { type: string; severity: string; count: number }[] = [];
+
+    const missingDescription = expenses.filter((e: any) => !e.description || e.description.trim() === '').length;
+    if (missingDescription > 0) flags.push({ type: 'missing_description', severity: 'medium', count: missingDescription });
+
+    const missingReceipt = expenses.filter((e: any) => !e.receiptUrl).length;
+    if (missingReceipt > 0) flags.push({ type: 'missing_receipt', severity: 'high', count: missingReceipt });
+
+    const dismissed = expenses.filter((e: any) => e.dismissed).length;
+    const dismissRate = Math.round((dismissed / expenses.length) * 100);
+    if (dismissRate > 30) flags.push({ type: 'high_dismiss_rate', severity: 'medium', count: dismissed });
+
+    const duplicateAmounts = new Map<string, number>();
+    for (const e of expenses) {
+      const key = `${(e as any).amount}-${(e as any).currency}-${(e as any).merchant}`;
+      duplicateAmounts.set(key, (duplicateAmounts.get(key) ?? 0) + 1);
+    }
+    const potentialDuplicates = Array.from(duplicateAmounts.values()).filter(c => c > 1).reduce((s, c) => s + c, 0);
+    if (potentialDuplicates > 0) flags.push({ type: 'potential_duplicates', severity: 'high', count: potentialDuplicates });
+
+    let complianceScore = 100;
+    for (const f of flags) {
+      if (f.severity === 'high') complianceScore -= Math.min(30, f.count * 5);
+      else if (f.severity === 'medium') complianceScore -= Math.min(20, f.count * 3);
+    }
+    complianceScore = Math.max(0, complianceScore);
+
+    const complianceLevel = complianceScore >= 80 ? 'compliant'
+      : complianceScore >= 50 ? 'needs_review' : 'non_compliant';
+
+    const recommendations: string[] = [];
+    if (missingReceipt > 0) recommendations.push(`Attach receipts to ${missingReceipt} expense(s)`);
+    if (missingDescription > 0) recommendations.push(`Add descriptions to ${missingDescription} expense(s)`);
+    if (potentialDuplicates > 0) recommendations.push(`Review ${potentialDuplicates} potential duplicate expense(s)`);
+    if (complianceLevel === 'compliant') recommendations.push('Expense records are well-documented');
+
+    return {
+      totalExpenses: expenses.length,
+      complianceScore,
+      complianceLevel,
+      flags,
+      recommendations,
+    };
+  }
 }

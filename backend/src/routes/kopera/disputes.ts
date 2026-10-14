@@ -118,6 +118,10 @@ export async function registerDisputeRoutes(app: FastifyInstance, prisma: Prisma
     return disputes.getDisputeEscalationEffectiveness(req.auth!.userId);
   });
 
+  app.get('/api/disputes/cost-analysis', { preHandler: [app.requireAuth] }, async (req) => {
+    return disputes.getDisputeCostAnalysis(req.auth!.userId);
+  });
+
   app.get('/api/disputes/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const dispute = await disputes.getById(id);

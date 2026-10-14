@@ -108,6 +108,10 @@ export async function registerBeneficiaryRoutes(app: FastifyInstance, prisma: Pr
     return svc.getBeneficiaryRiskConcentration(req.auth!.userId);
   });
 
+  app.get('/api/beneficiaries/verification-status', { preHandler: [app.requireAuth] }, async (req) => {
+    return svc.getBeneficiaryVerificationStatus(req.auth!.userId);
+  });
+
   app.get('/api/beneficiaries/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const b = await svc.getById(id);
