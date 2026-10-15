@@ -778,6 +778,26 @@ const MODEL_DEFAULTS: Record<string, Record<string, unknown>> = {
     totalPaidOut: BigInt(0),
     lastPayoutAt: null,
   },
+  transactionFraudScore: {
+    status: 'PENDING_REVIEW',
+    reviewedAt: null,
+    reviewedBy: null,
+    decision: null,
+  },
+  paymentChannelConfig: {
+    isActive: true,
+    transactionCount: 0,
+    totalVolume: BigInt(0),
+  },
+  merchantContract: {
+    status: 'DRAFT',
+    totalBilled: BigInt(0),
+    billingCycles: 0,
+    activatedAt: null,
+    terminatedAt: null,
+    terminationReason: null,
+    lastBilledAt: null,
+  },
   event: {
     userId: null,
     requestId: null,
@@ -1039,6 +1059,9 @@ export function createInMemoryPrisma(): PrismaClient {
     webhookEventLog: [],
     paymentMethodToken: [],
     merchantPayoutConfig: [],
+    transactionFraudScore: [],
+    paymentChannelConfig: [],
+    merchantContract: [],
     // legacy
     order: [],
     payment: [],
@@ -1315,6 +1338,9 @@ export function createInMemoryPrisma(): PrismaClient {
     webhookEventLog: model('webhookEventLog'),
     paymentMethodToken: model('paymentMethodToken'),
     merchantPayoutConfig: model('merchantPayoutConfig'),
+    transactionFraudScore: model('transactionFraudScore'),
+    paymentChannelConfig: model('paymentChannelConfig'),
+    merchantContract: model('merchantContract'),
     // legacy
     order: model('order'),
     payment: model('payment'),

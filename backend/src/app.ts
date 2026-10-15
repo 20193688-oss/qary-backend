@@ -119,6 +119,9 @@ import { registerMerchantApiCredentialRoutes } from './routes/kopera/merchant-ap
 import { registerWebhookEventLogRoutes } from './routes/kopera/webhook-event-logs.js';
 import { registerPaymentMethodTokenRoutes } from './routes/kopera/payment-method-tokens.js';
 import { registerMerchantPayoutConfigRoutes } from './routes/kopera/merchant-payout-configs.js';
+import { registerTransactionFraudScoreRoutes } from './routes/kopera/transaction-fraud-scores.js';
+import { registerPaymentChannelConfigRoutes } from './routes/kopera/payment-channel-configs.js';
+import { registerMerchantContractRoutes } from './routes/kopera/merchant-contracts.js';
 
 export interface AppDeps {
   prisma: PrismaClient;
@@ -272,6 +275,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await registerWebhookEventLogRoutes(app, deps.prisma);
   await registerPaymentMethodTokenRoutes(app, deps.prisma);
   await registerMerchantPayoutConfigRoutes(app, deps.prisma);
+  await registerTransactionFraudScoreRoutes(app, deps.prisma);
+  await registerPaymentChannelConfigRoutes(app, deps.prisma);
+  await registerMerchantContractRoutes(app, deps.prisma);
 
   return app;
 }
