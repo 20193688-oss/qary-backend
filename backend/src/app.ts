@@ -65,6 +65,9 @@ import { registerNotificationPrefRoutes } from './routes/kopera/notification-pre
 import { registerFeeScheduleRoutes } from './routes/kopera/fee-schedules.js';
 import { registerApprovalWorkflowRoutes } from './routes/kopera/approval-workflows.js';
 import { registerDocumentVaultRoutes } from './routes/kopera/document-vault.js';
+import { registerPaymentTemplateRoutes } from './routes/kopera/payment-templates.js';
+import { registerRiskScoringRoutes } from './routes/kopera/risk-scoring.js';
+import { registerExchangeOrderRoutes } from './routes/kopera/exchange-orders.js';
 
 export interface AppDeps {
   prisma: PrismaClient;
@@ -164,6 +167,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await registerFeeScheduleRoutes(app, deps.prisma);
   await registerApprovalWorkflowRoutes(app, deps.prisma);
   await registerDocumentVaultRoutes(app, deps.prisma);
+  await registerPaymentTemplateRoutes(app, deps.prisma);
+  await registerRiskScoringRoutes(app, deps.prisma);
+  await registerExchangeOrderRoutes(app, deps.prisma);
 
   return app;
 }
