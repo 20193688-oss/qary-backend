@@ -68,25 +68,28 @@ export class PostFraudAuditService {
     const audit = await this.getAuditCase(userId, auditId);
     if ((audit as any).status !== 'OPEN') throw new Error('audit_case_closed');
 
-    const recovery = await this.prisma.fundRecovery.create({
-      data: {
-        auditId,
-        userId,
-        recoveredAmount: data.recoveredAmount,
-        currency: (audit as any).currency,
-        method: data.method,
-        notes: data.notes || null,
-        status: 'COMPLETED',
-        reference: `RCV-${Date.now()}-${randomUUID().slice(0, 8)}`,
-        recoveredAt: new Date(),
-      },
-    });
-
     const currentRecovered = (audit as any).totalRecovered as bigint || BigInt(0);
-    await this.prisma.postFraudAudit.update({
-      where: { id: auditId },
-      data: { totalRecovered: currentRecovered + data.recoveredAmount },
-    });
+    const ref = `RCV-${Date.now()}-${randomUUID().slice(0, 8)}`;
+
+    const [recovery] = await this.prisma.$transaction([
+      this.prisma.fundRecovery.create({
+        data: {
+          auditId,
+          userId,
+          recoveredAmount: data.recoveredAmount,
+          currency: (audit as any).currency,
+          method: data.method,
+          notes: data.notes || null,
+          status: 'COMPLETED',
+          reference: ref,
+          recoveredAt: new Date(),
+        },
+      }),
+      this.prisma.postFraudAudit.update({
+        where: { id: auditId },
+        data: { totalRecovered: currentRecovered + data.recoveredAmount },
+      }),
+    ]);
 
     return recovery;
   }

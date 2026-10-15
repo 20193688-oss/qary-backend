@@ -58,26 +58,31 @@ export class CreditExpressService {
     const available = (line as any).availableCredit as bigint;
     if (amount > available) throw new Error('insufficient_credit');
 
-    const disbursement = await this.prisma.creditDisbursement.create({
-      data: {
-        creditLineId,
-        userId,
-        amount,
-        currency: (line as any).currency,
-        targetCurrency: targetCurrency?.toUpperCase() || (line as any).currency,
-        status: 'COMPLETED',
-        reference: `DSB-${Date.now()}-${randomUUID().slice(0, 8)}`,
-        disbursedAt: new Date(),
-      },
-    });
+    const ref = `DSB-${Date.now()}-${randomUUID().slice(0, 8)}`;
+    const currency = (line as any).currency;
+    const usedCredit = (line as any).usedCredit as bigint;
 
-    await this.prisma.creditLine.update({
-      where: { id: creditLineId },
-      data: {
-        usedCredit: BigInt(Number(available) - Number(available) + Number((line as any).usedCredit) + Number(amount)),
-        availableCredit: available - amount,
-      },
-    });
+    const [disbursement] = await this.prisma.$transaction([
+      this.prisma.creditDisbursement.create({
+        data: {
+          creditLineId,
+          userId,
+          amount,
+          currency,
+          targetCurrency: targetCurrency?.toUpperCase() || currency,
+          status: 'COMPLETED',
+          reference: ref,
+          disbursedAt: new Date(),
+        },
+      }),
+      this.prisma.creditLine.update({
+        where: { id: creditLineId },
+        data: {
+          usedCredit: usedCredit + amount,
+          availableCredit: available - amount,
+        },
+      }),
+    ]);
 
     return disbursement;
   }
@@ -87,25 +92,29 @@ export class CreditExpressService {
     const used = (line as any).usedCredit as bigint;
     if (amount > used) throw new Error('repayment_exceeds_balance');
 
-    const repayment = await this.prisma.creditRepayment.create({
-      data: {
-        creditLineId,
-        userId,
-        amount,
-        currency: (line as any).currency,
-        status: 'COMPLETED',
-        reference: `RPY-${Date.now()}-${randomUUID().slice(0, 8)}`,
-        paidAt: new Date(),
-      },
-    });
+    const ref = `RPY-${Date.now()}-${randomUUID().slice(0, 8)}`;
+    const available = (line as any).availableCredit as bigint;
 
-    await this.prisma.creditLine.update({
-      where: { id: creditLineId },
-      data: {
-        usedCredit: used - amount,
-        availableCredit: ((line as any).availableCredit as bigint) + amount,
-      },
-    });
+    const [repayment] = await this.prisma.$transaction([
+      this.prisma.creditRepayment.create({
+        data: {
+          creditLineId,
+          userId,
+          amount,
+          currency: (line as any).currency,
+          status: 'COMPLETED',
+          reference: ref,
+          paidAt: new Date(),
+        },
+      }),
+      this.prisma.creditLine.update({
+        where: { id: creditLineId },
+        data: {
+          usedCredit: used - amount,
+          availableCredit: available + amount,
+        },
+      }),
+    ]);
 
     return repayment;
   }

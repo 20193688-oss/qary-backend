@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomInt, randomUUID } from 'node:crypto';
 
 const CONFIRMATION_TIMEOUT_MS = 20 * 60 * 1000;
 
@@ -74,7 +74,8 @@ export class SafePayService {
       const userKey = await this.prisma.userSecretKey.findFirst({
         where: { userId, isActive: true },
       });
-      if (!userKey || (userKey as any).keyHash !== data.secretKey) {
+      const hashedInput = createHash('sha256').update(data.secretKey).digest('hex');
+      if (!userKey || (userKey as any).keyHash !== hashedInput) {
         throw new Error('invalid_secret_key');
       }
     }
@@ -171,6 +172,6 @@ export class SafePayService {
   }
 
   private generateCode(): string {
-    return Math.floor(100000 + Math.random() * 900000).toString();
+    return randomInt(100000, 1000000).toString();
   }
 }

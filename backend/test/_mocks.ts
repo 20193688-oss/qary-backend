@@ -517,8 +517,11 @@ export function createInMemoryPrisma(): PrismaClient {
     };
   };
 
-  const txHandler = async (fn: (tx: unknown) => Promise<unknown>) => {
-    return fn(prisma);
+  const txHandler = async (fnOrArray: ((tx: unknown) => Promise<unknown>) | Promise<unknown>[]) => {
+    if (Array.isArray(fnOrArray)) {
+      return Promise.all(fnOrArray);
+    }
+    return fnOrArray(prisma);
   };
 
   const prisma = {
