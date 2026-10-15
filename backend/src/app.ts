@@ -77,6 +77,9 @@ import { registerAccountGroupRoutes } from './routes/kopera/account-groups.js';
 import { registerRecurringInvoiceRoutes } from './routes/kopera/recurring-invoices.js';
 import { registerVirtualCardRoutes } from './routes/kopera/virtual-cards.js';
 import { registerTaxConfigRoutes } from './routes/kopera/tax-configs.js';
+import { registerBudgetCategoryRoutes } from './routes/kopera/budget-categories.js';
+import { registerPayoutMethodRoutes } from './routes/kopera/payout-methods.js';
+import { registerCashflowForecastRoutes } from './routes/kopera/cashflow-forecasts.js';
 
 export interface AppDeps {
   prisma: PrismaClient;
@@ -188,6 +191,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await registerRecurringInvoiceRoutes(app, deps.prisma);
   await registerVirtualCardRoutes(app, deps.prisma);
   await registerTaxConfigRoutes(app, deps.prisma);
+  await registerBudgetCategoryRoutes(app, deps.prisma);
+  await registerPayoutMethodRoutes(app, deps.prisma);
+  await registerCashflowForecastRoutes(app, deps.prisma);
 
   return app;
 }
