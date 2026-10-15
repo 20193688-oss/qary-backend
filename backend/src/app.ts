@@ -113,6 +113,9 @@ import { registerPaymentGatewayConfigRoutes } from './routes/kopera/payment-gate
 import { registerPaymentReconciliationRoutes } from './routes/kopera/payment-reconciliations.js';
 import { registerMerchantFeeOverrideRoutes } from './routes/kopera/merchant-fee-overrides.js';
 import { registerTransactionAlertRuleRoutes } from './routes/kopera/transaction-alert-rules.js';
+import { registerCurrencyExchangeRateRoutes } from './routes/kopera/currency-exchange-rates.js';
+import { registerPaymentRetryPolicyRoutes } from './routes/kopera/payment-retry-policies.js';
+import { registerMerchantApiCredentialRoutes } from './routes/kopera/merchant-api-credentials.js';
 
 export interface AppDeps {
   prisma: PrismaClient;
@@ -260,6 +263,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await registerPaymentReconciliationRoutes(app, deps.prisma);
   await registerMerchantFeeOverrideRoutes(app, deps.prisma);
   await registerTransactionAlertRuleRoutes(app, deps.prisma);
+  await registerCurrencyExchangeRateRoutes(app, deps.prisma);
+  await registerPaymentRetryPolicyRoutes(app, deps.prisma);
+  await registerMerchantApiCredentialRoutes(app, deps.prisma);
 
   return app;
 }

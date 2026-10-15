@@ -738,6 +738,27 @@ const MODEL_DEFAULTS: Record<string, Record<string, unknown>> = {
     triggerCount: 0,
     lastTriggeredAt: null,
   },
+  currencyExchangeRate: {
+    rate: 1.0,
+    marginPercent: 0,
+    effectiveRate: 1.0,
+    isActive: true,
+    usageCount: 0,
+    totalVolumeConverted: BigInt(0),
+  },
+  paymentRetryPolicy: {
+    isActive: true,
+    totalRetries: 0,
+    successfulRetries: 0,
+    failedRetries: 0,
+    lastRetryAt: null,
+  },
+  merchantApiCredential: {
+    isActive: true,
+    usageCount: 0,
+    lastUsedAt: null,
+    revokedAt: null,
+  },
   event: {
     userId: null,
     requestId: null,
@@ -993,6 +1014,9 @@ export function createInMemoryPrisma(): PrismaClient {
     paymentReconciliation: [],
     merchantFeeOverride: [],
     transactionAlertRule: [],
+    currencyExchangeRate: [],
+    paymentRetryPolicy: [],
+    merchantApiCredential: [],
     // legacy
     order: [],
     payment: [],
@@ -1263,6 +1287,9 @@ export function createInMemoryPrisma(): PrismaClient {
     paymentReconciliation: model('paymentReconciliation'),
     merchantFeeOverride: model('merchantFeeOverride'),
     transactionAlertRule: model('transactionAlertRule'),
+    currencyExchangeRate: model('currencyExchangeRate'),
+    paymentRetryPolicy: model('paymentRetryPolicy'),
+    merchantApiCredential: model('merchantApiCredential'),
     // legacy
     order: model('order'),
     payment: model('payment'),
