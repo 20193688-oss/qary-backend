@@ -101,6 +101,9 @@ import { registerRecurringPaymentRoutes } from './routes/kopera/recurring-paymen
 import { registerPaymentDisputeEvidenceRoutes } from './routes/kopera/payment-dispute-evidence.js';
 import { registerCustomerSegmentRoutes } from './routes/kopera/customer-segments.js';
 import { registerPaymentCorridorRoutes } from './routes/kopera/payment-corridors.js';
+import { registerSettlementReportRoutes } from './routes/kopera/settlement-reports.js';
+import { registerPaymentMethodConfigRoutes } from './routes/kopera/payment-method-configs.js';
+import { registerTransactionExportRoutes } from './routes/kopera/transaction-exports.js';
 
 export interface AppDeps {
   prisma: PrismaClient;
@@ -236,6 +239,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await registerPaymentDisputeEvidenceRoutes(app, deps.prisma);
   await registerCustomerSegmentRoutes(app, deps.prisma);
   await registerPaymentCorridorRoutes(app, deps.prisma);
+  await registerSettlementReportRoutes(app, deps.prisma);
+  await registerPaymentMethodConfigRoutes(app, deps.prisma);
+  await registerTransactionExportRoutes(app, deps.prisma);
 
   return app;
 }
