@@ -59,6 +59,9 @@ import { registerWebhookConfigRoutes } from './routes/kopera/webhook-configs.js'
 import { registerAuditTrailRoutes } from './routes/kopera/audit-trail.js';
 import { registerApiKeyRoutes } from './routes/kopera/api-keys.js';
 import { registerRateLimitConfigRoutes } from './routes/kopera/rate-limit-configs.js';
+import { registerIpWhitelistRoutes } from './routes/kopera/ip-whitelist.js';
+import { registerCurrencyConfigRoutes } from './routes/kopera/currency-configs.js';
+import { registerNotificationPrefRoutes } from './routes/kopera/notification-prefs.js';
 
 export interface AppDeps {
   prisma: PrismaClient;
@@ -152,6 +155,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await registerAuditTrailRoutes(app, deps.prisma);
   await registerApiKeyRoutes(app, deps.prisma);
   await registerRateLimitConfigRoutes(app, deps.prisma);
+  await registerIpWhitelistRoutes(app, deps.prisma);
+  await registerCurrencyConfigRoutes(app, deps.prisma);
+  await registerNotificationPrefRoutes(app, deps.prisma);
 
   return app;
 }

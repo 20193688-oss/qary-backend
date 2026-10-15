@@ -268,6 +268,23 @@ const MODEL_DEFAULTS: Record<string, Record<string, unknown>> = {
     isActive: true,
     reference: null,
   },
+  ipWhitelist: {
+    label: null,
+    isActive: true,
+    expiresAt: null,
+    reference: null,
+  },
+  currencyConfig: {
+    displayDecimals: 2,
+    roundingMode: 'half_up',
+    isDefault: false,
+    isActive: true,
+    reference: null,
+  },
+  notificationPref: {
+    enabled: true,
+    reference: null,
+  },
   event: {
     userId: null,
     requestId: null,
@@ -465,6 +482,9 @@ export function createInMemoryPrisma(): PrismaClient {
     auditTrailEntry: [],
     apiKey: [],
     rateLimitConfig: [],
+    ipWhitelist: [],
+    currencyConfig: [],
+    notificationPref: [],
     // legacy
     order: [],
     payment: [],
@@ -677,6 +697,9 @@ export function createInMemoryPrisma(): PrismaClient {
     auditTrailEntry: model('auditTrailEntry'),
     apiKey: model('apiKey'),
     rateLimitConfig: model('rateLimitConfig'),
+    ipWhitelist: model('ipWhitelist'),
+    currencyConfig: model('currencyConfig'),
+    notificationPref: model('notificationPref'),
     // legacy
     order: model('order'),
     payment: model('payment'),
