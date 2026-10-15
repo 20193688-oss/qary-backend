@@ -798,6 +798,24 @@ const MODEL_DEFAULTS: Record<string, Record<string, unknown>> = {
     terminationReason: null,
     lastBilledAt: null,
   },
+  complianceDocument: {
+    status: 'DRAFT',
+    version: 1,
+    reviewCount: 0,
+    lastReviewedAt: null,
+    approvedBy: null,
+    approvedAt: null,
+  },
+  paymentRoutingRule: {
+    isActive: true,
+    matchCount: 0,
+    lastMatchedAt: null,
+  },
+  merchantDiscountProgram: {
+    isActive: true,
+    currentRedemptions: 0,
+    totalSavings: BigInt(0),
+  },
   event: {
     userId: null,
     requestId: null,
@@ -1062,6 +1080,9 @@ export function createInMemoryPrisma(): PrismaClient {
     transactionFraudScore: [],
     paymentChannelConfig: [],
     merchantContract: [],
+    complianceDocument: [],
+    paymentRoutingRule: [],
+    merchantDiscountProgram: [],
     // legacy
     order: [],
     payment: [],
@@ -1341,6 +1362,9 @@ export function createInMemoryPrisma(): PrismaClient {
     transactionFraudScore: model('transactionFraudScore'),
     paymentChannelConfig: model('paymentChannelConfig'),
     merchantContract: model('merchantContract'),
+    complianceDocument: model('complianceDocument'),
+    paymentRoutingRule: model('paymentRoutingRule'),
+    merchantDiscountProgram: model('merchantDiscountProgram'),
     // legacy
     order: model('order'),
     payment: model('payment'),
