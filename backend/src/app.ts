@@ -89,6 +89,9 @@ import { registerStandingOrderRoutes } from './routes/kopera/standing-orders.js'
 import { registerInvoiceCreditNoteRoutes } from './routes/kopera/invoice-credit-notes.js';
 import { registerRewardProgramRoutes } from './routes/kopera/reward-programs.js';
 import { registerPaymentRequestRoutes } from './routes/kopera/payment-requests.js';
+import { registerMerchantSettlementRoutes } from './routes/kopera/merchant-settlements.js';
+import { registerPaymentScheduleRoutes } from './routes/kopera/payment-schedules.js';
+import { registerChargebackRoutes } from './routes/kopera/chargebacks.js';
 
 export interface AppDeps {
   prisma: PrismaClient;
@@ -212,6 +215,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await registerInvoiceCreditNoteRoutes(app, deps.prisma);
   await registerRewardProgramRoutes(app, deps.prisma);
   await registerPaymentRequestRoutes(app, deps.prisma);
+  await registerMerchantSettlementRoutes(app, deps.prisma);
+  await registerPaymentScheduleRoutes(app, deps.prisma);
+  await registerChargebackRoutes(app, deps.prisma);
 
   return app;
 }
