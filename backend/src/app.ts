@@ -98,6 +98,9 @@ import { registerBankTransferBatchRoutes } from './routes/kopera/bank-transfer-b
 import { registerInvoiceReminderRoutes } from './routes/kopera/invoice-reminders.js';
 import { registerTransactionTagRoutes } from './routes/kopera/transaction-tags.js';
 import { registerRecurringPaymentRoutes } from './routes/kopera/recurring-payments.js';
+import { registerPaymentDisputeEvidenceRoutes } from './routes/kopera/payment-dispute-evidence.js';
+import { registerCustomerSegmentRoutes } from './routes/kopera/customer-segments.js';
+import { registerPaymentCorridorRoutes } from './routes/kopera/payment-corridors.js';
 
 export interface AppDeps {
   prisma: PrismaClient;
@@ -230,6 +233,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await registerInvoiceReminderRoutes(app, deps.prisma);
   await registerTransactionTagRoutes(app, deps.prisma);
   await registerRecurringPaymentRoutes(app, deps.prisma);
+  await registerPaymentDisputeEvidenceRoutes(app, deps.prisma);
+  await registerCustomerSegmentRoutes(app, deps.prisma);
+  await registerPaymentCorridorRoutes(app, deps.prisma);
 
   return app;
 }
