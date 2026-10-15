@@ -341,6 +341,28 @@ const MODEL_DEFAULTS: Record<string, Record<string, unknown>> = {
     executedAt: null,
     cancelledAt: null,
   },
+  spendingInsight: {
+    trend: 'STABLE',
+    recommendation: null,
+    reference: null,
+    generatedAt: null,
+  },
+  complianceRule: {
+    description: null,
+    isActive: true,
+    triggerCount: 0,
+    lastTriggeredAt: null,
+    reference: null,
+  },
+  merchantProfile: {
+    contactEmail: null,
+    website: null,
+    status: 'ACTIVE',
+    transactionCount: 0,
+    totalVolume: BigInt(0),
+    suspendedAt: null,
+    reference: null,
+  },
   event: {
     userId: null,
     requestId: null,
@@ -547,6 +569,9 @@ export function createInMemoryPrisma(): PrismaClient {
     paymentTemplate: [],
     riskAssessment: [],
     exchangeOrder: [],
+    spendingInsight: [],
+    complianceRule: [],
+    merchantProfile: [],
     // legacy
     order: [],
     payment: [],
@@ -768,6 +793,9 @@ export function createInMemoryPrisma(): PrismaClient {
     paymentTemplate: model('paymentTemplate'),
     riskAssessment: model('riskAssessment'),
     exchangeOrder: model('exchangeOrder'),
+    spendingInsight: model('spendingInsight'),
+    complianceRule: model('complianceRule'),
+    merchantProfile: model('merchantProfile'),
     // legacy
     order: model('order'),
     payment: model('payment'),
