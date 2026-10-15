@@ -107,6 +107,9 @@ import { registerTransactionExportRoutes } from './routes/kopera/transaction-exp
 import { registerMerchantOnboardingRoutes } from './routes/kopera/merchant-onboarding.js';
 import { registerTransactionCategoryRoutes } from './routes/kopera/transaction-categories.js';
 import { registerPayoutScheduleRoutes } from './routes/kopera/payout-schedules.js';
+import { registerComplianceCheckRoutes } from './routes/kopera/compliance-checks.js';
+import { registerAccountClosureRoutes } from './routes/kopera/account-closures.js';
+import { registerPaymentGatewayConfigRoutes } from './routes/kopera/payment-gateway-configs.js';
 
 export interface AppDeps {
   prisma: PrismaClient;
@@ -248,6 +251,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await registerMerchantOnboardingRoutes(app, deps.prisma);
   await registerTransactionCategoryRoutes(app, deps.prisma);
   await registerPayoutScheduleRoutes(app, deps.prisma);
+  await registerComplianceCheckRoutes(app, deps.prisma);
+  await registerAccountClosureRoutes(app, deps.prisma);
+  await registerPaymentGatewayConfigRoutes(app, deps.prisma);
 
   return app;
 }
