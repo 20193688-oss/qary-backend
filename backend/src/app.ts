@@ -46,6 +46,13 @@ import { registerBusinessProfileRoutes } from './routes/kopera/business-profiles
 import { registerLoanRepaymentRoutes } from './routes/kopera/loan-repayments.js';
 import { registerUserProfileRoutes } from './routes/kopera/user-profiles.js';
 import { registerDashboardRoutes } from './routes/kopera/dashboard.js';
+import { registerCreditExpressRoutes } from './routes/kopera/credit-express.js';
+import { registerCrossBorderTransferRoutes } from './routes/kopera/cross-border-transfers.js';
+import { registerTransactionMapRoutes } from './routes/kopera/transaction-map.js';
+import { registerSafePayRoutes } from './routes/kopera/safe-pay.js';
+import { registerFraudAlertRoutes } from './routes/kopera/fraud-alert.js';
+import { registerSecretKeyRoutes } from './routes/kopera/secret-key.js';
+import { registerPostFraudAuditRoutes } from './routes/kopera/post-fraud-audit.js';
 
 export interface AppDeps {
   prisma: PrismaClient;
@@ -126,6 +133,13 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await registerLoanRepaymentRoutes(app, deps.prisma);
   await registerUserProfileRoutes(app, deps.prisma);
   await registerDashboardRoutes(app, deps.prisma);
+  await registerCreditExpressRoutes(app, deps.prisma);
+  await registerCrossBorderTransferRoutes(app, deps.prisma);
+  await registerTransactionMapRoutes(app, deps.prisma);
+  await registerSafePayRoutes(app, deps.prisma);
+  await registerFraudAlertRoutes(app, deps.prisma);
+  await registerSecretKeyRoutes(app, deps.prisma);
+  await registerPostFraudAuditRoutes(app, deps.prisma);
 
   return app;
 }
