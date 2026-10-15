@@ -53,6 +53,9 @@ import { registerSafePayRoutes } from './routes/kopera/safe-pay.js';
 import { registerFraudAlertRoutes } from './routes/kopera/fraud-alert.js';
 import { registerSecretKeyRoutes } from './routes/kopera/secret-key.js';
 import { registerPostFraudAuditRoutes } from './routes/kopera/post-fraud-audit.js';
+import { registerComplianceReportRoutes } from './routes/kopera/compliance-reports.js';
+import { registerAccountStatementRoutes } from './routes/kopera/account-statements.js';
+import { registerWebhookConfigRoutes } from './routes/kopera/webhook-configs.js';
 
 export interface AppDeps {
   prisma: PrismaClient;
@@ -140,6 +143,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await registerFraudAlertRoutes(app, deps.prisma);
   await registerSecretKeyRoutes(app, deps.prisma);
   await registerPostFraudAuditRoutes(app, deps.prisma);
+  await registerComplianceReportRoutes(app, deps.prisma);
+  await registerAccountStatementRoutes(app, deps.prisma);
+  await registerWebhookConfigRoutes(app, deps.prisma);
 
   return app;
 }
