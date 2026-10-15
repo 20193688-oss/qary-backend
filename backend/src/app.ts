@@ -62,6 +62,9 @@ import { registerRateLimitConfigRoutes } from './routes/kopera/rate-limit-config
 import { registerIpWhitelistRoutes } from './routes/kopera/ip-whitelist.js';
 import { registerCurrencyConfigRoutes } from './routes/kopera/currency-configs.js';
 import { registerNotificationPrefRoutes } from './routes/kopera/notification-prefs.js';
+import { registerFeeScheduleRoutes } from './routes/kopera/fee-schedules.js';
+import { registerApprovalWorkflowRoutes } from './routes/kopera/approval-workflows.js';
+import { registerDocumentVaultRoutes } from './routes/kopera/document-vault.js';
 
 export interface AppDeps {
   prisma: PrismaClient;
@@ -158,6 +161,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await registerIpWhitelistRoutes(app, deps.prisma);
   await registerCurrencyConfigRoutes(app, deps.prisma);
   await registerNotificationPrefRoutes(app, deps.prisma);
+  await registerFeeScheduleRoutes(app, deps.prisma);
+  await registerApprovalWorkflowRoutes(app, deps.prisma);
+  await registerDocumentVaultRoutes(app, deps.prisma);
 
   return app;
 }
