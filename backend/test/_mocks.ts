@@ -759,6 +759,25 @@ const MODEL_DEFAULTS: Record<string, Record<string, unknown>> = {
     lastUsedAt: null,
     revokedAt: null,
   },
+  webhookEventLog: {
+    status: 'PENDING',
+    attempts: 0,
+    lastAttemptAt: null,
+    responseCode: null,
+    responseBody: null,
+  },
+  paymentMethodToken: {
+    isActive: true,
+    usageCount: 0,
+    lastUsedAt: null,
+    deactivatedAt: null,
+  },
+  merchantPayoutConfig: {
+    isActive: true,
+    totalPayouts: 0,
+    totalPaidOut: BigInt(0),
+    lastPayoutAt: null,
+  },
   event: {
     userId: null,
     requestId: null,
@@ -1017,6 +1036,9 @@ export function createInMemoryPrisma(): PrismaClient {
     currencyExchangeRate: [],
     paymentRetryPolicy: [],
     merchantApiCredential: [],
+    webhookEventLog: [],
+    paymentMethodToken: [],
+    merchantPayoutConfig: [],
     // legacy
     order: [],
     payment: [],
@@ -1290,6 +1312,9 @@ export function createInMemoryPrisma(): PrismaClient {
     currencyExchangeRate: model('currencyExchangeRate'),
     paymentRetryPolicy: model('paymentRetryPolicy'),
     merchantApiCredential: model('merchantApiCredential'),
+    webhookEventLog: model('webhookEventLog'),
+    paymentMethodToken: model('paymentMethodToken'),
+    merchantPayoutConfig: model('merchantPayoutConfig'),
     // legacy
     order: model('order'),
     payment: model('payment'),
