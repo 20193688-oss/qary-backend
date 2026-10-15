@@ -83,6 +83,9 @@ import { registerCashflowForecastRoutes } from './routes/kopera/cashflow-forecas
 import { registerPaymentSplitRoutes } from './routes/kopera/payment-splits.js';
 import { registerAccountVerificationRoutes } from './routes/kopera/account-verifications.js';
 import { registerWireTransferRoutes } from './routes/kopera/wire-transfers.js';
+import { registerDirectDebitRoutes } from './routes/kopera/direct-debits.js';
+import { registerEscrowRoutes } from './routes/kopera/escrows.js';
+import { registerStandingOrderRoutes } from './routes/kopera/standing-orders.js';
 
 export interface AppDeps {
   prisma: PrismaClient;
@@ -200,6 +203,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await registerPaymentSplitRoutes(app, deps.prisma);
   await registerAccountVerificationRoutes(app, deps.prisma);
   await registerWireTransferRoutes(app, deps.prisma);
+  await registerDirectDebitRoutes(app, deps.prisma);
+  await registerEscrowRoutes(app, deps.prisma);
+  await registerStandingOrderRoutes(app, deps.prisma);
 
   return app;
 }
