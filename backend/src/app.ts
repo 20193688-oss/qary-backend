@@ -56,6 +56,9 @@ import { registerPostFraudAuditRoutes } from './routes/kopera/post-fraud-audit.j
 import { registerComplianceReportRoutes } from './routes/kopera/compliance-reports.js';
 import { registerAccountStatementRoutes } from './routes/kopera/account-statements.js';
 import { registerWebhookConfigRoutes } from './routes/kopera/webhook-configs.js';
+import { registerAuditTrailRoutes } from './routes/kopera/audit-trail.js';
+import { registerApiKeyRoutes } from './routes/kopera/api-keys.js';
+import { registerRateLimitConfigRoutes } from './routes/kopera/rate-limit-configs.js';
 
 export interface AppDeps {
   prisma: PrismaClient;
@@ -146,6 +149,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await registerComplianceReportRoutes(app, deps.prisma);
   await registerAccountStatementRoutes(app, deps.prisma);
   await registerWebhookConfigRoutes(app, deps.prisma);
+  await registerAuditTrailRoutes(app, deps.prisma);
+  await registerApiKeyRoutes(app, deps.prisma);
+  await registerRateLimitConfigRoutes(app, deps.prisma);
 
   return app;
 }
