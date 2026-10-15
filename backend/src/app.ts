@@ -92,6 +92,9 @@ import { registerPaymentRequestRoutes } from './routes/kopera/payment-requests.j
 import { registerMerchantSettlementRoutes } from './routes/kopera/merchant-settlements.js';
 import { registerPaymentScheduleRoutes } from './routes/kopera/payment-schedules.js';
 import { registerChargebackRoutes } from './routes/kopera/chargebacks.js';
+import { registerAccountTierRoutes } from './routes/kopera/account-tiers.js';
+import { registerPaymentLinkTemplateRoutes } from './routes/kopera/payment-link-templates.js';
+import { registerBankTransferBatchRoutes } from './routes/kopera/bank-transfer-batches.js';
 
 export interface AppDeps {
   prisma: PrismaClient;
@@ -218,6 +221,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await registerMerchantSettlementRoutes(app, deps.prisma);
   await registerPaymentScheduleRoutes(app, deps.prisma);
   await registerChargebackRoutes(app, deps.prisma);
+  await registerAccountTierRoutes(app, deps.prisma);
+  await registerPaymentLinkTemplateRoutes(app, deps.prisma);
+  await registerBankTransferBatchRoutes(app, deps.prisma);
 
   return app;
 }
