@@ -1,0 +1,42 @@
+name: safewallet-offline
+on:
+  push:
+    paths: ["safewallet-offline/**", ".github/workflows/safewallet-offline.yml"]
+  pull_request:
+    paths: ["safewallet-offline/**"]
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: safewallet-offline/backend } }
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: sw, POSTGRES_PASSWORD: sw, POSTGRES_DB: swtest }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U sw" --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: safewallet-offline/backend/package-lock.json }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:integration
+        env:
+          TEST_DATABASE_URL: postgres://sw:sw@localhost:5432/swtest
+          TEST_REDIS_URL: redis://localhost:6379
+  mobile:
+    runs-on: ubuntu-latest
+    needs: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: safewallet-offline/backend/package-lock.json }
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, cache: true }
+      - run: scripts/run-tests.sh
+        working-directory: safewallet-offline

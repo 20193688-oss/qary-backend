@@ -1,0 +1,51 @@
+SAFEWALLET OFFLINE — LICENCIA PROPIETARIA DE CÓDIGO FUENTE DISPONIBLE (CORE ABIERTO + COMERCIAL)
+Copyright (c) 2026 Titular de SafeWallet Offline. Todos los derechos reservados.
+
+AVISO: este texto es una plantilla técnica redactada junto al código; NO constituye asesoría legal.
+Antes de publicarlo o firmarlo con terceros, hazlo revisar por un abogado de propiedad intelectual
+(en Perú: INDECOPI; internacional: PCT/OMPI).
+
+1. CONCESIÓN LIMITADA
+   Se concede una licencia personal, no exclusiva, intransferible y revocable para (a) leer, compilar y
+   ejecutar este software en entornos propios de desarrollo, prueba y evaluación (sandbox), y (b) usar los
+   SDK/APIs publicados bajo un contrato comercial vigente (planes Starter, Pro o Enterprise).
+
+2. PROHIBICIÓN DE INGENIERÍA INVERSA Y CLONACIÓN
+   Salvo autorización escrita del Titular o disposición legal imperativa que no pueda excluirse por contrato,
+   queda PROHIBIDO: (i) descompilar, desensamblar, desofuscar, aplicar ingeniería inversa o intentar derivar el código
+   fuente, los protocolos, los algoritmos o las claves de las versiones binarias (APK/IPA/AAB/WASM) distribuidas;
+   (ii) eludir, desactivar o manipular los mecanismos de protección (ofuscación, attestation, detección de
+   emuladores/root/hooks, verificación de integridad, licencia por dispositivo, marcas de agua de build);
+   (iii) clonar, replicar o reimplementar el producto o su método de «doble agente offline-online con conciliación
+   diferida y Protocolo Escudo» con apariencia, funcionalidad o interfaces sustancialmente equivalentes;
+   (iv) extraer, copiar o exfiltrar modelos, tablas de reglas de riesgo, vectores de prueba o datos de configuración.
+
+3. PROHIBICIÓN DE USO PARA ENTRENAMIENTO DE IA
+   Queda expresamente prohibido usar el código, la documentación, las especificaciones, las respuestas de las APIs,
+   los binarios o cualquier derivado como datos de entrenamiento, ajuste fino, destilación, evaluación comparativa
+   para entrenamiento, indexación para recuperación aumentada de modelos de terceros o construcción de conjuntos de
+   datos para sistemas de aprendizaje automático, así como solicitar a un sistema de IA que reproduzca, traduzca o
+   «reimplemente» el software con el fin de eludir esta licencia. Esta cláusula constituye una reserva de derechos
+   conforme a la normativa de minería de textos y datos aplicable.
+
+4. MARCA DE AGUA Y TRAZABILIDAD
+   Cada build lleva un identificador único (watermark) y cada instalación una licencia por dispositivo. Quien reciba
+   un build acepta que el Titular rastree filtraciones y revoque tokens, claves y licencias de forma remota.
+
+5. CONFIDENCIALIDAD
+   La documentación de seguridad, el modelo de amenazas y las credenciales de sandbox son información confidencial
+   cuando se entregan bajo NDA. El uso comercial requiere contrato por separado.
+
+6. LICENCIA DUAL (OPEN CORE + COMERCIAL)
+   El Titular podrá liberar módulos concretos «core» bajo una licencia permisiva (MIT/Apache-2.0) mediante aviso
+   escrito por módulo; todo lo no liberado expresamente permanece bajo esta licencia propietaria. Las dependencias
+   de terceros mantienen sus propias licencias (MIT, BSD, Apache-2.0).
+
+7. SIN GARANTÍA / LÍMITE DE RESPONSABILIDAD
+   EL SOFTWARE SE ENTREGA «TAL CUAL». Ninguna aplicación es 100 % incopiable ni invulnerable; la mitigación real
+   es hardware + attestation + servidor de confianza. El Titular no responde por pérdidas derivadas del uso fuera del
+   sandbox sin la integración, certificaciones (PCI-DSS, EMVCo, bancos emisores) y auditorías necesarias.
+
+8. TERMINACIÓN
+   Cualquier incumplimiento de las cláusulas 2 o 3 termina la licencia automáticamente y habilita acciones civiles,
+   penales y administrativas, incluida la medida cautelar de cese.

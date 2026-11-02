@@ -1,0 +1,37 @@
+{
+  "name": "safewallet-backend",
+  "version": "0.1.0",
+  "private": true,
+  "license": "SEE LICENSE IN ../LICENSE",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node -e \"require('fs').copyFileSync('src/db/schema.sql','dist/db/schema.sql')\"",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:integration": "vitest run --no-file-parallelism",
+    "seed": "tsx src/scripts/seed.ts",
+    "vectors": "tsx src/scripts/gen-vectors.ts",
+    "openapi": "tsx src/scripts/export-openapi.ts"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "dotenv": "^16.4.5",
+    "fastify": "^5.0.0",
+    "ioredis": "^5.4.1",
+    "pg": "^8.13.0",
+    "pino": "^10.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "@types/pg": "^8.11.10",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

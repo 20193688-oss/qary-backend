@@ -1,0 +1,440 @@
+{
+ "canonical": [
+  {
+   "json": "{\"b\":1,\"a\":[true,null,\"x\\n\\\"é\"],\"c\":{\"z\":2,\"y\":-3}}",
+   "expected": "{\"a\":[true,null,\"x\\n\\\"é\"],\"b\":1,\"c\":{\"y\":-3,\"z\":2}}"
+  }
+ ],
+ "ecdsa": {
+  "publicKey": "BBkfK9aviGqGjvpWCqRoFXO3T2w6Fbyx4CsvL5E7PHZmd_XKPOhvLVbcv6pew1urrg3lycFYafO6hPNRxhDyQ4o",
+  "message": "mensaje-de-prueba",
+  "sig": "-fRulfKfPK-y5XsRHSfHT5xt-9o_nyygryBcrPM0hS4Mtpj_xQL0FDMFTvTqDJRPo549GhYRg9_gA3q10Hup2g"
+ },
+ "ecies": {
+  "privateJwk": {
+   "d": "F9shmzQS3-1ihP1_n4IpFC9Wk7LYfBCsTWIg_LsXYuY",
+   "x": "GR8r1q-IaoaO-lYKpGgVc7dPbDoVvLHgKy8vkTs8dmY",
+   "y": "d_XKPOhvLVbcv6pew1urrg3lycFYafO6hPNRxhDyQ4o"
+  },
+  "publicKey": "BBkfK9aviGqGjvpWCqRoFXO3T2w6Fbyx4CsvL5E7PHZmd_XKPOhvLVbcv6pew1urrg3lycFYafO6hPNRxhDyQ4o",
+  "info": "sw-luk|vector",
+  "plaintext": "eyJrIjoibHVrLW1hdGVyaWFsIn0",
+  "wrapped": {
+   "epk": "BID44x8K4VNtPmJqvkpeb_LKiQK8bgjHYvLS9h7RVxIcYaLAsxMOCaPrdhV9BmUtG3m0f6OLBs-OTSMlkRxINcU",
+   "iv": "hsZyhLJJENuH4Zqk",
+   "ct": "w7RG6zLVhgypdFLfNEH6deMmEiw",
+   "tag": "vEc6SesqNeO0tv-aEdJ8Dw"
+  }
+ },
+ "hkdf": {
+  "ikm": "0000000000000000000000000000000000000000000000000000000000000000",
+  "salt": "salt",
+  "info": "aes-vector",
+  "out": "99f8baa6749c43e5642dd9dcfac5a7e995f8b449d3b695d2f3faedd90ea38ddc"
+ },
+ "aes": {
+  "key": "99f8baa6749c43e5642dd9dcfac5a7e995f8b449d3b695d2f3faedd90ea38ddc",
+  "aad": "aad-vector",
+  "plaintext": "hola mundo",
+  "sealed": {
+   "iv": "exy9jbUpGjFobO9d",
+   "ct": "Ooc7Voadwg2W5A",
+   "tag": "yxVzjWWyL-xU8GqlS53zmg"
+  }
+ },
+ "hmac": {
+  "key": "2ef6520ead71eed1aef9070925fd85d3ea9fc349f0544981a4330d5b9cbcbdb0",
+  "data": "dato",
+  "out": "34841cf8017bdc4974c9d84fb564b0c1ad0ae704f309d4c9cd8c7c7510d0b307"
+ },
+ "sha256": {
+  "data": "abc",
+  "out": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+ },
+ "arqc": {
+  "luk": "4fe7a4ccdbfcf52eadbbba89d2c577d416382051063352091f8e9200fb39251e",
+  "input": {
+   "token": "5000000000000009",
+   "amountMinor": 1234,
+   "currency": "USD",
+   "counter": 7,
+   "txId": "abcdef012345"
+  },
+  "out": "2600a7465b213313fe554c4c9acff1c4"
+ },
+ "entry": {
+  "base": {
+   "seq": 3,
+   "counter": 9,
+   "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+   "keyEpoch": 1,
+   "type": "PAY_OUT",
+   "payload": {
+    "voucher": {
+     "intent": {
+      "txId": "abcdef012345",
+      "amountMinor": 1234
+     },
+     "payerSig": "x"
+    }
+   }
+  },
+  "hash": "043a44fc3c6075351dc20d0e4648a37b088701a1d69218db860b994b55897793",
+  "ledgerKey": "2ef6520ead71eed1aef9070925fd85d3ea9fc349f0544981a4330d5b9cbcbdb0",
+  "mac": "f86973ada10ecf27c45eed2e6f4d303fc98283d63c8d81a1ca784bdd0ff0a4cc"
+ },
+ "sms": {
+  "key": "3333333333333333333333333333333333333333333333333333333333333333",
+  "deviceId": "cccccccccccccccccccccccccccccccc",
+  "epoch": 1,
+  "payload": {
+   "t": "abababababab",
+   "to": "+51999111222",
+   "a": 1500,
+   "c": "PEN",
+   "pc": "USD",
+   "s": "rs_vector",
+   "m": 200,
+   "k": "5555555555555555",
+   "q": "ffffffffffffffffffffffffffffffff",
+   "n": 3,
+   "ts": 1700000000000,
+   "e": 1
+  },
+  "message": "SWPAY1.cccccccccccccccccccccccccccccccc.1.87LUkwg6RmHhtUYj7GA0CRdR5y8DXIWp18_5E3vZ8pVEIy286M8TTMC5g8ERFbBBnkA_rPA5k0gFs5tYDd5-nWMaxSjioHE7Y1r_9gyjasWsltIaqe5f66T5vuKeSqfLZz3Qu76jjm2pWQizE084V4--sXJKQiJGAd51wiH70AgEbGVQ0Oo"
+ },
+ "emv": {
+  "payload": "00020101021226280011pe.com.yape0109999888777520400005303604540512.505802PE5909TAXI LIMA6004LIMA62060502R16304C56A",
+  "info": {
+   "valid": true,
+   "crcOk": true,
+   "dynamic": true,
+   "wallet": "yape",
+   "merchantName": "TAXI LIMA",
+   "city": "LIMA",
+   "country": "PE",
+   "mcc": "0000",
+   "currency": "PEN",
+   "amountMinor": 1250,
+   "accountId": "999888777",
+   "guid": "pe.com.yape",
+   "reference": "R1",
+   "emvHash": "7f125dea4ba0331e603e6881083e3075c6c32c465727b0fbdd3ce239520633f6"
+  }
+ },
+ "fx": {
+  "ratesMicros": {
+   "USD": 1000000,
+   "PEN": 3750000,
+   "EUR": 920000,
+   "CRC": 520000000,
+   "VES": 36500000,
+   "COP": 4000000000
+  },
+  "cross": [
+   {
+    "src": "PEN",
+    "dst": "PEN",
+    "micros": 1000000
+   },
+   {
+    "src": "PEN",
+    "dst": "USD",
+    "micros": 266667
+   },
+   {
+    "src": "PEN",
+    "dst": "EUR",
+    "micros": 245333
+   },
+   {
+    "src": "PEN",
+    "dst": "CRC",
+    "micros": 138666667
+   },
+   {
+    "src": "PEN",
+    "dst": "VES",
+    "micros": 9733333
+   },
+   {
+    "src": "PEN",
+    "dst": "COP",
+    "micros": 1066666667
+   },
+   {
+    "src": "USD",
+    "dst": "PEN",
+    "micros": 3750000
+   },
+   {
+    "src": "USD",
+    "dst": "USD",
+    "micros": 1000000
+   },
+   {
+    "src": "USD",
+    "dst": "EUR",
+    "micros": 920000
+   },
+   {
+    "src": "USD",
+    "dst": "CRC",
+    "micros": 520000000
+   },
+   {
+    "src": "USD",
+    "dst": "VES",
+    "micros": 36500000
+   },
+   {
+    "src": "USD",
+    "dst": "COP",
+    "micros": 4000000000
+   },
+   {
+    "src": "EUR",
+    "dst": "PEN",
+    "micros": 4076087
+   },
+   {
+    "src": "EUR",
+    "dst": "USD",
+    "micros": 1086957
+   },
+   {
+    "src": "EUR",
+    "dst": "EUR",
+    "micros": 1000000
+   },
+   {
+    "src": "EUR",
+    "dst": "CRC",
+    "micros": 565217391
+   },
+   {
+    "src": "EUR",
+    "dst": "VES",
+    "micros": 39673913
+   },
+   {
+    "src": "EUR",
+    "dst": "COP",
+    "micros": 4347826087
+   },
+   {
+    "src": "CRC",
+    "dst": "PEN",
+    "micros": 7212
+   },
+   {
+    "src": "CRC",
+    "dst": "USD",
+    "micros": 1923
+   },
+   {
+    "src": "CRC",
+    "dst": "EUR",
+    "micros": 1769
+   },
+   {
+    "src": "CRC",
+    "dst": "CRC",
+    "micros": 1000000
+   },
+   {
+    "src": "CRC",
+    "dst": "VES",
+    "micros": 70192
+   },
+   {
+    "src": "CRC",
+    "dst": "COP",
+    "micros": 7692308
+   },
+   {
+    "src": "VES",
+    "dst": "PEN",
+    "micros": 102740
+   },
+   {
+    "src": "VES",
+    "dst": "USD",
+    "micros": 27397
+   },
+   {
+    "src": "VES",
+    "dst": "EUR",
+    "micros": 25205
+   },
+   {
+    "src": "VES",
+    "dst": "CRC",
+    "micros": 14246575
+   },
+   {
+    "src": "VES",
+    "dst": "VES",
+    "micros": 1000000
+   },
+   {
+    "src": "VES",
+    "dst": "COP",
+    "micros": 109589041
+   },
+   {
+    "src": "COP",
+    "dst": "PEN",
+    "micros": 938
+   },
+   {
+    "src": "COP",
+    "dst": "USD",
+    "micros": 250
+   },
+   {
+    "src": "COP",
+    "dst": "EUR",
+    "micros": 230
+   },
+   {
+    "src": "COP",
+    "dst": "CRC",
+    "micros": 130000
+   },
+   {
+    "src": "COP",
+    "dst": "VES",
+    "micros": 9125
+   },
+   {
+    "src": "COP",
+    "dst": "COP",
+    "micros": 1000000
+   }
+  ],
+  "price": [
+   {
+    "dest": 1000,
+    "rate": 1000000,
+    "margin": 0,
+    "price": 1000,
+    "fair": 1000
+   },
+   {
+    "dest": 1000,
+    "rate": 266667,
+    "margin": 200,
+    "price": 3825,
+    "fair": 3750
+   },
+   {
+    "dest": 12345,
+    "rate": 3750000,
+    "margin": 200,
+    "price": 3358,
+    "fair": 3292
+   },
+   {
+    "dest": 999999999,
+    "rate": 1066666667,
+    "margin": 200,
+    "price": 956250,
+    "fair": 937500
+   }
+  ],
+  "usd": [
+   {
+    "currency": "PEN",
+    "minor": 375,
+    "usd": 100
+   },
+   {
+    "currency": "COP",
+    "minor": 4000000,
+    "usd": 1000
+   },
+   {
+    "currency": "EUR",
+    "minor": 920,
+    "usd": 1000
+   }
+  ]
+ },
+ "risk": [
+  {
+   "input": {
+    "amountUsdMinor": 100,
+    "perTxLimitUsdMinor": 10000,
+    "dailyLimitUsdMinor": 20000,
+    "dailyUsedUsdMinor": 0,
+    "txLastHour": 0,
+    "merchantUnlisted": false,
+    "foreign": false,
+    "hourLocal": 12,
+    "channel": "ble",
+    "untrustedDevice": false,
+    "activeRiskFlag": false
+   },
+   "score": 0
+  },
+  {
+   "input": {
+    "amountUsdMinor": 10000,
+    "perTxLimitUsdMinor": 10000,
+    "dailyLimitUsdMinor": 20000,
+    "dailyUsedUsdMinor": 10000,
+    "txLastHour": 7,
+    "merchantUnlisted": true,
+    "foreign": true,
+    "hourLocal": 2,
+    "channel": "ble",
+    "untrustedDevice": false,
+    "activeRiskFlag": false
+   },
+   "score": 100
+  },
+  {
+   "input": {
+    "amountUsdMinor": 5000,
+    "perTxLimitUsdMinor": 10000,
+    "dailyLimitUsdMinor": 20000,
+    "dailyUsedUsdMinor": 0,
+    "txLastHour": 0,
+    "merchantUnlisted": false,
+    "foreign": false,
+    "hourLocal": 12,
+    "channel": "sms",
+    "untrustedDevice": false,
+    "activeRiskFlag": true
+   },
+   "score": 50
+  }
+ ],
+ "snapshot": {
+  "serverPublicKey": "BMkBlVgOxQa56CyE-LE61YAozJ-Vq7wiJMCWcaJv38TlbkVpCjACgu_EjipnSaH1ZbaG5pGXzTUhBlMynGBPcVY",
+  "snapshot": {
+   "id": "rs_vector",
+   "base": "USD",
+   "asOf": 1000,
+   "expiresAt": 999999999,
+   "ratesMicros": {
+    "USD": 1000000,
+    "PEN": 3750000,
+    "EUR": 920000,
+    "CRC": 520000000,
+    "VES": 36500000,
+    "COP": 4000000000
+   },
+   "marginBps": 200,
+   "source": "vector",
+   "sig": "Tjl8bHE4XMktT4iVWK_ymuUq7i28B8NdSmVbiyL6BqOZo8zk96GNGaABvmlJN5oagoJp-67PWuhAG-JtII6blA"
+  }
+ },
+ "qr": {
+  "serverPublicKey": "BMkBlVgOxQa56CyE-LE61YAozJ-Vq7wiJMCWcaJv38TlbkVpCjACgu_EjipnSaH1ZbaG5pGXzTUhBlMynGBPcVY",
+  "qr": "SWQR1:eyJwIjp7InYiOjEsInFySWQiOiJxcjEiLCJwYXllZURldmljZUlkIjoiYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWEiLCJhbW91bnRNaW5vciI6MTIwMCwiY3VycmVuY3kiOiJVU0QiLCJyYXRlU25hcHNob3RJZCI6InJzX3ZlY3RvciIsImlhdCI6MSwiZXhwIjo0MTAyNDQ0ODAwMDAwLCJyYXRlcyI6eyJpZCI6InJzX3ZlY3RvciIsImJhc2UiOiJVU0QiLCJhc09mIjoxMDAwLCJleHBpcmVzQXQiOjk5OTk5OTk5OSwicmF0ZXNNaWNyb3MiOnsiVVNEIjoxMDAwMDAwLCJQRU4iOjM3NTAwMDAsIkVVUiI6OTIwMDAwLCJDUkMiOjUyMDAwMDAwMCwiVkVTIjozNjUwMDAwMCwiQ09QIjo0MDAwMDAwMDAwfSwibWFyZ2luQnBzIjoyMDAsInNvdXJjZSI6InZlY3RvciIsInNpZyI6IlRqbDhiSEU0WE1rdFQ0aVZXS195bXVVcTdpMjhCOE5kU21WYml5TDZCcU9abzh6azk2R05HYUFCdm1sSk41b2Fnb0pwLTY3UFd1aEFHLUp0SUk2YmxBIn19LCJzIjoiWU05LUlZU25jLTRoRXBqanFwRnJmaVNYcVZIdGRBdVZmTVhFdUJ2QzRtQUZsQnJ0RnF4QzBXU0tYdEJ5dVByVTFqeTc0VUtuZHNPZVI0cUE3VzVidkEifQ",
+  "qrId": "qr1"
+ },
+ "randomSample": "8b9e9329"
+}

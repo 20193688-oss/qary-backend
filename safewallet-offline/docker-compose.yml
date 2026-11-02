@@ -1,0 +1,50 @@
+# SafeWallet Offline — entorno local:  docker compose up --build
+# Sin configuración previa: el "secret manager" (mock) genera y persiste secretos en el volumen `swdata`.
+# En producción NO uses este modo: define MASTER_SECRET, SERVER_SIGNING_KEY_PEM_B64 y SERVER_SIGNING_PUBLIC_KEY (o *_FILE).
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-safewallet}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-safewallet_dev_pw}
+      POSTGRES_DB: ${POSTGRES_DB:-safewallet}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-safewallet} -d ${POSTGRES_DB:-safewallet}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build: ./backend
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: "3000"
+      DATABASE_URL: postgres://${POSTGRES_USER:-safewallet}:${POSTGRES_PASSWORD:-safewallet_dev_pw}@postgres:5432/${POSTGRES_DB:-safewallet}
+      REDIS_URL: redis://redis:6379
+      SANDBOX_API_KEY: ${SANDBOX_API_KEY:-sw_sandbox_demo_key}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-sw_admin_demo_key}
+      ALLOWED_BUILD_IDS: ${ALLOWED_BUILD_IDS:-*}
+      OFFLINE_DAILY_LIMIT_USD_MINOR: ${OFFLINE_DAILY_LIMIT_USD_MINOR:-20000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+    volumes:
+      - swdata:/data
+
+volumes:
+  pgdata:
+  swdata:
